@@ -1,0 +1,116 @@
+name: PR gates
+
+on:
+  pull_request:
+    branches: [dev]
+
+concurrency:
+  group: gates-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.filter.outputs.changes }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            packages:
+              - "packages/**"
+              - "package.json"
+              - "package-lock.json"
+              - "turbo.json"
+
+  build-lint-test:
+    runs-on: ubuntu-latest
+    needs: changes
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Build, lint, typecheck, unit + integration tests
+        run: npm run check
+
+      - name: Repo-level analysis
+        run: npm run lint:repo
+
+  playwright-web:
+    runs-on: ubuntu-latest
+    needs: build-lint-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:web
+        env:
+          CI: "true"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-web-report
+          path: tests/playwright/web/report
+          retention-days: 7
+
+  e2e:
+    # Full-stack e2e needs the docker dependency stack; runs on PRs touching
+    # app or service code. Skeleton phase: e2e specs cover public pages only,
+    # so this is cheap; grows with each feature ticket.
+    runs-on: ubuntu-latest
+    needs: build-lint-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Start stack
+        run: |
+          npm run deps:up
+          npm run build
+        env:
+          XITTER_ENV: ci
+      - run: npm run test:e2e
+        env:
+          CI: "true"
+          XITTER_ENV: ci
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-e2e-report
+          path: tests/playwright/e2e/report
+          retention-days: 7
+
+  mutation:
+    # Scoped to affected workspaces in PRs; full runs happen on merge to dev.
+    runs-on: ubuntu-latest
+    needs: build-lint-test
+    if: needs.changes.outputs.packages != '[]'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx turbo run mutate --filter=...[origin/dev]

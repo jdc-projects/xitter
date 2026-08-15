@@ -1,0 +1,54 @@
+name: Deploy dev
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+jobs:
+  full-mutation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Full mutation run (all workspaces, incremental reports)
+        run: npm run mutate
+
+  build-images:
+    # Builds and pushes per-app images; deploy wiring lands with feature
+    # tickets as workloads are added to the Tofu environments.
+    runs-on: ubuntu-latest
+    needs: full-mutation
+    if: success()
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        workspace:
+          - web
+          - cms
+          - admin
+          - "@xitter/service-social"
+          - "@xitter/service-posts"
+          - "@xitter/service-media"
+          - "@xitter/service-feed"
+          - "@xitter/service-search"
+          - "@xitter/worker-fanout"
+          - "@xitter/worker-media-process"
+          - "@xitter/worker-search-index"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx turbo run build --filter=${{ matrix.workspace }}
+      # Image build + push step activates with the first deploy ticket.
+
+  # deploy-dev applies infra/iac/environments/dev after images exist.
