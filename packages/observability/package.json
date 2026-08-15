@@ -1,0 +1,37 @@
+{
+  "name": "@xitter/observability",
+  "version": "0.0.0",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.30",
+    "@opentelemetry/instrumentation": "^0.221",
+    "@opentelemetry/instrumentation-fastify": "^0.57",
+    "@opentelemetry/instrumentation-http": "^0.221",
+    "@opentelemetry/instrumentation-kafkajs": "^0.9",
+    "@opentelemetry/instrumentation-pg": "^0.57",
+    "@opentelemetry/instrumentation-undici": "^0.221",
+    "@opentelemetry/sdk-node": "^0.221",
+    "@sentry/node": "^10.70",
+    "pino": "^10.3",
+    "pino-pretty": "^13.1"
+  },
+  "devDependencies": {
+    "@xitter/tsconfig": "*",
+    "vitest": "^4.1"
+  }
+}

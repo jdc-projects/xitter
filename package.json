@@ -1,0 +1,61 @@
+{
+  "name": "xitter",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Twitter/X-style demo app - microservices monorepo",
+  "license": "Unlicense",
+  "packageManager": "npm@11.19.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": [
+    "apps/*",
+    "apps/services/*",
+    "apps/workers/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "start": "turbo run start",
+    "check": "turbo run lint typecheck test build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "lint:repo": "fallow analyze && react-doctor check",
+    "test": "turbo run test",
+    "test:watch": "turbo run test:watch",
+    "test:unit": "turbo run test",
+    "test:web": "playwright test -c tests/playwright/web",
+    "test:e2e": "playwright test -c tests/playwright/e2e",
+    "test:a11y": "playwright test -c tests/playwright/e2e --grep @a11y",
+    "test:load": "artillery run tests/artillery/feed-flow.yml",
+    "test:api": "bru run --env local bruno/xitter",
+    "mutate": "turbo run mutate",
+    "deps:up": "tsx packages/scripts/src/docker.ts up",
+    "deps:down": "tsx packages/scripts/src/docker.ts down",
+    "deps:status": "tsx packages/scripts/src/docker.ts status",
+    "db:migrate": "turbo run migrate",
+    "db:migrate:deploy": "turbo run migrate:deploy",
+    "topics:create": "tsx packages/scripts/src/topics.ts create",
+    "keycloak:init": "tsx packages/scripts/src/keycloak.ts init",
+    "bootstrap": "tsx packages/scripts/src/bootstrap.ts",
+    "reset": "tsx packages/scripts/src/reset.ts",
+    "reset:reseed": "tsx packages/scripts/src/reset.ts --seed",
+    "seed": "tsx packages/scripts/src/seed.ts",
+    "openapi:gen": "turbo run openapi:gen && tsx packages/scripts/src/openapi.ts collect",
+    "env:print": "tsx packages/scripts/src/env.ts print"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62",
+    "@usebruno/cli": "^4",
+    "artillery": "^2",
+    "fallow": "^3",
+    "prettier": "^3.9",
+    "react-doctor": "^0.9",
+    "tsx": "^4.23",
+    "turbo": "^2.10",
+    "typescript": "^6.0"
+  }
+}

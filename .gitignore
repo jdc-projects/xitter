@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Builds
+dist/
+.next/
+out/
+build/
+.turbo/
+*.tsbuildinfo
+
+# Generated Prisma clients (prisma-client generator output)
+**/src/generated/prisma/
+
+# Coverage / test artifacts
+coverage/
+.playwright/
+test-results/
+playwright-report/
+artillery-report/
+.stryker-tmp/
+reports/
+mutation/
+
+# Env - examples are committed, real env files are not
+.env
+.env.*
+!.env.example
+
+# Local state
+.DS_Store
+*.log
+
+# Bruno - local collection state only
+bruno/**/*.local.bru

@@ -1,0 +1,26 @@
+{
+  "name": "@xitter/auth",
+  "version": "0.0.0",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "jose": "^6.2"
+  },
+  "devDependencies": {
+    "@xitter/tsconfig": "*",
+    "vitest": "^4.1"
+  }
+}
