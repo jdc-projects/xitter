@@ -42,3 +42,8 @@ apps/**/openapi.json
 
 # Bruno - local collection state only
 bruno/**/*.local.bru
+
+# fallow analysis caches (baselines are committed; caches are not)
+.fallow/cache*
+.fallow/graph-cache.bin
+.fallow/churn.bin

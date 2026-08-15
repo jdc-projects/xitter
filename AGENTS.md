@@ -17,7 +17,9 @@ Read first: `docs/README.md` (structure), `docs/specs/` (desired end-state),
 | Task                      | Command                                                                                                            |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | Install                   | `npm install`                                                                                                      |
-| All gates (run before PR) | `npm run check`                                                                                                    |
+| All gates (run before PR) | `npm run check` (format + turbo lint/typecheck/test/build + fallow + react-doctor)                                 |
+| Everything CI runs on PR  | `npm run check:all` (`check` + web + e2e Playwright; scope mutation if `packages/**` changed)                      |
+| Deep-clean build state    | `npm run clean` - before trusting gates on a long-lived checkout                                                   |
 | Dev (everything, watch)   | `npm run deps:up && npm run bootstrap && npm run dev`                                                              |
 | Prod-like                 | `npm run build && npm run start`                                                                                   |
 | Dependencies (docker)     | `npm run deps:up / deps:down / deps:status`                                                                        |
@@ -27,9 +29,11 @@ Read first: `docs/README.md` (structure), `docs/specs/` (desired end-state),
 | Repo-level lint           | `npm run lint:repo` (fallow + react-doctor)                                                                        |
 | Format                    | `npm run format` / `npm run format:check`                                                                          |
 
-Run gates locally before raising a PR; CI re-runs them. No automated suite runs
-against dev mode - unit/integration run against source, web/e2e/load against
-built artifacts.
+Run gates locally before raising a PR; CI re-runs them. `npm run check` matches the
+primary CI job exactly (format, turbo gates, fallow + react-doctor). On a long-lived
+checkout run `npm run clean` first - stale `dist/` + turbo caches have masked real
+failures before. No automated suite runs against dev mode - unit/integration run
+against source, web/e2e/load against built artifacts.
 
 ## Architecture map
 
