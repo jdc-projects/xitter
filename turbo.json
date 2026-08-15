@@ -16,8 +16,18 @@
       ]
     },
     "generate": {
-      "inputs": ["prisma/**", "prisma.config.ts"],
-      "outputs": ["src/generated/prisma/**"]
+      "inputs": [
+        "prisma/**",
+        "prisma.config.ts",
+        "src/payload.config.ts",
+        "src/collections/**",
+        "package.json"
+      ],
+      "outputs": [
+        "src/generated/prisma/**",
+        "src/payload-types.ts",
+        "src/app/(payload)/admin/importMap.js"
+      ]
     },
     "dev": {
       "dependsOn": ["^build"],

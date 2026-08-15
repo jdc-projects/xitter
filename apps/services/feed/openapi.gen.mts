@@ -1,6 +1,7 @@
 import { buildServiceDocument } from '@xitter/api-contracts';
 import { feedApi } from './src/modules/feed.registry.js';
 import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const document = buildServiceDocument(
   {
@@ -12,5 +13,5 @@ const document = buildServiceDocument(
   feedApi,
 );
 
-writeFileSync(new URL('./openapi.json', import.meta.url), JSON.stringify(document, null, 2));
+writeFileSync(join(process.cwd(), 'openapi.json'), JSON.stringify(document, null, 2));
 console.log('wrote openapi.json');

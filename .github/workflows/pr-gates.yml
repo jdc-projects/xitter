@@ -25,30 +25,51 @@ jobs:
               - "package-lock.json"
               - "turbo.json"
 
-  build-lint-test:
+  format:
     runs-on: ubuntu-latest
-    needs: changes
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: npm
-
       - run: npm ci
+      - run: npm run format:check
 
-      - name: Fetch base ref for repo-level analysis
+  gates:
+    # Build, ESLint, tsc, unit + integration tests via turbo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Build, lint, typecheck, tests
+        run: turbo run lint typecheck test build
+
+  repo-analysis:
+    # fallow + react-doctor; needs the base ref for changed-file attribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Fetch base ref
         run: git fetch origin dev:refs/remotes/origin/dev
-
-      - name: Build, lint, typecheck, unit + integration tests
-        run: npm run check
+      - run: npm run lint:repo
 
   playwright-web:
     runs-on: ubuntu-latest
-    needs: build-lint-test
+    needs: gates
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -68,11 +89,10 @@ jobs:
           retention-days: 7
 
   e2e:
-    # Full-stack e2e needs the docker dependency stack; runs on PRs touching
-    # app or service code. Skeleton phase: e2e specs cover public pages only,
-    # so this is cheap; grows with each feature ticket.
+    # Full-stack e2e against the docker dependency stack. Skeleton phase:
+    # specs cover public pages only; grows with each feature ticket.
     runs-on: ubuntu-latest
-    needs: build-lint-test
+    needs: gates
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -101,7 +121,7 @@ jobs:
   mutation:
     # Scoped to affected workspaces in PRs; full runs happen on merge to dev.
     runs-on: ubuntu-latest
-    needs: [changes, build-lint-test]
+    needs: [changes, gates]
     if: needs.changes.outputs.packages != '[]'
     steps:
       - uses: actions/checkout@v4
