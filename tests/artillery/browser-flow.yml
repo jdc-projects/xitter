@@ -3,7 +3,7 @@ config:
   target: "{{ $processEnvironment.E2E_BASE_URL || 'http://localhost:8080' }}"
   engines:
     playwright:
-      testMatch: "**/*.playwright.mjs"
+      testMatch: '**/*.playwright.ts'
   phases:
     - name: browse
       duration: 120

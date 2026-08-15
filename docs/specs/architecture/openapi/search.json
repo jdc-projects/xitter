@@ -1,0 +1,243 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "xitter search API",
+    "description": "Full-text search over posts, backed by OpenSearch.",
+    "version": "v1"
+  },
+  "servers": [
+    {
+      "url": "/api/search/v1"
+    }
+  ],
+  "components": {
+    "schemas": {},
+    "parameters": {}
+  },
+  "paths": {
+    "/posts": {
+      "get": {
+        "tags": ["search"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "q",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "cursor",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Search results page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "post": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                              },
+                              "authorId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                              },
+                              "text": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 512
+                              },
+                              "media": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string",
+                                      "format": "uuid"
+                                    },
+                                    "ownerId": {
+                                      "type": "string",
+                                      "format": "uuid",
+                                      "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                                    },
+                                    "status": {
+                                      "type": "string",
+                                      "enum": ["pending", "ready", "failed"]
+                                    },
+                                    "variants": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "properties": {
+                                          "kind": {
+                                            "type": "string",
+                                            "enum": ["original", "thumb"]
+                                          },
+                                          "objectKey": {
+                                            "type": "string",
+                                            "minLength": 1
+                                          },
+                                          "mimeType": {
+                                            "type": "string",
+                                            "minLength": 1
+                                          },
+                                          "bytes": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "exclusiveMinimum": true
+                                          },
+                                          "width": {
+                                            "type": "integer",
+                                            "nullable": true,
+                                            "minimum": 0,
+                                            "exclusiveMinimum": true
+                                          },
+                                          "height": {
+                                            "type": "integer",
+                                            "nullable": true,
+                                            "minimum": 0,
+                                            "exclusiveMinimum": true
+                                          }
+                                        },
+                                        "required": [
+                                          "kind",
+                                          "objectKey",
+                                          "mimeType",
+                                          "bytes",
+                                          "width",
+                                          "height"
+                                        ]
+                                      }
+                                    },
+                                    "createdAt": {
+                                      "type": "string",
+                                      "format": "date-time"
+                                    }
+                                  },
+                                  "required": ["id", "ownerId", "status", "variants", "createdAt"]
+                                }
+                              },
+                              "replyToId": {
+                                "type": "string",
+                                "nullable": true,
+                                "format": "uuid",
+                                "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                              },
+                              "repostOfId": {
+                                "type": "string",
+                                "nullable": true,
+                                "format": "uuid",
+                                "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                              },
+                              "counts": {
+                                "type": "object",
+                                "properties": {
+                                  "replies": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                  },
+                                  "likes": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                  },
+                                  "reposts": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                  }
+                                },
+                                "required": ["replies", "likes", "reposts"]
+                              },
+                              "createdAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              "deletedAt": {
+                                "type": "string",
+                                "nullable": true,
+                                "format": "date-time"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "authorId",
+                              "text",
+                              "media",
+                              "replyToId",
+                              "repostOfId",
+                              "counts",
+                              "createdAt",
+                              "deletedAt"
+                            ]
+                          },
+                          "author": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                              },
+                              "username": {
+                                "type": "string",
+                                "minLength": 3,
+                                "maxLength": 20,
+                                "pattern": "^[a-z0-9_]+$"
+                              },
+                              "displayName": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 50
+                              },
+                              "bio": {
+                                "type": "string",
+                                "nullable": true,
+                                "maxLength": 200
+                              },
+                              "createdAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            },
+                            "required": ["id", "username", "displayName", "bio", "createdAt"]
+                          }
+                        },
+                        "required": ["post", "author"]
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": ["items", "nextCursor"]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

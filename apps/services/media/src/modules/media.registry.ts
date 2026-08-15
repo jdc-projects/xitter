@@ -1,26 +1,28 @@
-import { OpenAPIRegistry, extendZodWithOpenApi } from "@asteasolutions/zod-to-openapi";
-import { z } from "zod";
-import { createMediaUploadRequestSchema } from "@xitter/api-contracts";
+import { OpenAPIRegistry, extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
+import { z } from 'zod';
+import { createMediaUploadRequestSchema } from '@xitter/api-contracts';
 
 extendZodWithOpenApi(z);
 
-export const mediaApi = new OpenAPIRegistry("media");
+export const mediaApi = new OpenAPIRegistry();
 
 mediaApi.registerPath({
-  method: "POST",
-  path: "/uploads",
-  tags: ["media"],
+  method: 'post',
+  path: '/uploads',
+  tags: ['media'],
   security: [{ bearerAuth: [] }],
-  request: { body: { content: { "application/json": { schema: createMediaUploadRequestSchema } } } },
+  request: {
+    body: { content: { 'application/json': { schema: createMediaUploadRequestSchema } } },
+  },
   responses: {
     201: {
-      description: "Upload slot created; upload bytes to the returned URL",
+      description: 'Upload slot created; upload bytes to the returned URL',
       content: {
-        "application/json": {
+        'application/json': {
           schema: z.object({ mediaId: z.string().uuid(), uploadUrl: z.string().url() }),
         },
       },
     },
-    413: { description: "Too large" },
+    413: { description: 'Too large' },
   },
 });

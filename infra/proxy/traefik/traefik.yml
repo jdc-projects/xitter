@@ -7,7 +7,7 @@ providers:
 
 entryPoints:
   web:
-    address: ":80"
+    address: ':80'
 
 api:
   dashboard: true

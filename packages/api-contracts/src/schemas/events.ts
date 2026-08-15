@@ -1,5 +1,5 @@
-import { z } from "zod";
-import { interactionKindSchema, mediaIdSchema, postIdSchema, userIdSchema } from "./domain.js";
+import { z } from 'zod';
+import { interactionKindSchema, mediaIdSchema, postIdSchema, userIdSchema } from './domain.js';
 
 /**
  * Event payload schemas. Each becomes one member of the discriminated union in
@@ -7,7 +7,7 @@ import { interactionKindSchema, mediaIdSchema, postIdSchema, userIdSchema } from
  */
 
 export const postCreated = z.object({
-  eventType: z.literal("posts.post.created"),
+  eventType: z.literal('posts.post.created'),
   postId: postIdSchema,
   authorId: userIdSchema,
   text: z.string().min(1),
@@ -18,14 +18,14 @@ export const postCreated = z.object({
 });
 
 export const postDeleted = z.object({
-  eventType: z.literal("posts.post.deleted"),
+  eventType: z.literal('posts.post.deleted'),
   postId: postIdSchema,
   authorId: userIdSchema,
   deletedAt: z.iso.datetime(),
 });
 
 export const interactionCreated = z.object({
-  eventType: z.literal("posts.interaction.created"),
+  eventType: z.literal('posts.interaction.created'),
   kind: interactionKindSchema,
   postId: postIdSchema,
   userId: userIdSchema,
@@ -33,7 +33,7 @@ export const interactionCreated = z.object({
 });
 
 export const interactionDeleted = z.object({
-  eventType: z.literal("posts.interaction.deleted"),
+  eventType: z.literal('posts.interaction.deleted'),
   kind: interactionKindSchema,
   postId: postIdSchema,
   userId: userIdSchema,
@@ -41,35 +41,35 @@ export const interactionDeleted = z.object({
 });
 
 export const followCreated = z.object({
-  eventType: z.literal("social.follow.created"),
+  eventType: z.literal('social.follow.created'),
   followerId: userIdSchema,
   followeeId: userIdSchema,
   createdAt: z.iso.datetime(),
 });
 
 export const followDeleted = z.object({
-  eventType: z.literal("social.follow.deleted"),
+  eventType: z.literal('social.follow.deleted'),
   followerId: userIdSchema,
   followeeId: userIdSchema,
   deletedAt: z.iso.datetime(),
 });
 
 export const blockCreated = z.object({
-  eventType: z.literal("social.block.created"),
+  eventType: z.literal('social.block.created'),
   blockerId: userIdSchema,
   blockedId: userIdSchema,
   createdAt: z.iso.datetime(),
 });
 
 export const blockDeleted = z.object({
-  eventType: z.literal("social.block.deleted"),
+  eventType: z.literal('social.block.deleted'),
   blockerId: userIdSchema,
   blockedId: userIdSchema,
   deletedAt: z.iso.datetime(),
 });
 
 export const mediaUploaded = z.object({
-  eventType: z.literal("media.media.uploaded"),
+  eventType: z.literal('media.media.uploaded'),
   mediaId: mediaIdSchema,
   ownerId: userIdSchema,
   objectKey: z.string().min(1),
@@ -79,12 +79,12 @@ export const mediaUploaded = z.object({
 });
 
 export const mediaProcessed = z.object({
-  eventType: z.literal("media.media.processed"),
+  eventType: z.literal('media.media.processed'),
   mediaId: mediaIdSchema,
   ownerId: userIdSchema,
   variants: z.array(
     z.object({
-      kind: z.enum(["original", "thumb"]),
+      kind: z.enum(['original', 'thumb']),
       objectKey: z.string().min(1),
       mimeType: z.string().min(1),
       bytes: z.number().int().positive(),

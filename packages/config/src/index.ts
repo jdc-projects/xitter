@@ -1,16 +1,15 @@
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { config as parseDotenv } from "dotenv";
-import { z } from "zod";
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { config as parseDotenv, parse as parseDotenvToStrings } from 'dotenv';
 
-export * from "./ports.js";
-export * from "./schema.js";
+export * from './ports.js';
+export * from './schema.js';
 
 /** Find the repo root by walking up from cwd (or the module itself) to package.json + turbo.json. */
 export function findRepoRoot(start: string = process.cwd()): string {
   let dir = start;
   while (true) {
-    const hasMarkers = [join(dir, "package.json"), join(dir, "turbo.json")].every((p) =>
+    const hasMarkers = [join(dir, 'package.json'), join(dir, 'turbo.json')].every((p) =>
       existsSync(p),
     );
     if (hasMarkers) return dir;
@@ -22,7 +21,7 @@ export function findRepoRoot(start: string = process.cwd()): string {
 
 /** Load `<root>/.env` into process.env if present (does not override existing values). */
 export function loadRepoEnv(): void {
-  const envFile = join(findRepoRoot(), ".env");
+  const envFile = join(findRepoRoot(), '.env');
   if (existsSync(envFile)) {
     parseDotenv({ path: envFile, quiet: true });
   }
@@ -30,7 +29,7 @@ export function loadRepoEnv(): void {
 
 /** Read `<root>/.env.example` (committed defaults) without touching process.env. */
 export function readEnvExample(): Record<string, string> {
-  const file = join(findRepoRoot(), ".env.example");
-  const parsed = parseDotenv.parse(readFileSync(file, "utf8"));
+  const file = join(findRepoRoot(), '.env.example');
+  const parsed = parseDotenvToStrings(readFileSync(file, 'utf8'));
   return parsed;
 }

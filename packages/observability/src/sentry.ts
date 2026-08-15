@@ -1,4 +1,4 @@
-import * as Sentry from "@sentry/node";
+import * as Sentry from '@sentry/node';
 
 /**
  * Initialise Sentry for a Node process. No-op unless SENTRY_DSN is set.
@@ -10,8 +10,8 @@ export function initSentry(serviceName: string): void {
 
   Sentry.init({
     dsn,
-    serviceName,
-    environment: process.env.XITTER_ENV ?? "local",
+    serverName: serviceName,
+    environment: process.env.XITTER_ENV ?? 'local',
     // Demo system: no user PII should ever exist, keep sendDefaultPii off regardless.
     sendDefaultPii: false,
   });

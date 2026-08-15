@@ -2,7 +2,7 @@
 # when absolute numbers matter. See docs/specs/testing/02-suites.md.
 config:
   target: "{{ $processEnvironment.E2E_BASE_URL || 'http://localhost:8080' }}"
-  processor: ./processors.js
+  processor: ./processors.ts
   phases:
     - name: warm-up
       duration: 30
@@ -18,7 +18,7 @@ scenarios:
       - get:
           url: /api/feed/v1/feed
           headers:
-            authorization: "Bearer {{ token }}"
+            authorization: 'Bearer {{ token }}'
   - name: create post
     weight: 2
     flow:
@@ -26,6 +26,6 @@ scenarios:
       - post:
           url: /api/posts/v1/posts
           headers:
-            authorization: "Bearer {{ token }}"
+            authorization: 'Bearer {{ token }}'
           json:
-            text: "load test post"
+            text: 'load test post'

@@ -1,18 +1,24 @@
-import { Kafka, type Producer } from "kafkajs";
-import { z } from "zod";
-import { eventEnvelopeSchema, type EventEnvelope } from "./envelope.js";
-import { TOPICS, type TopicName } from "./topics.js";
+import { Kafka, type Producer } from 'kafkajs';
+import { eventEnvelopeSchema, type EventEnvelope } from './envelope.js';
+import { TOPICS, type TopicName } from './topics.js';
 
 export interface EventProducerOptions {
   clientId: string;
   brokers: string[];
-  /** Suffix (e.g. env name) for isolation in shared clusters; empty for local. */
+  /** Prefix (e.g. env name) for topic isolation in shared clusters; empty for local. */
   topicPrefix?: string;
+}
+
+export interface EmitInput {
+  eventType: string;
+  producer: string;
+  occurredAt: string;
+  payload: unknown;
 }
 
 export interface EventProducer {
   /** Emit a typed domain event wrapped in the shared envelope. */
-  emit(topic: TopicName, event: Omit<EventEnvelope, "eventId" | "eventVersion" | "producer"> & { producer: string }): Promise<void>;
+  emit(topic: TopicName, event: EmitInput): Promise<void>;
   producer: Producer;
   disconnect(): Promise<void>;
 }
@@ -20,12 +26,12 @@ export interface EventProducer {
 export function createEventProducer(options: EventProducerOptions): EventProducer {
   const kafka = new Kafka({ clientId: options.clientId, brokers: options.brokers });
   const producer = kafka.producer();
-  const prefix = options.topicPrefix ? `${options.topicPrefix}.` : "";
+  const prefix = options.topicPrefix ? `${options.topicPrefix}.` : '';
   const started = producer.connect();
 
   return {
     producer,
-    async emit(topic, event) {
+    async emit(topic: TopicName, event: EmitInput) {
       await started;
       const envelope: EventEnvelope = eventEnvelopeSchema.parse({
         ...event,
@@ -33,7 +39,7 @@ export function createEventProducer(options: EventProducerOptions): EventProduce
         eventId: crypto.randomUUID(),
       });
       await producer.send({
-        topic: `${prefix}${topic}`,
+        topic: `${prefix}${TOPICS[topic]}`,
         messages: [
           {
             key: envelope.eventType,
@@ -48,10 +54,3 @@ export function createEventProducer(options: EventProducerOptions): EventProduce
     },
   };
 }
-
-/** Narrow an unknown parsed value to a specific event schema, for tests and tooling. */
-export function expectEvent<T extends z.ZodType>(schema: T, value: unknown): z.infer<T> {
-  return schema.parse(value);
-}
-
-export { TOPICS };

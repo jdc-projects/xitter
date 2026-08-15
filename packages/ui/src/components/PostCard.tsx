@@ -1,14 +1,9 @@
-"use client";
+'use client';
 
-import { Card, Group, Stack, Text } from "@mantine/core";
-import {
-  IconBookmark,
-  IconHeart,
-  IconMessageCircle,
-  IconRepeat,
-} from "@tabler/icons-react";
-import { UserAvatar } from "./UserAvatar.js";
-import { RelativeTime } from "./RelativeTime.js";
+import { Card, Group, Stack, Text } from '@mantine/core';
+import { IconBookmark, IconHeart, IconMessageCircle, IconRepeat } from '@tabler/icons-react';
+import { UserAvatar } from './UserAvatar';
+import { RelativeTime } from './RelativeTime';
 
 export interface PostCardUser {
   id: string;
@@ -37,11 +32,6 @@ export interface PostCardProps {
  */
 export function PostCard({ author, post, viewer, bookmarkCount = 0 }: PostCardProps) {
   const iconProps = { size: 18, stroke: 1.5 } as const;
-  const actionProps = {
-    variant: "subtle",
-    size: "compact-sm",
-    style: { paddingInline: 6 },
-  } as const;
 
   return (
     <Card withBorder padding="sm" radius="md" data-testid={`post-${post.id}`}>
@@ -60,21 +50,36 @@ export function PostCard({ author, post, viewer, bookmarkCount = 0 }: PostCardPr
         <RelativeTime date={post.createdAt} />
       </Group>
 
-      <Text mt="sm" size="sm" style={{ whiteSpace: "pre-wrap" }}>
+      <Text mt="sm" size="sm" style={{ whiteSpace: 'pre-wrap' }}>
         {post.text}
       </Text>
 
       <Group mt="sm" gap="lg">
-        <Text component="span" size="sm" c="dimned" data-testid="count-replies">
+        <Text component="span" size="sm" c="dimmed" data-testid="count-replies">
           <IconMessageCircle {...iconProps} /> {post.counts.replies}
         </Text>
-        <Text component="span" size="sm" c={viewer?.reposted ? "teal" : "dimmed"} data-testid="count-reposts">
+        <Text
+          component="span"
+          size="sm"
+          c={viewer?.reposted ? 'teal' : 'dimmed'}
+          data-testid="count-reposts"
+        >
           <IconRepeat {...iconProps} /> {post.counts.reposts}
         </Text>
-        <Text component="span" size="sm" c={viewer?.liked ? "red" : "dimmed"} data-testid="count-likes">
+        <Text
+          component="span"
+          size="sm"
+          c={viewer?.liked ? 'red' : 'dimmed'}
+          data-testid="count-likes"
+        >
           <IconHeart {...iconProps} /> {post.counts.likes}
         </Text>
-        <Text component="span" size="sm" c={viewer?.bookmarked ? "indigo" : "dimmed"} data-testid="count-bookmarks">
+        <Text
+          component="span"
+          size="sm"
+          c={viewer?.bookmarked ? 'indigo' : 'dimmed'}
+          data-testid="count-bookmarks"
+        >
           <IconBookmark {...iconProps} /> {bookmarkCount}
         </Text>
       </Group>

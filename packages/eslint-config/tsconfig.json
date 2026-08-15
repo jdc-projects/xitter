@@ -1,8 +1,5 @@
 {
   "extends": "@xitter/tsconfig/library.json",
-  "compilerOptions": {
-    "module": "nodenext",
-    "moduleResolution": "nodenext"
-  },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
 }

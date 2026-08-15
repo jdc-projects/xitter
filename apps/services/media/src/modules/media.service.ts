@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable } from '@nestjs/common';
 
 /**
  * Image uploads and RustFS-backed storage.
@@ -8,7 +8,7 @@ import { Injectable } from "@nestjs/common";
 @Injectable()
 export class MediaService {
   getMedia(mediaId: string): { id: string; status: string } {
-    return { id: mediaId, status: "pending" };
+    return { id: mediaId, status: 'pending' };
   }
 
   placeholder(): { ok: boolean } {

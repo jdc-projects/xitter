@@ -1,7 +1,7 @@
-import { Container, Paper, Stack, Text, Title } from "@mantine/core";
-import { ResetNotice } from "@xitter/ui";
+import { Container, Paper, Stack, Text, Title } from '@mantine/core';
+import { ResetNotice } from '@xitter/ui';
 
-export const metadata = { title: "Log in" };
+export const metadata = { title: 'Log in' };
 
 export default function LoginPage() {
   return (

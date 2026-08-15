@@ -1,5 +1,5 @@
-import { Controller, Param, Post } from "@nestjs/common";
-import { MediaService } from "./media.service.js";
+import { Controller, Param, Post } from '@nestjs/common';
+import { MediaService } from './media.service.js';
 
 /**
  * Image uploads: pre-signed URLs, metadata, RustFS-backed storage.
@@ -10,13 +10,13 @@ import { MediaService } from "./media.service.js";
 export class MediaController {
   constructor(private readonly service: MediaService) {}
 
-  @Post("uploads")
+  @Post('uploads')
   createUpload() {
     return this.service.placeholder();
   }
 
-  @Post("media/:mediaId/complete")
-  complete(@Param("mediaId") mediaId: string) {
+  @Post('media/:mediaId/complete')
+  complete(@Param('mediaId') mediaId: string) {
     return this.service.getMedia(mediaId);
   }
 }

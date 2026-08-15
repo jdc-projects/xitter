@@ -14,18 +14,18 @@ Read first: `docs/README.md` (structure), `docs/specs/` (desired end-state),
 
 ## Commands
 
-| Task                          | Command                                   |
-| ----------------------------- | ----------------------------------------- |
-| Install                       | `npm install`                             |
-| All gates (run before PR)     | `npm run check`                           |
-| Dev (everything, watch)       | `npm run deps:up && npm run bootstrap && npm run dev` |
-| Prod-like                     | `npm run build && npm run start`          |
-| Dependencies (docker)         | `npm run deps:up / deps:down / deps:status` |
-| Reset local env               | `npm run reset` (add nothing) / `npm run reset:reseed` |
-| Tests                         | `npm run test` (unit+integration), `npm run test:web`, `npm run test:e2e`, `npm run test:load`, `npm run test:api` |
-| Mutation testing              | `npm run mutate` (scoped: `npx turbo run mutate --filter=...`) |
-| Repo-level lint               | `npm run lint:repo` (fallow + react-doctor) |
-| Format                        | `npm run format` / `npm run format:check` |
+| Task                      | Command                                                                                                            |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Install                   | `npm install`                                                                                                      |
+| All gates (run before PR) | `npm run check`                                                                                                    |
+| Dev (everything, watch)   | `npm run deps:up && npm run bootstrap && npm run dev`                                                              |
+| Prod-like                 | `npm run build && npm run start`                                                                                   |
+| Dependencies (docker)     | `npm run deps:up / deps:down / deps:status`                                                                        |
+| Reset local env           | `npm run reset` (add nothing) / `npm run reset:reseed`                                                             |
+| Tests                     | `npm run test` (unit+integration), `npm run test:web`, `npm run test:e2e`, `npm run test:load`, `npm run test:api` |
+| Mutation testing          | `npm run mutate` (scoped: `npx turbo run mutate --filter=...`)                                                     |
+| Repo-level lint           | `npm run lint:repo` (fallow + react-doctor)                                                                        |
+| Format                    | `npm run format` / `npm run format:check`                                                                          |
 
 Run gates locally before raising a PR; CI re-runs them. No automated suite runs
 against dev mode - unit/integration run against source, web/e2e/load against

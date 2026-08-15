@@ -2,41 +2,44 @@
  * Boots the social service: tracing, Sentry, Fastify/Nest app, graceful shutdown.
  * Env: see .env.example - all endpoints/ports are env-driven.
  */
-import "reflect-metadata";
-import { NestFactory } from "@nestjs/core";
-import { FastifyAdapter, type NestFastifyApplication } from "@nestjs/platform-fastify";
-import { AppModule } from "./app.module.js";
-import { localPort, parseEnv } from "@xitter/config";
-import { z } from "zod";
-import { initSentry, initTracing } from "@xitter/observability";
+import 'reflect-metadata';
+import { NestFactory } from '@nestjs/core';
+import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
+import { AppModule } from './app.module.js';
+import { kafkaBrokers, localPort, localUrl, parseEnv, serviceDbUrl } from '@xitter/config';
+import { z } from 'zod';
+import { createLogger, initSentry, initTracing } from '@xitter/observability';
 
 const envSchema = z.object({
-  PORT: z.coerce.number().int().positive().default(localPort("social")),
-  KEYCLOAK_BASE_URL: z.string().url(),
-  DEMO_REALM: z.string().min(1),
-  DATABASE_URL: z.string().min(1),
-  KAFKA_BROKERS: z.string().min(1),
+  PORT: z.coerce.number().int().positive().default(localPort('social')),
+  KEYCLOAK_BASE_URL: z.string().url().default(localUrl('keycloak')),
+  DEMO_REALM: z.string().min(1).default('xitter-demo'),
+  DATABASE_URL: z.string().min(1).default(serviceDbUrl('social')),
+  KAFKA_BROKERS: z.string().min(1).default(kafkaBrokers()),
 });
 
+const logger = createLogger({ service: 'social' });
+
 const env = parseEnv(envSchema);
-const tracing = initTracing("social");
-initSentry("social");
+const tracing = initTracing('social');
+initSentry('social');
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter({ trustProxy: true }));
+  const app = await NestFactory.create<NestFastifyApplication>(
+    AppModule,
+    new FastifyAdapter({ trustProxy: true }),
+  );
 
-  app.setGlobalPrefix("api/social/v1");
+  app.setGlobalPrefix('api/social/v1');
   app.enableShutdownHooks();
 
-  await app.listen(env.PORT, "0.0.0.0");
-  console.log(`social listening on :${env.PORT}`);
+  await app.listen(env.PORT, '0.0.0.0');
+  logger.info(`listening on :${env.PORT}`);
 }
 
-bootstrap()
-  .catch((err: unknown) => {
-    console.error(err);
-    process.exitCode = 1;
-  })
-  .finally(() => {
-    process.once("SIGTERM", () => void tracing.shutdown());
-  });
+process.once('SIGTERM', () => void tracing.shutdown());
+
+bootstrap().catch((err: unknown) => {
+  logger.error(err);
+  process.exitCode = 1;
+});

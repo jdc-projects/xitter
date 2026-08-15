@@ -2,12 +2,12 @@
 -- but every service owns an isolated database and credentials (no shared access).
 -- Idempotent: re-runs on fresh volumes only (docker-entrypoint-initdb.d).
 
-SELECT 'CREATE ROLE social LOGIN PASSWORD ''social-local''' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'social')\gexec
-SELECT 'CREATE ROLE posts LOGIN PASSWORD ''posts-local''' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'posts')\gexec
-SELECT 'CREATE ROLE media LOGIN PASSWORD ''media-local''' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'media')\gexec
-SELECT 'CREATE ROLE feed LOGIN PASSWORD ''feed-local''' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'feed')\gexec
-SELECT 'CREATE ROLE search LOGIN PASSWORD ''search-local''' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'search')\gexec
-SELECT 'CREATE ROLE cms LOGIN PASSWORD ''cms-local''' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'cms')\gexec
+SELECT 'CREATE ROLE social CREATEDB LOGIN PASSWORD ''social-local''' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'social')\gexec
+SELECT 'CREATE ROLE posts CREATEDB LOGIN PASSWORD ''posts-local''' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'posts')\gexec
+SELECT 'CREATE ROLE media CREATEDB LOGIN PASSWORD ''media-local''' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'media')\gexec
+SELECT 'CREATE ROLE feed CREATEDB LOGIN PASSWORD ''feed-local''' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'feed')\gexec
+SELECT 'CREATE ROLE search CREATEDB LOGIN PASSWORD ''search-local''' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'search')\gexec
+SELECT 'CREATE ROLE cms CREATEDB LOGIN PASSWORD ''cms-local''' WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'cms')\gexec
 
 SELECT 'CREATE DATABASE social OWNER social' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'social')\gexec
 SELECT 'CREATE DATABASE posts OWNER posts' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'posts')\gexec

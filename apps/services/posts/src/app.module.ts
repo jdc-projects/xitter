@@ -1,5 +1,5 @@
-import { Module } from "@nestjs/common";
-import { PostsModule } from "./modules/posts.module.js";
+import { Module } from '@nestjs/common';
+import { PostsModule } from './modules/posts.module.js';
 
 @Module({
   imports: [PostsModule],

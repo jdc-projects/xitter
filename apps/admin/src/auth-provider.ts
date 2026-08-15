@@ -1,4 +1,4 @@
-import type { AuthProvider } from "@refinedev/core";
+import type { AuthProvider } from '@refinedev/core';
 
 /**
  * Keycloak-backed auth provider for the admin panel.
@@ -8,16 +8,19 @@ import type { AuthProvider } from "@refinedev/core";
  * ticket. Login state is kept in localStorage for the demo.
  */
 
-const ADMIN_ROLES = ["system-admin", "app-admin"];
+const ADMIN_ROLES = ['system-admin', 'app-admin'];
 
 export const authProvider: AuthProvider = {
-  login: async () => ({ success: false, error: new Error("Not implemented yet - see admin auth ticket") }),
+  login: async () => ({
+    success: false,
+    error: new Error('Not implemented yet - see admin auth ticket'),
+  }),
   logout: async () => {
-    localStorage.removeItem("xitter-admin");
+    localStorage.removeItem('xitter-admin');
     return { success: true };
   },
   check: async () =>
-    localStorage.getItem("xitter-admin") ? { authenticated: true } : { authenticated: false },
+    localStorage.getItem('xitter-admin') ? { authenticated: true } : { authenticated: false },
   onError: async () => ({}),
   getIdentity: async () => null,
 };

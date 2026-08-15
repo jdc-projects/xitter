@@ -1,12 +1,12 @@
 // Isolated web suite: runs against ONLY the web frontend (no backend services).
 // Mocked service responses keep these tests deterministic and fast.
-import { defineConfig } from "@playwright/test";
+import { defineConfig } from '@playwright/test';
 
-const port = process.env.XITTER_WEB_PORT ?? "3456";
+const port = process.env.XITTER_WEB_PORT ?? '3456';
 const baseURL = process.env.WEB_BASE_URL ?? `http://localhost:${port}`;
 
 export default defineConfig({
-  testDir: ".",
+  testDir: '.',
   timeout: 30_000,
   retries: process.env.CI ? 1 : 0,
   use: {
@@ -21,5 +21,5 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
-  reporter: [["list"], ["html", { outputFolder: "tests/playwright/web/report", open: "never" }]],
+  reporter: [['list'], ['html', { outputFolder: 'tests/playwright/web/report', open: 'never' }]],
 });

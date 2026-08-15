@@ -1,6 +1,6 @@
-import { Kafka, type Consumer, type EachMessagePayload } from "kafkajs";
-import { eventEnvelopeSchema } from "./envelope.js";
-import { TOPICS, type TopicName } from "./topics.js";
+import { Kafka, type Consumer, type EachMessagePayload } from 'kafkajs';
+import { eventEnvelopeSchema } from './envelope.js';
+import { TOPICS, type TopicName } from './topics.js';
 
 export interface EventConsumerOptions {
   clientId: string;
@@ -25,8 +25,7 @@ export interface EventConsumer {
 export function createEventConsumer(options: EventConsumerOptions): EventConsumer {
   const kafka = new Kafka({ clientId: options.clientId, brokers: options.brokers });
   const consumer = kafka.consumer({ groupId: options.groupId });
-  const prefix = options.topicPrefix ? `${options.topicPrefix}.` : "";
-
+  const prefix = options.topicPrefix ? `${options.topicPrefix}.` : '';
   return {
     consumer,
     async run(handler) {
@@ -36,7 +35,7 @@ export function createEventConsumer(options: EventConsumerOptions): EventConsume
       }
       await consumer.run({
         eachMessage: async (payload) => {
-          const value = payload.message.value?.toString("utf8") ?? "{}";
+          const value = payload.message.value?.toString('utf8') ?? '{}';
           const envelope = eventEnvelopeSchema.parse(JSON.parse(value));
           await handler(envelope, payload);
         },

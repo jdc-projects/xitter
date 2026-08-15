@@ -12,32 +12,33 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@mantine/core": "^9.5",
-    "@mantine/hooks": "^9.5",
-    "@tabler/icons-react": "^3.46",
+    "@mantine/core": "^9",
+    "@mantine/hooks": "^9",
+    "@tabler/icons-react": "^3",
     "@xitter/api-client": "*",
     "@xitter/config": "*",
     "@xitter/ui": "*",
-    "dayjs": "^1.11",
-    "next": "^16.3",
-    "react": "^19.2",
-    "react-dom": "^19.2"
+    "dayjs": "^1",
+    "next": "^16",
+    "react": "^19",
+    "react-dom": "^19"
   },
   "devDependencies": {
-    "@testing-library/react": "^16.3",
+    "@testing-library/react": "^16",
     "@types/react": "^19",
+    "@eslint/eslintrc": "^3",
     "@types/react-dom": "^19",
-    "@vitejs/plugin-react": "^6.0",
+    "@vitejs/plugin-react": "^6",
     "@xitter/eslint-config": "*",
     "@xitter/tsconfig": "*",
-    "babel-plugin-react-compiler": "^19.1",
-    "eslint-config-next": "^16.3",
-    "happy-dom": "^20.11",
-    "postcss": "^8.5",
-    "postcss-preset-mantine": "^1.18",
-    "postcss-simple-vars": "^7.0",
-    "tsx": "^4.23",
-    "typescript": "^6.0",
-    "vitest": "^4.1"
+    "babel-plugin-react-compiler": "^1",
+    "eslint-config-next": "^16",
+    "happy-dom": "^20",
+    "postcss": "^8",
+    "postcss-preset-mantine": "^1",
+    "postcss-simple-vars": "^7",
+    "tsx": "^4",
+    "typescript": "^6",
+    "vitest": "^4"
   }
 }

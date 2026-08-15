@@ -1,5 +1,5 @@
-import { Controller, Get } from "@nestjs/common";
-import { FeedService } from "./feed.service.js";
+import { Controller, Get } from '@nestjs/common';
+import { FeedService } from './feed.service.js';
 /**
  * Materialised home feeds and real-time feed updates.
  * Skeleton controller - the feed feature ticket fills in pagination and
@@ -9,7 +9,7 @@ import { FeedService } from "./feed.service.js";
 export class FeedController {
   constructor(private readonly service: FeedService) {}
 
-  @Get("feed")
+  @Get('feed')
   getFeed() {
     return this.service.placeholder();
   }

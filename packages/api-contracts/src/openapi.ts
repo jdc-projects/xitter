@@ -1,5 +1,6 @@
-import { OpenAPIRegistry, OpenApiGeneratorV3 } from "@asteasolutions/zod-to-openapi";
-import { API_VERSION } from "./version.js";
+import { OpenApiGeneratorV3 } from '@asteasolutions/zod-to-openapi';
+import type { OpenAPIRegistry } from '@asteasolutions/zod-to-openapi';
+import { API_VERSION } from './version.js';
 
 export interface ServiceApiSpec {
   service: string;
@@ -20,7 +21,7 @@ export function buildServiceDocument(
 ): Record<string, unknown> {
   const generator = new OpenApiGeneratorV3(registry.definitions);
   return generator.generateDocument({
-    openapi: "3.0.3",
+    openapi: '3.0.3',
     info: {
       title: spec.title,
       description: spec.description,
@@ -28,5 +29,5 @@ export function buildServiceDocument(
     },
     servers: [{ url: `${spec.basePath}/${API_VERSION}` }],
     tags: spec.tags,
-  }) as Record<string, unknown>;
+  }) as unknown as Record<string, unknown>;
 }

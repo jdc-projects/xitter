@@ -2,6 +2,7 @@
   "name": "@xitter/scripts",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint .",
@@ -10,17 +11,17 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@faker-js/faker": "^10.6",
-    "@keycloak/keycloak-admin-client": "^26.7",
+    "@faker-js/faker": "^10",
+    "@keycloak/keycloak-admin-client": "^26",
     "@xitter/api-contracts": "*",
     "@xitter/config": "*",
     "@xitter/events": "*",
-    "dotenv": "^17.4",
-    "kafkajs": "^2.2",
-    "zod": "^4.4"
+    "dotenv": "^17",
+    "kafkajs": "^2",
+    "zod": "^4"
   },
   "devDependencies": {
     "@xitter/tsconfig": "*",
-    "vitest": "^4.1"
+    "vitest": "^4"
   }
 }

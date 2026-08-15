@@ -7,18 +7,18 @@ information into any deployed environment.
 
 ## What's inside
 
-| Area        | Tech                                                                       |
-| ----------- | -------------------------------------------------------------------------- |
-| Frontend    | Next.js 16 (App Router, SSR), Mantine 9, Tabler icons                       |
-| CMS         | Payload 3 (site content, live preview)                                      |
-| Admin       | Refine 5 + antd, one consolidated panel                                     |
-| Services    | NestJS (Fastify) + Prisma 7: `social`, `posts`, `media`, `feed`, `search`   |
-| Workers     | Node + Kafka (Knative): `fanout`, `media-process`, `search-index`           |
-| Events      | Kafka, versioned topics, JSON envelope, zod contracts                       |
-| Storage     | Postgres (per-service databases), RustFS, OpenSearch, Valkey                |
-| Auth        | Keycloak (demo realm for users, homelab realm for admin), Cap.js captcha    |
-| Infra       | OpenTofu, Kubernetes (homelab), Traefik path-based routing                  |
-| Testing     | Vitest, Playwright (web + e2e), axe-core, Artillery, Stryker, Bruno         |
+| Area     | Tech                                                                      |
+| -------- | ------------------------------------------------------------------------- |
+| Frontend | Next.js 16 (App Router, SSR), Mantine 9, Tabler icons                     |
+| CMS      | Payload 3 (site content, live preview)                                    |
+| Admin    | Refine 5 + antd, one consolidated panel                                   |
+| Services | NestJS (Fastify) + Prisma 7: `social`, `posts`, `media`, `feed`, `search` |
+| Workers  | Node + Kafka (Knative): `fanout`, `media-process`, `search-index`         |
+| Events   | Kafka, versioned topics, JSON envelope, zod contracts                     |
+| Storage  | Postgres (per-service databases), RustFS, OpenSearch, Valkey              |
+| Auth     | Keycloak (demo realm for users, homelab realm for admin), Cap.js captcha  |
+| Infra    | OpenTofu, Kubernetes (homelab), Traefik path-based routing                |
+| Testing  | Vitest, Playwright (web + e2e), axe-core, Artillery, Stryker, Bruno       |
 
 ## Getting started
 

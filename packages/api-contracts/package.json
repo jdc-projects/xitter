@@ -8,20 +8,22 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@asteasolutions/zod-to-openapi": "^6.0",
-    "zod": "^4.4"
+    "@asteasolutions/zod-to-openapi": "^9",
+    "zod": "^4"
   },
   "devDependencies": {
     "@xitter/tsconfig": "*",
-    "vitest": "^4.1"
+    "vitest": "^4"
   }
 }

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from 'zod';
 import {
   blockCreated,
   blockDeleted,
@@ -10,7 +10,7 @@ import {
   mediaUploaded,
   postCreated,
   postDeleted,
-} from "@xitter/api-contracts";
+} from '@xitter/api-contracts';
 
 /** Envelope wrapped around every event payload on the wire. */
 export const eventEnvelopeSchema = z.object({
@@ -29,7 +29,7 @@ export const eventEnvelopeSchema = z.object({
 export type EventEnvelope = z.infer<typeof eventEnvelopeSchema>;
 
 /** Every event the platform emits, discriminated by `eventType`. */
-export const eventSchemas = z.discriminatedUnion("eventType", [
+export const eventSchemas = z.discriminatedUnion('eventType', [
   postCreated,
   postDeleted,
   interactionCreated,
@@ -45,14 +45,14 @@ export const eventSchemas = z.discriminatedUnion("eventType", [
 export type DomainEvent = z.infer<typeof eventSchemas>;
 
 export const EVENT_TYPES = {
-  postCreated: "posts.post.created",
-  postDeleted: "posts.post.deleted",
-  interactionCreated: "posts.interaction.created",
-  interactionDeleted: "posts.interaction.deleted",
-  followCreated: "social.follow.created",
-  followDeleted: "social.follow.deleted",
-  blockCreated: "social.block.created",
-  blockDeleted: "social.block.deleted",
-  mediaUploaded: "media.media.uploaded",
-  mediaProcessed: "media.media.processed",
+  postCreated: 'posts.post.created',
+  postDeleted: 'posts.post.deleted',
+  interactionCreated: 'posts.interaction.created',
+  interactionDeleted: 'posts.interaction.deleted',
+  followCreated: 'social.follow.created',
+  followDeleted: 'social.follow.deleted',
+  blockCreated: 'social.block.created',
+  blockDeleted: 'social.block.deleted',
+  mediaUploaded: 'media.media.uploaded',
+  mediaProcessed: 'media.media.processed',
 } as const;

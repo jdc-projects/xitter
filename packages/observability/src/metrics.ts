@@ -1,5 +1,5 @@
-import { createServer } from "node:http";
-import client from "prom-client";
+import { createServer } from 'node:http';
+import client from 'prom-client';
 
 export interface MetricsServer {
   registry: client.Registry;
@@ -17,11 +17,11 @@ export function createMetricsServer(port: number): MetricsServer {
   client.collectDefaultMetrics({ register: registry });
 
   const server = createServer((req, res) => {
-    if (req.url === "/metrics") {
+    if (req.url === '/metrics') {
       registry
         .metrics()
         .then((metrics) => {
-          res.writeHead(200, { "content-type": registry.contentType });
+          res.writeHead(200, { 'content-type': registry.contentType });
           res.end(metrics);
         })
         .catch((err: unknown) => {
@@ -38,6 +38,7 @@ export function createMetricsServer(port: number): MetricsServer {
   return {
     registry,
     started,
-    stop: () => new Promise((resolve, reject) => server.close((err) => (err ? reject(err) : resolve()))),
+    stop: () =>
+      new Promise((resolve, reject) => server.close((err) => (err ? reject(err) : resolve()))),
   };
 }

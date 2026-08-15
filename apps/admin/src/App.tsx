@@ -1,10 +1,10 @@
-import { BrowserRouter, Outlet, Route, Routes } from "react-router";
-import { Layout } from "antd";
+import { BrowserRouter, Outlet, Route, Routes } from 'react-router';
+import { Layout } from 'antd';
 
 export function App() {
   return (
     <BrowserRouter>
-      <Layout style={{ minHeight: "100vh" }}>
+      <Layout style={{ minHeight: '100vh' }}>
         <Layout.Content style={{ padding: 24 }}>
           <Routes>
             <Route path="/" element={<Outlet />} />

@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import { Alert, AlertProps, Button, Stack, Text } from "@mantine/core";
+import { Alert, type AlertProps, Button, Stack, Text } from '@mantine/core';
 
-export interface ResetNoticeProps extends Omit<AlertProps, "title" | "children"> {
+export interface ResetNoticeProps extends Omit<AlertProps, 'title' | 'children'> {
   /** Where "read more" points to; defaults to the About page. */
   aboutHref?: string;
   compact?: boolean;
@@ -12,7 +12,11 @@ export interface ResetNoticeProps extends Omit<AlertProps, "title" | "children">
  * The unmissable notice that appears on the landing page and login screen:
  * regular resets, no real data, no PII.
  */
-export function ResetNotice({ aboutHref = "/about", compact = false, ...alertProps }: ResetNoticeProps) {
+export function ResetNotice({
+  aboutHref = '/about',
+  compact = false,
+  ...alertProps
+}: ResetNoticeProps) {
   return (
     <Alert
       color="yellow"
@@ -22,11 +26,17 @@ export function ResetNotice({ aboutHref = "/about", compact = false, ...alertPro
       data-testid="reset-notice"
     >
       <Stack gap="xs">
-        <Text size={compact ? "sm" : "md"}>
+        <Text size={compact ? 'sm' : 'md'}>
           Everything you post here is wiped every night at 00:00 UTC. Do not enter personal or
           sensitive information - this is a public demo.
         </Text>
-        <Button component="a" href={aboutHref} variant="subtle" size={compact ? "xs" : "sm"} w="fit-content">
+        <Button
+          component="a"
+          href={aboutHref}
+          variant="subtle"
+          size={compact ? 'xs' : 'sm'}
+          w="fit-content"
+        >
           Read more about how this works
         </Button>
       </Stack>

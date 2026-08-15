@@ -1,14 +1,17 @@
-import { z } from "zod";
+import { extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
+import { z } from 'zod';
 
-export const userIdSchema = z.uuid().openapi({ example: "b1c2d3e4-0000-4000-8000-000000000001" });
-export const postIdSchema = z.uuid().openapi({ example: "b1c2d3e4-0000-4000-8000-000000000002" });
+extendZodWithOpenApi(z);
+
+export const userIdSchema = z.uuid().openapi({ example: 'b1c2d3e4-0000-4000-8000-000000000001' });
+export const postIdSchema = z.uuid().openapi({ example: 'b1c2d3e4-0000-4000-8000-000000000002' });
 export const mediaIdSchema = z.uuid();
 
 export const usernameSchema = z
   .string()
   .min(3)
   .max(20)
-  .regex(/^[a-z0-9_]+$/, "lowercase alphanumeric and underscore only");
+  .regex(/^[a-z0-9_]+$/, 'lowercase alphanumeric and underscore only');
 
 /** Product limit: max 512 characters of text per post. */
 export const POST_TEXT_MAX = 512;
@@ -28,7 +31,7 @@ export const profileSchema = z.object({
 export type Profile = z.infer<typeof profileSchema>;
 
 export const mediaVariantSchema = z.object({
-  kind: z.enum(["original", "thumb"]),
+  kind: z.enum(['original', 'thumb']),
   objectKey: z.string().min(1),
   mimeType: z.string().min(1),
   bytes: z.number().int().positive(),
@@ -39,7 +42,7 @@ export const mediaVariantSchema = z.object({
 export const mediaAssetSchema = z.object({
   id: mediaIdSchema,
   ownerId: userIdSchema,
-  status: z.enum(["pending", "ready", "failed"]),
+  status: z.enum(['pending', 'ready', 'failed']),
   variants: z.array(mediaVariantSchema),
   createdAt: z.iso.datetime(),
 });
@@ -66,7 +69,7 @@ export const postSchema = z.object({
 
 export type Post = z.infer<typeof postSchema>;
 
-export const interactionKindSchema = z.enum(["like", "bookmark", "repost"]);
+export const interactionKindSchema = z.enum(['like', 'bookmark', 'repost']);
 export type InteractionKind = z.infer<typeof interactionKindSchema>;
 
 export const interactionSchema = z.object({
@@ -94,7 +97,7 @@ export type Relationship = z.infer<typeof relationshipSchema>;
 export const feedItemSchema = z.object({
   postId: postIdSchema,
   authorId: userIdSchema,
-  reason: z.enum(["post", "repost"]),
+  reason: z.enum(['post', 'repost']),
   repostedById: userIdSchema.nullable(),
   postCreatedAt: z.iso.datetime(),
 });

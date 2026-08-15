@@ -8,9 +8,9 @@
  *  - XITTER_ADMIN_REALM (default "xitter-local-admin"): local stand-in for the
  *    homelab "primary" realm, gating admin/CMS login on an app-admin role.
  */
-import KcAdminClient from "@keycloak/keycloak-admin-client";
-import { envInt, envString, loadRepoEnv } from "@xitter/config";
-import { keycloakBaseUrl } from "./lib/wait.js";
+import KcAdminClient from '@keycloak/keycloak-admin-client';
+import { envInt, envString, loadRepoEnv } from '@xitter/config';
+import { keycloakBaseUrl } from './lib/wait.js';
 
 export interface DemoUser {
   username: string;
@@ -18,27 +18,33 @@ export interface DemoUser {
 }
 
 export async function createAdminClient(): Promise<KcAdminClient> {
-  const kc = new KcAdminClient({ baseUrl: keycloakBaseUrl(), realmName: "master" });
+  const kc = new KcAdminClient({ baseUrl: keycloakBaseUrl(), realmName: 'master' });
   await kc.auth({
-    grantType: "password",
-    clientId: "admin-cli",
-    username: envString("XITTER_KEYCLOAK_ADMIN_USER", "admin"),
-    password: envString("XITTER_KEYCLOAK_ADMIN_PASSWORD", "admin"),
+    grantType: 'password',
+    clientId: 'admin-cli',
+    username: envString('XITTER_KEYCLOAK_ADMIN_USER', 'admin'),
+    password: envString('XITTER_KEYCLOAK_ADMIN_PASSWORD', 'admin'),
   });
   return kc;
 }
 
 export const demoCredentials = () => ({
-  realm: envString("XITTER_DEMO_REALM", "xitter-demo"),
-  userPrefix: envString("XITTER_DEMO_USER_PREFIX", "demo"),
-  userCount: envInt("XITTER_DEMO_USER_COUNT", 10),
-  password: envString("XITTER_DEMO_USER_PASSWORD", "DemoPass123!"),
+  realm: envString('XITTER_DEMO_REALM', 'xitter-demo'),
+  userPrefix: envString('XITTER_DEMO_USER_PREFIX', 'demo'),
+  userCount: envInt('XITTER_DEMO_USER_COUNT', 10),
+  password: envString('XITTER_DEMO_USER_PASSWORD', 'DemoPass123!'),
 });
 
 /** Service clients issued for machine-to-machine auth; receivers validate audience = own client id. */
-export const SERVICE_CLIENTS = ["svc-social", "svc-posts", "svc-media", "svc-feed", "svc-search"] as const;
+export const SERVICE_CLIENTS = [
+  'svc-social',
+  'svc-posts',
+  'svc-media',
+  'svc-feed',
+  'svc-search',
+] as const;
 
-const edgeUrl = () => `http://localhost:${process.env.XITTER_EDGE_PORT ?? "8080"}`;
+const edgeUrl = () => `http://localhost:${process.env.XITTER_EDGE_PORT ?? '8080'}`;
 
 async function ensureRealm(kc: KcAdminClient, realm: string): Promise<void> {
   const realms = await kc.realms.find();
@@ -96,7 +102,12 @@ async function ensureRole(kc: KcAdminClient, realm: string, name: string): Promi
   }
 }
 
-async function assignRole(kc: KcAdminClient, realm: string, userId: string, roleName: string): Promise<void> {
+async function assignRole(
+  kc: KcAdminClient,
+  realm: string,
+  userId: string,
+  roleName: string,
+): Promise<void> {
   const role = await kc.roles.findOneByName({ realm, name: roleName });
   if (!role) throw new Error(`Role ${roleName} missing in ${realm}`);
   const mappings = await kc.users.listRealmRoleMappings({ realm, id: userId });
@@ -118,6 +129,7 @@ async function ensureUser(
   const existing = await kc.users.find({ realm, username, exact: true });
   if (existing.length > 0) {
     const userId = existing[0]!.id;
+    if (!userId) throw new Error(`User ${username} has no id`);
     await assignRole(kc, realm, userId, roleName);
     return { username, userId };
   }
@@ -127,7 +139,7 @@ async function ensureUser(
     enabled: true,
     firstName: username,
     requiredActions: [],
-    credentials: [{ type: "password", value: password, temporary: false }],
+    credentials: [{ type: 'password', value: password, temporary: false }],
   });
   await assignRole(kc, realm, created.id, roleName);
   console.log(`user ${realm}/${username}: created`);
@@ -140,9 +152,9 @@ export async function initDemoRealm(): Promise<DemoUser[]> {
   const { realm, userPrefix, userCount, password } = demoCredentials();
 
   await ensureRealm(kc, realm);
-  await ensureRole(kc, realm, "demo-user");
+  await ensureRole(kc, realm, 'demo-user');
 
-  await ensureClient(kc, realm, "web", {
+  await ensureClient(kc, realm, 'web', {
     public: true,
     redirectUris: [`${edgeUrl()}/*`],
   });
@@ -155,7 +167,7 @@ export async function initDemoRealm(): Promise<DemoUser[]> {
 
   const users: DemoUser[] = [];
   for (let i = 1; i <= userCount; i++) {
-    users.push(await ensureUser(kc, realm, `${userPrefix}${i}`, password, "demo-user"));
+    users.push(await ensureUser(kc, realm, `${userPrefix}${i}`, password, 'demo-user'));
   }
   return users;
 }
@@ -163,15 +175,19 @@ export async function initDemoRealm(): Promise<DemoUser[]> {
 export async function initLocalAdminRealm(): Promise<void> {
   loadRepoEnv();
   const kc = await createAdminClient();
-  const realm = envString("XITTER_ADMIN_REALM", "xitter-local-admin");
+  const realm = envString('XITTER_ADMIN_REALM', 'xitter-local-admin');
 
   await ensureRealm(kc, realm);
-  await ensureRole(kc, realm, "app-admin");
+  await ensureRole(kc, realm, 'app-admin');
 
-  await ensureClient(kc, realm, "admin-panel", { public: true, redirectUris: [`${edgeUrl()}/*`] });
-  await ensureClient(kc, realm, "cms", { public: false, secret: "cms-local-secret", redirectUris: [`${edgeUrl()}/*`] });
+  await ensureClient(kc, realm, 'admin-panel', { public: true, redirectUris: [`${edgeUrl()}/*`] });
+  await ensureClient(kc, realm, 'cms', {
+    public: false,
+    secret: 'cms-local-secret',
+    redirectUris: [`${edgeUrl()}/*`],
+  });
 
-  await ensureUser(kc, realm, "localadmin", "LocalAdmin123!", "app-admin");
+  await ensureUser(kc, realm, 'localadmin', 'LocalAdmin123!', 'app-admin');
 }
 
 export async function resetDemoRealm(): Promise<void> {
@@ -179,7 +195,7 @@ export async function resetDemoRealm(): Promise<void> {
   const kc = await createAdminClient();
   const realm = demoCredentials().realm;
   try {
-    await kc.realms.delete({ realm });
+    await kc.realms.del({ realm });
     console.log(`realm ${realm}: deleted`);
   } catch (err) {
     if ((err as { response?: { status?: number } }).response?.status === 404) return;

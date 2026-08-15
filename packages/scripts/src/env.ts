@@ -4,43 +4,43 @@
  *  - print: resolved values for every XITTER_* variable (defaults + offset applied)
  *  - init: copy .env.example to .env if missing
  */
-import { existsSync, copyFileSync } from "node:fs";
-import { join } from "node:path";
-import { findRepoRoot, loadRepoEnv, localPort, portOffset } from "@xitter/config";
+import { existsSync, copyFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { findRepoRoot, loadRepoEnv, localPort, portOffset } from '@xitter/config';
 
-const command = process.argv[2] ?? "print";
+const command = process.argv[2] ?? 'print';
 const root = findRepoRoot();
-const envPath = join(root, ".env");
+const envPath = join(root, '.env');
 
 switch (command) {
-  case "init":
+  case 'init':
     if (!existsSync(envPath)) {
-      copyFileSync(join(root, ".env.example"), envPath);
+      copyFileSync(join(root, '.env.example'), envPath);
       console.log(`created ${envPath}`);
     } else {
       console.log(`${envPath} already exists`);
     }
     break;
-  case "print": {
+  case 'print': {
     loadRepoEnv();
-    console.log(`XITTER_ENV=${process.env.XITTER_ENV ?? "local"} (offset ${portOffset()})`);
+    console.log(`XITTER_ENV=${process.env.XITTER_ENV ?? 'local'} (offset ${portOffset()})`);
     const names = [
-      "edge",
-      "web",
-      "cms",
-      "admin",
-      "social",
-      "posts",
-      "media",
-      "feed",
-      "search",
-      "postgres",
-      "kafka",
-      "opensearch",
-      "rustfs",
-      "rustfsConsole",
-      "valkey",
-      "keycloak",
+      'edge',
+      'web',
+      'cms',
+      'admin',
+      'social',
+      'posts',
+      'media',
+      'feed',
+      'search',
+      'postgres',
+      'kafka',
+      'opensearch',
+      'rustfs',
+      'rustfsConsole',
+      'valkey',
+      'keycloak',
     ] as const;
     for (const name of names) {
       console.log(`${name.padEnd(14)} ${localPort(name)}`);

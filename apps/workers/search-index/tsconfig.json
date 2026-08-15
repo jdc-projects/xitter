@@ -1,5 +1,8 @@
 {
-  "extends": "@xitter/tsconfig/service.json",
-  "include": ["src"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+  "extends": "@xitter/tsconfig/worker.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src", "src"],
+  "exclude": ["node_modules", "dist"]
 }

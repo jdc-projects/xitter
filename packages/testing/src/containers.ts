@@ -1,8 +1,8 @@
-import { KafkaContainer, type StartedKafkaContainer } from "@testcontainers/kafka";
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+import { KafkaContainer, type StartedKafkaContainer } from '@testcontainers/kafka';
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 
 export interface Disposable {
-  stop(): Promise<void>;
+  stop(): Promise<unknown>;
 }
 
 export interface PostgresHandle extends Disposable {
@@ -16,10 +16,12 @@ export interface PostgresHandle extends Disposable {
  */
 export async function startPostgres(
   dbName: string,
-  dbUser = "test",
-  dbPassword = "test",
+  dbUser = 'test',
+  dbPassword = 'test',
 ): Promise<PostgresHandle> {
-  const container: StartedPostgreSqlContainer = await new PostgreSqlContainer("postgres:18.6-alpine")
+  const container: StartedPostgreSqlContainer = await new PostgreSqlContainer(
+    'postgres:18.6-alpine',
+  )
     .withDatabase(dbName)
     .withUsername(dbUser)
     .withPassword(dbPassword)
@@ -36,9 +38,11 @@ export interface KafkaHandle extends Disposable {
 
 /** Start a throwaway KRaft Kafka broker (no ZooKeeper). */
 export async function startKafka(): Promise<KafkaHandle> {
-  const container: StartedKafkaContainer = await new KafkaContainer("apache/kafka:4.3.1").start();
+  const container: StartedKafkaContainer = await new KafkaContainer('apache/kafka:4.3.1').start();
+  const host = container.getHost();
+  const port = container.getMappedPort(9092);
   return {
-    bootstrapServers: container.getBootstrapServers(),
+    bootstrapServers: `${host}:${port}`,
     stop: () => container.stop(),
   };
 }

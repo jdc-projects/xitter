@@ -1,6 +1,5 @@
-import { Button, Container, Group, Stack, Text, Title } from "@mantine/core";
-import Link from "next/link";
-import { ResetNotice } from "@xitter/ui";
+import { Button, Container, Group, Stack, Text, Title } from '@mantine/core';
+import { ResetNotice } from '@xitter/ui';
 
 export default function LandingPage() {
   return (
@@ -15,10 +14,10 @@ export default function LandingPage() {
         <ResetNotice />
 
         <Group>
-          <Button component={Link} href="/login" size="md">
+          <Button component="a" href="/login" size="md">
             Log in with a demo account
           </Button>
-          <Button component={Link} href="/about" variant="subtle" size="md">
+          <Button component="a" href="/about" variant="subtle" size="md">
             About
           </Button>
         </Group>

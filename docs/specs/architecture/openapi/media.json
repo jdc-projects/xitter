@@ -1,0 +1,80 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "xitter media API",
+    "description": "Image uploads: pre-signed URLs, metadata, RustFS-backed storage.",
+    "version": "v1"
+  },
+  "servers": [
+    {
+      "url": "/api/media/v1"
+    }
+  ],
+  "components": {
+    "schemas": {
+      "CreateMediaUploadRequest": {
+        "type": "object",
+        "properties": {
+          "mimeType": {
+            "type": "string",
+            "enum": ["image/png", "image/jpeg", "image/webp", "image/gif"]
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "exclusiveMinimum": true
+          }
+        },
+        "required": ["mimeType", "bytes"]
+      }
+    },
+    "parameters": {}
+  },
+  "paths": {
+    "/uploads": {
+      "post": {
+        "tags": ["media"],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMediaUploadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Upload slot created; upload bytes to the returned URL",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "mediaId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "uploadUrl": {
+                      "type": "string",
+                      "format": "uri"
+                    }
+                  },
+                  "required": ["mediaId", "uploadUrl"]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Too large"
+          }
+        }
+      }
+    }
+  }
+}

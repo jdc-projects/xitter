@@ -1,4 +1,4 @@
-import { createJwtCache, realmUrls } from "@xitter/auth";
+import { createJwtCache, realmUrls } from '@xitter/auth';
 
 export class ApiError extends Error {
   constructor(
@@ -7,7 +7,7 @@ export class ApiError extends Error {
     message: string,
   ) {
     super(message);
-    this.name = "ApiError";
+    this.name = 'ApiError';
   }
 }
 
@@ -40,9 +40,14 @@ export class ServiceClient {
     }
   }
 
-  protected async request<T>(method: string, path: string, body?: unknown, query?: Record<string, string>): Promise<T> {
+  protected async request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    query?: Record<string, string>,
+  ): Promise<T> {
     const token = this.options.token ?? (this.jwtCache ? await this.jwtCache.get() : undefined);
-    const url = new URL(`${this.options.baseUrl.replace(/\/$/, "")}${path}`);
+    const url = new URL(`${this.options.baseUrl.replace(/\/$/, '')}${path}`);
     for (const [key, value] of Object.entries(query ?? {})) {
       url.searchParams.set(key, value);
     }
@@ -50,7 +55,7 @@ export class ServiceClient {
     const res = await this.fetchImpl(url, {
       method,
       headers: {
-        ...(body !== undefined ? { "content-type": "application/json" } : {}),
+        ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
         ...(token ? { authorization: `Bearer ${token}` } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -58,7 +63,7 @@ export class ServiceClient {
 
     if (!res.ok) {
       const text = await res.text();
-      let code = "unknown";
+      let code = 'unknown';
       let message = text;
       try {
         const parsed = JSON.parse(text) as { error?: { code?: string; message?: string } };
@@ -76,15 +81,15 @@ export class ServiceClient {
   }
 
   protected get<T>(path: string, query?: Record<string, string>): Promise<T> {
-    return this.request<T>("GET", path, undefined, query);
+    return this.request<T>('GET', path, undefined, query);
   }
 
   protected post<T>(path: string, body?: unknown): Promise<T> {
-    return this.request<T>("POST", path, body);
+    return this.request<T>('POST', path, body);
   }
 
   protected delete<T>(path: string): Promise<T> {
-    return this.request<T>("DELETE", path);
+    return this.request<T>('DELETE', path);
   }
 }
 

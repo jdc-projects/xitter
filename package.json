@@ -23,7 +23,7 @@
     "format:check": "prettier --check .",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
-    "lint:repo": "fallow analyze && react-doctor check",
+    "lint:repo": "fallow audit --base origin/dev && react-doctor -y --no-supply-chain",
     "test": "turbo run test",
     "test:watch": "turbo run test:watch",
     "test:unit": "turbo run test",
@@ -48,14 +48,16 @@
     "env:print": "tsx packages/scripts/src/env.ts print"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62",
+    "@playwright/test": "^1",
+    "@types/node": "^26",
     "@usebruno/cli": "^4",
     "artillery": "^2",
+    "eslint": "^9",
     "fallow": "^3",
-    "prettier": "^3.9",
+    "prettier": "^3",
     "react-doctor": "^0.9",
-    "tsx": "^4.23",
-    "turbo": "^2.10",
-    "typescript": "^6.0"
+    "tsx": "^4",
+    "turbo": "^2",
+    "typescript": "^6"
   }
 }

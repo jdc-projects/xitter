@@ -1,5 +1,5 @@
-import { Controller, Param, Post } from "@nestjs/common";
-import { PostsService } from "./posts.service.js";
+import { Controller, Param, Post } from '@nestjs/common';
+import { PostsService } from './posts.service.js';
 
 /**
  * Posts, replies, and interactions (likes, bookmarks, reposts).
@@ -10,13 +10,13 @@ import { PostsService } from "./posts.service.js";
 export class PostsController {
   constructor(private readonly service: PostsService) {}
 
-  @Post("posts")
+  @Post('posts')
   create() {
     return this.service.placeholder();
   }
 
-  @Post("posts/:postId/interactions")
-  interact(@Param("postId") postId: string) {
+  @Post('posts/:postId/interactions')
+  interact(@Param('postId') postId: string) {
     return this.service.placeholder(postId);
   }
 }

@@ -1,21 +1,21 @@
-import { localUrl } from "@xitter/config";
+import { localUrl } from '@xitter/config';
 import {
   createInteractionRequestSchema,
-  createPostRequestSchema,
+  type createPostRequestSchema,
   feedPageSchema,
   postSchema,
   profileSchema,
   relationshipSchema,
-  updateProfileRequestSchema,
+  type updateProfileRequestSchema,
   type InteractionKind,
   type Post,
   type Profile,
   type Relationship,
-} from "@xitter/api-contracts";
-import { z } from "zod";
-import { ServiceClient, type ServiceClientOptions } from "./client.js";
+} from '@xitter/api-contracts';
+import { z } from 'zod';
+import { ServiceClient, type ServiceClientOptions } from './client.js';
 
-const V1 = "/api";
+const V1 = '/api';
 
 function paginated<T>(schema: z.ZodType<T>) {
   return z.object({ items: z.array(schema), nextCursor: z.string().nullable() });
@@ -23,12 +23,12 @@ function paginated<T>(schema: z.ZodType<T>) {
 
 /** Base URLs resolved from env-driven local ports; override with env in deployed contexts. */
 export const localServiceUrls = () => ({
-  social: process.env.XITTER_SOCIAL_URL ?? localUrl("social"),
-  posts: process.env.XITTER_POSTS_URL ?? localUrl("posts"),
-  media: process.env.XITTER_MEDIA_URL ?? localUrl("media"),
-  feed: process.env.XITTER_FEED_URL ?? localUrl("feed"),
-  search: process.env.XITTER_SEARCH_URL ?? localUrl("search"),
-  keycloak: process.env.XITTER_KEYCLOAK_URL ?? localUrl("keycloak"),
+  social: process.env.XITTER_SOCIAL_URL ?? localUrl('social'),
+  posts: process.env.XITTER_POSTS_URL ?? localUrl('posts'),
+  media: process.env.XITTER_MEDIA_URL ?? localUrl('media'),
+  feed: process.env.XITTER_FEED_URL ?? localUrl('feed'),
+  search: process.env.XITTER_SEARCH_URL ?? localUrl('search'),
+  keycloak: process.env.XITTER_KEYCLOAK_URL ?? localUrl('keycloak'),
 });
 
 export class SocialClient extends ServiceClient {
@@ -44,7 +44,10 @@ export class SocialClient extends ServiceClient {
     return this.get(`${V1}/social/v1/profiles/username/${username}`).then(profileSchema.parse);
   }
 
-  updateProfile(userId: string, body: z.infer<typeof updateProfileRequestSchema>): Promise<Profile> {
+  updateProfile(
+    userId: string,
+    body: z.infer<typeof updateProfileRequestSchema>,
+  ): Promise<Profile> {
     return this.post(`${V1}/social/v1/profiles/${userId}`, body).then(profileSchema.parse);
   }
 
@@ -68,14 +71,24 @@ export class SocialClient extends ServiceClient {
     return this.get(`${V1}/social/v1/users/${userId}/relationship`).then(relationshipSchema.parse);
   }
 
-  getFollowing(userId: string, cursor?: string): Promise<{ items: Profile[]; nextCursor: string | null }> {
-    return this.get(`${V1}/social/v1/users/${userId}/following`, cursor ? { cursor } : undefined)
-      .then((r) => paginated(profileSchema).parse(r));
+  getFollowing(
+    userId: string,
+    cursor?: string,
+  ): Promise<{ items: Profile[]; nextCursor: string | null }> {
+    return this.get(
+      `${V1}/social/v1/users/${userId}/following`,
+      cursor ? { cursor } : undefined,
+    ).then((r) => paginated(profileSchema).parse(r));
   }
 
-  getFollowers(userId: string, cursor?: string): Promise<{ items: Profile[]; nextCursor: string | null }> {
-    return this.get(`${V1}/social/v1/users/${userId}/followers`, cursor ? { cursor } : undefined)
-      .then((r) => paginated(profileSchema).parse(r));
+  getFollowers(
+    userId: string,
+    cursor?: string,
+  ): Promise<{ items: Profile[]; nextCursor: string | null }> {
+    return this.get(
+      `${V1}/social/v1/users/${userId}/followers`,
+      cursor ? { cursor } : undefined,
+    ).then((r) => paginated(profileSchema).parse(r));
   }
 
   /** Internal (service-to-service): follower ids for feed fanout. */
@@ -97,33 +110,49 @@ export class PostsClient extends ServiceClient {
     return this.get(`${V1}/posts/v1/posts/${postId}`).then(postSchema.parse);
   }
 
-  getUserPosts(userId: string, cursor?: string): Promise<{ items: { post: Post; author: Profile }[]; nextCursor: string | null }> {
-    return this.get(`${V1}/posts/v1/users/${userId}/posts`, cursor ? { cursor } : undefined)
-      .then((r) => paginated(z.object({ post: postSchema, author: profileSchema })).parse(r));
+  getUserPosts(
+    userId: string,
+    cursor?: string,
+  ): Promise<{ items: { post: Post; author: Profile }[]; nextCursor: string | null }> {
+    return this.get(`${V1}/posts/v1/users/${userId}/posts`, cursor ? { cursor } : undefined).then(
+      (r) => paginated(z.object({ post: postSchema, author: profileSchema })).parse(r),
+    );
   }
 
-  getReplies(postId: string, cursor?: string): Promise<{ items: { post: Post; author: Profile }[]; nextCursor: string | null }> {
-    return this.get(`${V1}/posts/v1/posts/${postId}/replies`, cursor ? { cursor } : undefined)
-      .then((r) => paginated(z.object({ post: postSchema, author: profileSchema })).parse(r));
+  getReplies(
+    postId: string,
+    cursor?: string,
+  ): Promise<{ items: { post: Post; author: Profile }[]; nextCursor: string | null }> {
+    return this.get(`${V1}/posts/v1/posts/${postId}/replies`, cursor ? { cursor } : undefined).then(
+      (r) => paginated(z.object({ post: postSchema, author: profileSchema })).parse(r),
+    );
   }
 
   createInteraction(postId: string, kind: InteractionKind): Promise<void> {
-    return this.post(`${V1}/posts/v1/posts/${postId}/interactions`, createInteractionRequestSchema.parse({ kind }));
+    return this.post(
+      `${V1}/posts/v1/posts/${postId}/interactions`,
+      createInteractionRequestSchema.parse({ kind }),
+    );
   }
 
   deleteInteraction(postId: string, kind: InteractionKind): Promise<void> {
     return this.delete(`${V1}/posts/v1/posts/${postId}/interactions/${kind}`);
   }
 
-  getBookmarks(cursor?: string): Promise<{ items: { post: Post; author: Profile }[]; nextCursor: string | null }> {
-    return this.get(`${V1}/posts/v1/bookmarks`, cursor ? { cursor } : undefined)
-      .then((r) => paginated(z.object({ post: postSchema, author: profileSchema })).parse(r));
+  getBookmarks(
+    cursor?: string,
+  ): Promise<{ items: { post: Post; author: Profile }[]; nextCursor: string | null }> {
+    return this.get(`${V1}/posts/v1/bookmarks`, cursor ? { cursor } : undefined).then((r) =>
+      paginated(z.object({ post: postSchema, author: profileSchema })).parse(r),
+    );
   }
 }
 
 export class FeedClient extends ServiceClient {
   getFeed(cursor?: string): Promise<unknown> {
-    return this.get(`${V1}/feed/v1/feed`, cursor ? { cursor } : undefined).then(feedPageSchema.parse);
+    return this.get(`${V1}/feed/v1/feed`, cursor ? { cursor } : undefined).then(
+      feedPageSchema.parse,
+    );
   }
 }
 
@@ -134,7 +163,10 @@ export class SearchClient extends ServiceClient {
 }
 
 export class MediaClient extends ServiceClient {
-  createUpload(body: { mimeType: string; bytes: number }): Promise<{ mediaId: string; uploadUrl: string }> {
+  createUpload(body: {
+    mimeType: string;
+    bytes: number;
+  }): Promise<{ mediaId: string; uploadUrl: string }> {
     return this.post(`${V1}/media/v1/uploads`, body);
   }
 }

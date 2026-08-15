@@ -3,18 +3,18 @@
  * Local dependency lifecycle: `tsx packages/scripts/src/docker.ts up|down|status`.
  * Wraps docker compose with the right project name and env file.
  */
-import { down, status, up } from "./lib/compose.js";
+import { down, status, up } from './lib/compose.js';
 
-const command = process.argv[2] ?? "status";
+const command = process.argv[2] ?? 'status';
 
 switch (command) {
-  case "up":
+  case 'up':
     await up();
     break;
-  case "down":
-    await down(process.argv.includes("--volumes"));
+  case 'down':
+    await down(process.argv.includes('--volumes'));
     break;
-  case "status":
+  case 'status':
     await status();
     break;
   default:

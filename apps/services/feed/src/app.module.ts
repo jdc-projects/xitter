@@ -1,5 +1,5 @@
-import { Module } from "@nestjs/common";
-import { FeedModule } from "./modules/feed.module.js";
+import { Module } from '@nestjs/common';
+import { FeedModule } from './modules/feed.module.js';
 
 @Module({
   imports: [FeedModule],

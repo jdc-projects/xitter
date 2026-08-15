@@ -1,4 +1,4 @@
-import { EVENT_TYPES } from "@xitter/events";
+import { EVENT_TYPES } from '@xitter/events';
 
 export interface HandlerDeps {
   feedInternalUrl: string;
@@ -9,7 +9,7 @@ export interface HandlerDeps {
  * Skeleton - feed entry writes (via the feed service internal API) land with
  * the feed feature ticket.
  */
-export async function handleEvent(envelope: unknown, deps: HandlerDeps): Promise<void> {
+export async function handleEvent(envelope: unknown, _deps: HandlerDeps): Promise<void> {
   const { eventType } = envelope as { eventType: string };
   switch (eventType) {
     case EVENT_TYPES.postCreated:

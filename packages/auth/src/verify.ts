@@ -1,5 +1,3 @@
-import { createRemoteJWKSet, jwtVerify } from "jose";
-
 export interface AuthContext {
   /** Keycloak user (or service client) id - `sub`. */
   subject: string;
@@ -26,22 +24,44 @@ export interface TokenVerifierOptions {
   jwksUri?: string;
 }
 
+// jose is ESM-only and its types don't re-export cleanly to CJS, so it is
+// loaded dynamically behind a minimal structural type.
+interface JoseModule {
+  createRemoteJWKSet(url: URL): unknown;
+  jwtVerify(
+    token: string,
+    key: unknown,
+    options: Record<string, unknown>,
+  ): Promise<{ payload: Record<string, unknown> }>;
+}
+
+let josePromise: Promise<JoseModule> | undefined;
+function jose(): Promise<JoseModule> {
+  josePromise ??= import('jose') as Promise<JoseModule>;
+  return josePromise;
+}
+
 /** Stateless JWT verifier - local JWKS validation against Keycloak. */
 export function createTokenVerifier(options: TokenVerifierOptions): TokenVerifier {
-  const jwks = createRemoteJWKSet(new URL(options.jwksUri ?? `${options.issuer}/protocol/openid-connect/certs`));
+  let jwks: unknown;
+
   return {
     async verify(token: string): Promise<AuthContext> {
-      const { payload } = await jwtVerify(token, jwks, {
+      const j = await jose();
+      jwks ??= j.createRemoteJWKSet(
+        new URL(options.jwksUri ?? `${options.issuer}/protocol/openid-connect/certs`),
+      );
+      const { payload } = await j.jwtVerify(token, jwks, {
         issuer: options.issuer,
         audience: options.audience,
       });
       const realmAccess = payload.realm_access as { roles?: string[] } | undefined;
       return {
-        subject: String(payload.sub ?? ""),
-        username: String(payload.preferred_username ?? payload.client_id ?? ""),
+        subject: String(payload.sub ?? ''),
+        username: String(payload.preferred_username ?? payload.client_id ?? ''),
         roles: realmAccess?.roles ?? [],
         audience: options.audience,
-        claims: payload as Record<string, unknown>,
+        claims: payload,
       };
     },
   };
@@ -61,13 +81,13 @@ export function createJwtCache(options: {
     async get(): Promise<string> {
       if (cached && cached.expiresAt > Date.now() + 30_000) return cached.token;
       const body = new URLSearchParams({
-        grant_type: "client_credentials",
+        grant_type: 'client_credentials',
         client_id: options.clientId,
         client_secret: options.clientSecret,
       });
       const res = await doFetch(options.tokenUrl, {
-        method: "POST",
-        headers: { "content-type": "application/x-www-form-urlencoded" },
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
         body,
       });
       if (!res.ok) throw new Error(`Token fetch failed (${res.status}) from ${options.tokenUrl}`);

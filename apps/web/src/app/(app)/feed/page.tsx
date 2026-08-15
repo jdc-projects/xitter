@@ -1,6 +1,6 @@
-import { Container, Stack, Text, Title } from "@mantine/core";
+import { Container, Stack, Text, Title } from '@mantine/core';
 
-export const metadata = { title: "Feed" };
+export const metadata = { title: 'Feed' };
 
 export default function FeedPage() {
   return (

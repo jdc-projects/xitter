@@ -8,22 +8,24 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@testcontainers/kafka": "^12.1",
-    "@testcontainers/postgresql": "^12.1",
-    "testcontainers": "^12.1",
-    "undici": "^7.16"
+    "@testcontainers/kafka": "^12",
+    "@testcontainers/postgresql": "^12",
+    "testcontainers": "^12",
+    "undici": "^7"
   },
   "devDependencies": {
     "@xitter/tsconfig": "*",
-    "vitest": "^4.1"
+    "vitest": "^4"
   }
 }

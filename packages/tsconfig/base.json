@@ -5,6 +5,7 @@
     "target": "es2023",
     "module": "node16",
     "moduleResolution": "node16",
+    "types": ["node"],
     "lib": ["es2023"],
     "strict": true,
     "noUncheckedIndexedAccess": true,

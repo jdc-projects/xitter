@@ -1,0 +1,573 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "xitter posts API",
+    "description": "Posts, replies, and interactions (likes, bookmarks, reposts).",
+    "version": "v1"
+  },
+  "servers": [
+    {
+      "url": "/api/posts/v1"
+    }
+  ],
+  "components": {
+    "schemas": {
+      "CreatePostRequest": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "mediaIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "maxItems": 4,
+            "default": []
+          },
+          "replyToId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid",
+            "default": null,
+            "example": "b1c2d3e4-0000-4000-8000-000000000002"
+          }
+        },
+        "required": ["text"]
+      }
+    },
+    "parameters": {}
+  },
+  "paths": {
+    "/posts": {
+      "post": {
+        "tags": ["posts"],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePostRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created post",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                    },
+                    "authorId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                    },
+                    "text": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    "media": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "ownerId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": ["pending", "ready", "failed"]
+                          },
+                          "variants": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": ["original", "thumb"]
+                                },
+                                "objectKey": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mimeType": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "bytes": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "exclusiveMinimum": true
+                                },
+                                "width": {
+                                  "type": "integer",
+                                  "nullable": true,
+                                  "minimum": 0,
+                                  "exclusiveMinimum": true
+                                },
+                                "height": {
+                                  "type": "integer",
+                                  "nullable": true,
+                                  "minimum": 0,
+                                  "exclusiveMinimum": true
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "objectKey",
+                                "mimeType",
+                                "bytes",
+                                "width",
+                                "height"
+                              ]
+                            }
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": ["id", "ownerId", "status", "variants", "createdAt"]
+                      }
+                    },
+                    "replyToId": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                    },
+                    "repostOfId": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                    },
+                    "counts": {
+                      "type": "object",
+                      "properties": {
+                        "replies": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "likes": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "reposts": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": ["replies", "likes", "reposts"]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "deletedAt": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "authorId",
+                    "text",
+                    "media",
+                    "replyToId",
+                    "repostOfId",
+                    "counts",
+                    "createdAt",
+                    "deletedAt"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error"
+          }
+        }
+      }
+    },
+    "/posts/{postId}": {
+      "get": {
+        "tags": ["posts"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "postId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Post",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                    },
+                    "authorId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                    },
+                    "text": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    "media": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "ownerId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": ["pending", "ready", "failed"]
+                          },
+                          "variants": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": ["original", "thumb"]
+                                },
+                                "objectKey": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mimeType": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "bytes": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "exclusiveMinimum": true
+                                },
+                                "width": {
+                                  "type": "integer",
+                                  "nullable": true,
+                                  "minimum": 0,
+                                  "exclusiveMinimum": true
+                                },
+                                "height": {
+                                  "type": "integer",
+                                  "nullable": true,
+                                  "minimum": 0,
+                                  "exclusiveMinimum": true
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "objectKey",
+                                "mimeType",
+                                "bytes",
+                                "width",
+                                "height"
+                              ]
+                            }
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": ["id", "ownerId", "status", "variants", "createdAt"]
+                      }
+                    },
+                    "replyToId": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                    },
+                    "repostOfId": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                    },
+                    "counts": {
+                      "type": "object",
+                      "properties": {
+                        "replies": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "likes": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "reposts": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": ["replies", "likes", "reposts"]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "deletedAt": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "authorId",
+                    "text",
+                    "media",
+                    "replyToId",
+                    "repostOfId",
+                    "counts",
+                    "createdAt",
+                    "deletedAt"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/users/{userId}/posts": {
+      "get": {
+        "tags": ["posts"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User posts page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "post": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                              },
+                              "authorId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                              },
+                              "text": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 512
+                              },
+                              "media": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "id": {
+                                      "type": "string",
+                                      "format": "uuid"
+                                    },
+                                    "ownerId": {
+                                      "type": "string",
+                                      "format": "uuid",
+                                      "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                                    },
+                                    "status": {
+                                      "type": "string",
+                                      "enum": ["pending", "ready", "failed"]
+                                    },
+                                    "variants": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "object",
+                                        "properties": {
+                                          "kind": {
+                                            "type": "string",
+                                            "enum": ["original", "thumb"]
+                                          },
+                                          "objectKey": {
+                                            "type": "string",
+                                            "minLength": 1
+                                          },
+                                          "mimeType": {
+                                            "type": "string",
+                                            "minLength": 1
+                                          },
+                                          "bytes": {
+                                            "type": "integer",
+                                            "minimum": 0,
+                                            "exclusiveMinimum": true
+                                          },
+                                          "width": {
+                                            "type": "integer",
+                                            "nullable": true,
+                                            "minimum": 0,
+                                            "exclusiveMinimum": true
+                                          },
+                                          "height": {
+                                            "type": "integer",
+                                            "nullable": true,
+                                            "minimum": 0,
+                                            "exclusiveMinimum": true
+                                          }
+                                        },
+                                        "required": [
+                                          "kind",
+                                          "objectKey",
+                                          "mimeType",
+                                          "bytes",
+                                          "width",
+                                          "height"
+                                        ]
+                                      }
+                                    },
+                                    "createdAt": {
+                                      "type": "string",
+                                      "format": "date-time"
+                                    }
+                                  },
+                                  "required": ["id", "ownerId", "status", "variants", "createdAt"]
+                                }
+                              },
+                              "replyToId": {
+                                "type": "string",
+                                "nullable": true,
+                                "format": "uuid",
+                                "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                              },
+                              "repostOfId": {
+                                "type": "string",
+                                "nullable": true,
+                                "format": "uuid",
+                                "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                              },
+                              "counts": {
+                                "type": "object",
+                                "properties": {
+                                  "replies": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                  },
+                                  "likes": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                  },
+                                  "reposts": {
+                                    "type": "integer",
+                                    "minimum": 0
+                                  }
+                                },
+                                "required": ["replies", "likes", "reposts"]
+                              },
+                              "createdAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              },
+                              "deletedAt": {
+                                "type": "string",
+                                "nullable": true,
+                                "format": "date-time"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "authorId",
+                              "text",
+                              "media",
+                              "replyToId",
+                              "repostOfId",
+                              "counts",
+                              "createdAt",
+                              "deletedAt"
+                            ]
+                          }
+                        },
+                        "required": ["post"]
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": ["items", "nextCursor"]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

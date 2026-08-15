@@ -22,6 +22,9 @@ artillery-report/
 reports/
 mutation/
 
+# Generated per-service OpenAPI artifacts (collected into docs/specs/architecture/openapi)
+apps/**/openapi.json
+
 # Env - examples are committed, real env files are not
 .env
 .env.*

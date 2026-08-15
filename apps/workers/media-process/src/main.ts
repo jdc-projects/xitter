@@ -3,41 +3,52 @@
  * and reports them back to the media service. Deployed as a Knative service;
  * consumes Kafka only.
  */
-import { loadRepoEnv, parseEnv } from "@xitter/config";
-import { CONSUMER_GROUPS, TOPICS, createEventConsumer } from "@xitter/events";
-import { initSentry, initTracing } from "@xitter/observability";
-import { z } from "zod";
-import { handleEvent } from "./handlers.js";
+import { kafkaBrokers, loadRepoEnv, parseEnv } from '@xitter/config';
+import { CONSUMER_GROUPS, createEventConsumer } from '@xitter/events';
+import { createLogger, createMetricsServer, initSentry, initTracing } from '@xitter/observability';
+import { z } from 'zod';
+import { handleEvent } from './handlers.js';
 
 loadRepoEnv();
 
 const env = parseEnv(
   z.object({
-    KAFKA_BROKERS: z.string().min(1),
-    MEDIA_INTERNAL_URL: z.string().url().default("http://localhost:8103"),
+    KAFKA_BROKERS: z.string().min(1).default(kafkaBrokers()),
+    MEDIA_INTERNAL_URL: z.string().url().default('http://localhost:8103'),
+    METRICS_PORT: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(Number(process.env.XITTER_MEDIA_PROCESS_METRICS_PORT ?? '9102')),
   }),
 );
 
-const tracing = initTracing("media-process-worker");
-initSentry("media-process-worker");
+const logger = createLogger({ service: 'media-process-worker' });
+const tracing = initTracing('media-process-worker');
+initSentry('media-process-worker');
 
 const consumer = createEventConsumer({
-  clientId: "xitter-media-process-worker",
-  brokers: env.KAFKA_BROKERS.split(","),
+  clientId: 'xitter-media-process-worker',
+  brokers: env.KAFKA_BROKERS.split(','),
   groupId: CONSUMER_GROUPS.mediaProcessWorker,
-  topics: [TOPICS.media],
+  topics: ['media'],
 });
+
+const metrics = createMetricsServer(env.METRICS_PORT);
+await metrics.started;
+logger.info(`metrics on :${env.METRICS_PORT}`);
 
 await consumer.run(async (envelope) => {
   await handleEvent(envelope, { mediaInternalUrl: env.MEDIA_INTERNAL_URL });
 });
 
-console.log(`media-process worker consuming ${TOPICS.media}`);
-
-process.once("SIGTERM", () => {
+process.once('SIGTERM', () => {
   void (async () => {
     await consumer.disconnect();
+    await metrics.stop();
     await tracing.shutdown();
     process.exit(0);
   })();
 });
+
+logger.info(`media-process-worker running`);

@@ -33,14 +33,14 @@ jobs:
           - web
           - cms
           - admin
-          - "@xitter/service-social"
-          - "@xitter/service-posts"
-          - "@xitter/service-media"
-          - "@xitter/service-feed"
-          - "@xitter/service-search"
-          - "@xitter/worker-fanout"
-          - "@xitter/worker-media-process"
-          - "@xitter/worker-search-index"
+          - '@xitter/service-social'
+          - '@xitter/service-posts'
+          - '@xitter/service-media'
+          - '@xitter/service-feed'
+          - '@xitter/service-search'
+          - '@xitter/worker-fanout'
+          - '@xitter/worker-media-process'
+          - '@xitter/worker-search-index'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

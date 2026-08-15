@@ -17,24 +17,24 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@mantine/core": "^9.5",
-    "@mantine/hooks": "^9.5",
-    "@tabler/icons-react": "^3.46",
-    "dayjs": "^1.11"
+    "@mantine/core": "^9",
+    "@mantine/hooks": "^9",
+    "@tabler/icons-react": "^3",
+    "dayjs": "^1"
   },
   "peerDependencies": {
     "react": "^19",
     "react-dom": "^19"
   },
   "devDependencies": {
-    "@testing-library/react": "^16.3",
+    "@testing-library/react": "^16",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@vitejs/plugin-react": "^6.0",
-    "happy-dom": "^20.11",
-    "react": "^19.2",
-    "react-dom": "^19.2",
-    "typescript": "^6.0",
-    "vitest": "^4.1"
+    "@vitejs/plugin-react": "^6",
+    "happy-dom": "^20",
+    "react": "^19",
+    "react-dom": "^19",
+    "typescript": "^6",
+    "vitest": "^4"
   }
 }

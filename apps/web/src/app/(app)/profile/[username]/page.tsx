@@ -1,4 +1,4 @@
-import { Container, Stack, Text, Title } from "@mantine/core";
+import { Container, Stack, Text, Title } from '@mantine/core';
 
 export default async function ProfilePage({ params }: { params: Promise<{ username: string }> }) {
   const { username } = await params;

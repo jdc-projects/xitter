@@ -1,4 +1,8 @@
-import { z } from "zod";
+import { extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
+import { z } from 'zod';
+
+extendZodWithOpenApi(z);
+
 import {
   POST_MEDIA_MAX,
   POST_TEXT_MAX,
@@ -7,7 +11,7 @@ import {
   postIdSchema,
   userIdSchema,
   usernameSchema,
-} from "./domain.js";
+} from './domain.js';
 
 const cursorPagination = (itemSchema: z.ZodType) =>
   z.object({
@@ -23,7 +27,7 @@ export const errorSchema = z
       details: z.record(z.string(), z.unknown()).optional(),
     }),
   })
-  .openapi({ ref: "Error" });
+  .openapi('Error');
 
 export const createPostRequestSchema = z
   .object({
@@ -31,40 +35,40 @@ export const createPostRequestSchema = z
     mediaIds: z.array(mediaIdSchema).max(POST_MEDIA_MAX).default([]),
     replyToId: postIdSchema.nullable().default(null),
   })
-  .openapi({ ref: "CreatePostRequest" });
+  .openapi('CreatePostRequest');
 
 export const updateProfileRequestSchema = z
   .object({
     displayName: z.string().min(1).max(50).optional(),
     bio: z.string().max(200).nullable().optional(),
   })
-  .openapi({ ref: "UpdateProfileRequest" });
+  .openapi('UpdateProfileRequest');
 
 export const createInteractionRequestSchema = z
   .object({
     kind: interactionKindSchema,
   })
-  .openapi({ ref: "CreateInteractionRequest" });
+  .openapi('CreateInteractionRequest');
 
 export const createMediaUploadRequestSchema = z
   .object({
-    mimeType: z.enum(["image/png", "image/jpeg", "image/webp", "image/gif"]),
+    mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/gif']),
     bytes: z.number().int().positive(),
   })
-  .openapi({ ref: "CreateMediaUploadRequest" });
+  .openapi('CreateMediaUploadRequest');
 
 export const postPageSchema = cursorPagination(
   z.object({ post: z.unknown(), author: z.unknown() }),
-).openapi({ ref: "PostPage" });
+).openapi('PostPage');
 
-export const profilePageSchema = cursorPagination(z.unknown()).openapi({ ref: "ProfilePage" });
+export const profilePageSchema = cursorPagination(z.unknown()).openapi('ProfilePage');
 
-export const feedPageSchema = cursorPagination(z.unknown()).openapi({ ref: "FeedPage" });
+export const feedPageSchema = cursorPagination(z.unknown()).openapi('FeedPage');
 
-export const idParam = (name: "userId" | "postId" | "mediaId" | "username") =>
+export const idParam = (name: 'userId' | 'postId' | 'mediaId' | 'username') =>
   ({
-    userId: { name: "userId", schema: userIdSchema, in: "path", required: true },
-    postId: { name: "postId", schema: postIdSchema, in: "path", required: true },
-    mediaId: { name: "mediaId", schema: mediaIdSchema, in: "path", required: true },
-    username: { name: "username", schema: usernameSchema, in: "path", required: true },
+    userId: { name: 'userId', schema: userIdSchema, in: 'path', required: true },
+    postId: { name: 'postId', schema: postIdSchema, in: 'path', required: true },
+    mediaId: { name: 'mediaId', schema: mediaIdSchema, in: 'path', required: true },
+    username: { name: 'username', schema: usernameSchema, in: 'path', required: true },
   })[name];

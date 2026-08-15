@@ -1,10 +1,10 @@
-import { Anchor, Container, Divider, List, Stack, Text, Title } from "@mantine/core";
-import { ResetNotice } from "@xitter/ui";
+import { Container, Divider, Stack, Text, Title } from '@mantine/core';
+import { ResetNotice } from '@xitter/ui';
 
-export const metadata = { title: "About" };
+export const metadata = { title: 'About' };
 
-const demoAccounts = "demo1 through demo10";
-const demoPassword = "DemoPass123!";
+const demoAccounts = 'demo1 through demo10';
+const demoPassword = 'DemoPass123!';
 
 export default function AboutPage() {
   return (
@@ -18,8 +18,8 @@ export default function AboutPage() {
           </Title>
           <Text>
             xitter is a small Twitter/X-style demo application: text and image posts, a feed of the
-            people you follow, replies, likes, bookmarks, reposts, and the ability to follow or block
-            other accounts.
+            people you follow, replies, likes, bookmarks, reposts, and the ability to follow or
+            block other accounts.
           </Text>
         </section>
 
@@ -53,17 +53,17 @@ export default function AboutPage() {
             Data resets
           </Title>
           <ResetNotice aboutHref="/about" compact />
-          <List mt="sm" withPadding>
-            <List.Item>When: every night at 00:00 UTC.</List.Item>
-            <List.Item>
-              What: everything - posts, follows, media, search indices, messages, and demo account
-              sessions. Accounts are restored to their original state, with original passwords.
-            </List.Item>
-            <List.Item>
+          <Stack mt="sm" gap={4}>
+            <Text size="sm">When: every night at 00:00 UTC.</Text>
+            <Text size="sm">
+              What: everything - posts, follows, media, search indices, and demo account sessions.
+              Accounts are restored to their original state, with original passwords.
+            </Text>
+            <Text size="sm">
               What survives: nothing user-generated. Site content and code changes live in the
               repository, not the environment.
-            </List.Item>
-          </List>
+            </Text>
+          </Stack>
         </section>
 
         <section>
@@ -98,8 +98,7 @@ export default function AboutPage() {
         <Divider />
 
         <Text size="sm" c="dimmed">
-          Unauthenticated visitors cannot see posts or users -{" "}
-          <Anchor href="/login">log in</Anchor> to look around.
+          Unauthenticated visitors cannot see posts or users - log in to look around.
         </Text>
       </Stack>
     </Container>

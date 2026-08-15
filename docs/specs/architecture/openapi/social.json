@@ -1,0 +1,353 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "xitter social API",
+    "description": "Profiles, follows, and blocks.",
+    "version": "v1"
+  },
+  "servers": [
+    {
+      "url": "/api/social/v1"
+    }
+  ],
+  "components": {
+    "schemas": {},
+    "parameters": {}
+  },
+  "paths": {
+    "/profiles/{userId}": {
+      "get": {
+        "tags": ["profiles"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                    },
+                    "username": {
+                      "type": "string",
+                      "minLength": 3,
+                      "maxLength": 20,
+                      "pattern": "^[a-z0-9_]+$"
+                    },
+                    "displayName": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 50
+                    },
+                    "bio": {
+                      "type": "string",
+                      "nullable": true,
+                      "maxLength": 200
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": ["id", "username", "displayName", "bio", "createdAt"]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/profiles/username/{username}": {
+      "get": {
+        "tags": ["profiles"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "username",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                    },
+                    "username": {
+                      "type": "string",
+                      "minLength": 3,
+                      "maxLength": 20,
+                      "pattern": "^[a-z0-9_]+$"
+                    },
+                    "displayName": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 50
+                    },
+                    "bio": {
+                      "type": "string",
+                      "nullable": true,
+                      "maxLength": 200
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": ["id", "username", "displayName", "bio", "createdAt"]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/profiles/{userId}/follow": {
+      "post": {
+        "tags": ["relationships"],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Following"
+          },
+          "409": {
+            "description": "Conflict"
+          }
+        }
+      },
+      "delete": {
+        "tags": ["relationships"],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Unfollowed"
+          }
+        }
+      }
+    },
+    "/profiles/{userId}/block": {
+      "post": {
+        "tags": ["relationships"],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Blocked"
+          }
+        }
+      }
+    },
+    "/profiles/{userId}/following": {
+      "get": {
+        "tags": ["relationships"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Following page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                          },
+                          "username": {
+                            "type": "string",
+                            "minLength": 3,
+                            "maxLength": 20,
+                            "pattern": "^[a-z0-9_]+$"
+                          },
+                          "displayName": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 50
+                          },
+                          "bio": {
+                            "type": "string",
+                            "nullable": true,
+                            "maxLength": 200
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": ["id", "username", "displayName", "bio", "createdAt"]
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": ["items", "nextCursor"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/{userId}/followers": {
+      "get": {
+        "tags": ["relationships"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Followers page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                          },
+                          "username": {
+                            "type": "string",
+                            "minLength": 3,
+                            "maxLength": 20,
+                            "pattern": "^[a-z0-9_]+$"
+                          },
+                          "displayName": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 50
+                          },
+                          "bio": {
+                            "type": "string",
+                            "nullable": true,
+                            "maxLength": 200
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": ["id", "username", "displayName", "bio", "createdAt"]
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": ["items", "nextCursor"]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

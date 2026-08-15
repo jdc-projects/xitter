@@ -1,4 +1,5 @@
-export { RelativeTime } from "./components/RelativeTime.js";
-export { ResetNotice } from "./components/ResetNotice.js";
-export { PostCard } from "./components/PostCard.js";
-export { UserAvatar } from "./components/UserAvatar.js";
+export { RelativeTime } from './components/RelativeTime';
+export { formatFeedTimestamp } from './components/RelativeTime';
+export { ResetNotice } from './components/ResetNotice';
+export { PostCard } from './components/PostCard';
+export { UserAvatar } from './components/UserAvatar';

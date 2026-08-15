@@ -1,3 +1,3 @@
-import { webConfig } from "@xitter/eslint-config";
+import { webConfig } from '@xitter/eslint-config';
 
 export default webConfig;

@@ -6,8 +6,11 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "noEmit": true,
+    "paths": {
+      "@payload-config": ["./src/payload.config.ts"]
+    },
     "types": ["react", "react-dom", "node"]
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", "scripts", "dist", "build"]
+  "exclude": ["node_modules", "dist", "build"]
 }

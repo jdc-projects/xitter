@@ -8,9 +8,11 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
@@ -20,10 +22,10 @@
     "@xitter/api-contracts": "*",
     "@xitter/auth": "*",
     "@xitter/config": "*",
-    "zod": "^4.4"
+    "zod": "^4"
   },
   "devDependencies": {
     "@xitter/tsconfig": "*",
-    "vitest": "^4.1"
+    "vitest": "^4"
   }
 }

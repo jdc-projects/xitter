@@ -1,5 +1,5 @@
-import { Body, Controller, Param, Post } from "@nestjs/common";
-import { SocialService } from "./social.service.js";
+import { Body, Controller, Param, Post } from '@nestjs/common';
+import { SocialService } from './social.service.js';
 
 /**
  * Profiles, follows, and blocks.
@@ -10,17 +10,17 @@ import { SocialService } from "./social.service.js";
 export class SocialController {
   constructor(private readonly social: SocialService) {}
 
-  @Post("profiles/:userId/follow")
-  follow(@Param("userId") userId: string) {
+  @Post('profiles/:userId/follow')
+  follow(@Param('userId') userId: string) {
     return this.social.follow(userId);
   }
 
-  @Post("profiles/:userId/block")
-  block(@Param("userId") userId: string) {
+  @Post('profiles/:userId/block')
+  block(@Param('userId') userId: string) {
     return this.social.block(userId);
   }
 
-  @Post("internal/reseed")
+  @Post('internal/reseed')
   reseed(@Body() _body: unknown) {
     return { ok: true };
   }
