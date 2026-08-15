@@ -46,6 +46,9 @@ jobs:
       - name: Build, lint, typecheck, unit + integration tests
         run: npm run check
 
+      - name: Fetch base ref for repo-level analysis
+        run: git fetch origin dev:refs/remotes/origin/dev
+
       - name: Repo-level analysis
         run: npm run lint:repo
 
