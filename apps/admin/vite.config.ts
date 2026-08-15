@@ -3,11 +3,8 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   plugins: [react()],
+  // The edge does NOT strip /admin; the app serves under this base to match.
   base: '/admin/',
-  server: {
-    // The edge strips /admin before proxying; vite serves at /.
-    proxy: {},
-  },
   build: { outDir: 'dist' },
   test: {
     environment: 'happy-dom',

@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { findRepoRoot, loadRepoEnv } from '@xitter/config';
 import { run, capture } from './exec.js';
@@ -10,7 +11,15 @@ export function composeProject(): string {
 }
 
 function composeArgs(): string[] {
-  return ['compose', '--file', COMPOSE_FILE, '--project-name', composeProject()];
+  // --env-file: compose's default .env lookup is the compose file's directory
+  // (infra/docker), so point it at the repo root explicitly when present - port
+  // overrides and XITTER_ENV isolation must reach interpolation. Compose's own
+  // defaults cover a missing file.
+  const args = ['compose', '--file', COMPOSE_FILE];
+  const rootEnv = join(findRepoRoot(), '.env');
+  if (existsSync(rootEnv)) args.push('--env-file', rootEnv);
+  args.push('--project-name', composeProject());
+  return args;
 }
 
 export async function up(detach = true): Promise<void> {

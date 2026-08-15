@@ -29,7 +29,7 @@
     "test:unit": "turbo run test",
     "test:web": "playwright test -c tests/playwright/web",
     "test:e2e": "playwright test -c tests/playwright/e2e",
-    "test:a11y": "playwright test -c tests/playwright/e2e --grep @a11y",
+    "test:a11y": "playwright test -c tests/playwright/e2e --project=a11y",
     "test:load": "artillery run tests/artillery/feed-flow.yml",
     "test:api": "bru run --env local bruno/xitter",
     "mutate": "turbo run mutate",
@@ -48,9 +48,11 @@
     "env:print": "tsx packages/scripts/src/env.ts print"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "^1",
     "@types/node": "^26",
     "@usebruno/cli": "^4",
+    "@xitter/config": "*",
     "artillery": "^2",
     "eslint": "^9",
     "fallow": "^3",

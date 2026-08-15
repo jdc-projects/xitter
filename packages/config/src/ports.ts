@@ -1,9 +1,9 @@
 /** Single source of truth for local port defaults. Offset by XITTER_PORT_OFFSET for parallel envs. */
 export const PORT_DEFAULTS = {
   edge: 8080,
-  web: 3000,
-  cms: 3001,
-  admin: 3002,
+  web: 3456,
+  cms: 3457,
+  admin: 3458,
   social: 8101,
   posts: 8102,
   media: 8103,
@@ -13,7 +13,6 @@ export const PORT_DEFAULTS = {
   kafka: 9092,
   opensearch: 9200,
   rustfs: 9000,
-  rustfsConsole: 9001,
   valkey: 6379,
   keycloak: 8090,
 } as const;

@@ -1,6 +1,9 @@
 // Isolated web suite: runs against ONLY the web frontend (no backend services).
 // Mocked service responses keep these tests deterministic and fast.
 import { defineConfig } from '@playwright/test';
+import { loadRepoEnv } from '@xitter/config';
+
+loadRepoEnv();
 
 const port = process.env.XITTER_WEB_PORT ?? '3456';
 const baseURL = process.env.WEB_BASE_URL ?? `http://localhost:${port}`;

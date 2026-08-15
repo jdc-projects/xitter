@@ -23,7 +23,7 @@ variable "namespace_name" {
 
 resource "kubernetes_namespace" "this" {
   metadata {
-        name = coalesce(var.namespace_name, "xitter-${var.environment}")
+    name   = coalesce(var.namespace_name, "xitter-${var.environment}")
     labels = local.labels
   }
 }

@@ -5,7 +5,7 @@ test('landing page introduces the app and warns about resets', async ({ page }) 
 
   await expect(page.getByRole('heading', { level: 1, name: 'xitter' })).toBeVisible();
   await expect(page.getByTestId('reset-notice')).toBeVisible();
-  await expect(page.getByRole('link', { name: 'About' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'About', exact: true })).toBeVisible();
 });
 
 test('landing page links to login', async ({ page }) => {

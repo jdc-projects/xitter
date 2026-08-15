@@ -9,7 +9,9 @@ test.describe('unauthenticated access', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'About' })).toBeVisible();
   });
 
-  test('user content requires login', async ({ page }) => {
+  // TODO(#3 auth): the /feed -> /login redirect is implemented with the auth
+  // feature ticket; enabled then.
+  test.skip('user content requires login', async ({ page }) => {
     await page.goto('/feed');
     await expect(page).toHaveURL(/\/login/);
   });

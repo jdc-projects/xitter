@@ -15,9 +15,9 @@ export default defineConfig({
     video: 'retain-on-failure',
   },
   projects: [
-    { name: 'chromium', use: { browserName: 'chromium' } },
+    { name: 'chromium', use: { browserName: 'chromium' }, testIgnore: /a11y\.spec\.ts/ },
     // A11y runs in its own project to keep the main flow matrix fast.
-    { name: 'a11y', use: { browserName: 'chromium' }, testIgnore: /.*\.spec\.ts/ },
+    { name: 'a11y', use: { browserName: 'chromium' }, testMatch: /a11y\.spec\.ts/ },
   ],
   webServer: {
     command: 'npm run start',

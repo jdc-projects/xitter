@@ -38,7 +38,6 @@ switch (command) {
       'kafka',
       'opensearch',
       'rustfs',
-      'rustfsConsole',
       'valkey',
       'keycloak',
     ] as const;
