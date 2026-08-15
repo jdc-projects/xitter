@@ -1,6 +1,11 @@
 {
   "$schema": "./node_modules/fallow/schema.json",
-  "ignoreUnresolvedImports": ["./.next/types/*.d.ts"],
+  "ignoreUnresolvedImports": [
+    "./.next/types/*.d.ts",
+    "**/importMap.js",
+    "../importMap",
+    "./admin/importMap.js"
+  ],
   "ignorePatterns": [
     "**/src/generated/**",
     "**/next-env.d.ts",
