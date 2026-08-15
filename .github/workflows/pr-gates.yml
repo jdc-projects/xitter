@@ -49,7 +49,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Build, lint, typecheck, tests
-        run: turbo run lint typecheck test build
+        run: npx turbo run lint typecheck test build
 
   repo-analysis:
     # fallow + react-doctor; needs the base ref for changed-file attribution

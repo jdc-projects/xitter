@@ -1,0 +1,10 @@
+{
+  "$schema": "./node_modules/fallow/schema.json",
+  "ignoreUnresolvedImports": ["./.next/types/*.d.ts"],
+  "ignorePatterns": [
+    "**/src/generated/**",
+    "**/next-env.d.ts",
+    "apps/cms/src/app/(payload)/admin/importMap.js",
+    "apps/cms/src/payload-types.ts"
+  ]
+}
