@@ -40,17 +40,11 @@ jobs:
 
       - run: npm ci
 
-      - name: Format check
-        run: npm run format:check
-
-      - name: Build, lint, typecheck, unit + integration tests
-        run: npm run check
-
       - name: Fetch base ref for repo-level analysis
         run: git fetch origin dev:refs/remotes/origin/dev
 
-      - name: Repo-level analysis
-        run: npm run lint:repo
+      - name: Build, lint, typecheck, unit + integration tests
+        run: npm run check
 
   playwright-web:
     runs-on: ubuntu-latest
