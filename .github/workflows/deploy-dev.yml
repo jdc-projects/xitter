@@ -48,7 +48,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npx turbo run build --filter=${{ matrix.workspace }}
+      - run: npm run build --filter=${{ matrix.workspace }}
       # Image build + push step activates with the first deploy ticket.
 
   # deploy-dev applies infra/iac/environments/dev after images exist.

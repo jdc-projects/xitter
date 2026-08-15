@@ -10,8 +10,8 @@ const port = String(localPort('admin'));
 
 const args =
   mode === 'dev'
-    ? ['vite', '--port', port, '--strictPort']
-    : ['vite', 'preview', '--port', port, '--strictPort'];
+    ? ['exec', '--', 'vite', '--port', port, '--strictPort']
+    : ['exec', '--', 'vite', 'preview', '--port', port, '--strictPort'];
 
-const child = spawn(args[0]!, args.slice(1), { stdio: 'inherit' });
+const child = spawn('npm', args, { stdio: 'inherit' });
 child.on('exit', (code) => process.exit(code ?? 0));
