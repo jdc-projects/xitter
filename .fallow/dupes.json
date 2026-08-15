@@ -1,0 +1,32 @@
+{
+  "clone_groups": [
+    "apps/services/feed/src/main.ts:33-45|apps/services/media/src/main.ts:33-45|apps/services/posts/src/main.ts:33-45|apps/services/search/src/main.ts:33-45|apps/services/social/src/main.ts:33-45",
+    "apps/workers/fanout/src/main.ts:41-53|apps/workers/media-process/src/main.ts:42-54|apps/workers/search-index/src/main.ts:41-53",
+    "apps/workers/fanout/src/main.ts:33-41|apps/workers/media-process/src/main.ts:34-42|apps/workers/search-index/src/main.ts:33-41",
+    "apps/cms/scripts/serve.ts:9-16|apps/web/scripts/serve.ts:11-18",
+    "apps/workers/media-process/src/main.ts:42-54|apps/workers/search-index/src/main.ts:41-53",
+    "packages/api-client/src/services.ts:74-81|packages/api-client/src/services.ts:84-91",
+    "apps/workers/fanout/src/main.ts:33-41|apps/workers/search-index/src/main.ts:33-41",
+    "apps/cms/src/app/(payload)/admin/[[...segments]]/not-found.tsx:8-21|apps/cms/src/app/(payload)/admin/[[...segments]]/page.tsx:8-21"
+  ],
+  "clone_fingerprints": [
+    "dup:d08f98b5:5",
+    "dup:a56204f9:3",
+    "dup:8a6d4fe7:3",
+    "dup:cc578a3c:2",
+    "dup:f5c8973d:2",
+    "dup:9d75468a:2",
+    "dup:cf2fcab2:2",
+    "dup:d308c66d:2"
+  ],
+  "normalized_clone_fingerprints": [
+    "dup:c77b3abb6f87acd9-4:5",
+    "dup:c77b3abb6f87acd9-3:3",
+    "dup:c77b3abb6f87acd9-2:3",
+    "dup:c77b3abb6f87acd9-7:2",
+    "dup:c77b3abb6f87acd9-5:2",
+    "dup:c77b3abb6f87acd9-1:2",
+    "dup:c77b3abb6f87acd9-6:2",
+    "dup:ed36175a:2"
+  ]
+}

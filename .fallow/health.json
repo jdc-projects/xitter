@@ -1,0 +1,41 @@
+{
+  "finding_counts": {
+    "packages/api-client/src/client.ts": {
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "packages/api-client/src/services.ts": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "packages/auth/src/verify.ts": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "packages/observability/src/logger.ts": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "packages/scripts/src/keycloak.ts": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "packages/scripts/src/lib/wait.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "packages/scripts/src/seed.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    }
+  },
+  "runtime_coverage_findings": [],
+  "target_keys": []
+}
