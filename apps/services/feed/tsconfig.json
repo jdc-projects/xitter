@@ -1,0 +1,10 @@
+{
+  "extends": "@xitter/tsconfig/service.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "outDir": "dist",
+    "rootDir": "."
+  },
+  "include": ["src", "prisma.config.ts", "openapi.gen.mts"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+}
