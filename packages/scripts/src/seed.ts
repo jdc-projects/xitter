@@ -12,7 +12,7 @@
  * feature tickets - see docs/specs/data/02-seeding.md.
  */
 import { faker } from '@faker-js/faker';
-import { envString, loadRepoEnv } from '@xitter/config';
+import { envString, loadRepoEnv, localUrl } from '@xitter/config';
 
 const SEED_CONSTANT = 42;
 const POSTS_PER_USER = 12;
@@ -27,7 +27,7 @@ interface DemoUser {
 /** Password grant against the demo realm (allowed for the seeder only). */
 /** Password grant against the demo realm (allowed for the seeder only). */
 async function loginToken(username: string): Promise<string> {
-  const keycloak = envString('XITTER_SEED_KEYCLOAK_URL', 'http://localhost:8090');
+  const keycloak = envString('XITTER_SEED_KEYCLOAK_URL', localUrl('keycloak'));
   const realm = envString('XITTER_DEMO_REALM', 'xitter-demo');
   const res = await fetch(`${keycloak}/realms/${realm}/protocol/openid-connect/token`, {
     method: 'POST',
@@ -45,7 +45,7 @@ async function loginToken(username: string): Promise<string> {
 }
 
 async function authedFetch(path: string, init: RequestInit, token: string): Promise<unknown> {
-  const baseUrl = envString('XITTER_SEED_BASE_URL', 'http://localhost:8080');
+  const baseUrl = envString('XITTER_SEED_BASE_URL', localUrl('edge'));
   const res = await fetch(`${baseUrl}${path}`, {
     ...init,
     headers: {

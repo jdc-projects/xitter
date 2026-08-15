@@ -27,7 +27,10 @@ export function createEventProducer(options: EventProducerOptions): EventProduce
   const kafka = new Kafka({ clientId: options.clientId, brokers: options.brokers });
   const producer = kafka.producer();
   const prefix = options.topicPrefix ? `${options.topicPrefix}.` : '';
+  // Eager connect for first-emit latency; swallow rejection so an early broker
+  // outage surfaces at emit instead of as an unhandled rejection.
   const started = producer.connect();
+  started.catch(() => undefined);
 
   return {
     producer,

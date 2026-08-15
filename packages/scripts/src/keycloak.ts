@@ -9,7 +9,7 @@
  *    homelab "primary" realm, gating admin/CMS login on an app-admin role.
  */
 import KcAdminClient from '@keycloak/keycloak-admin-client';
-import { envInt, envString, loadRepoEnv } from '@xitter/config';
+import { envInt, envString, loadRepoEnv, localUrl } from '@xitter/config';
 import { keycloakBaseUrl } from './lib/wait.js';
 
 export interface DemoUser {
@@ -44,7 +44,7 @@ export const SERVICE_CLIENTS = [
   'svc-search',
 ] as const;
 
-const edgeUrl = () => `http://localhost:${process.env.XITTER_EDGE_PORT ?? '8080'}`;
+const edgeUrl = () => localUrl('edge');
 
 async function ensureRealm(kc: KcAdminClient, realm: string): Promise<void> {
   const realms = await kc.realms.find();

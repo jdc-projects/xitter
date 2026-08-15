@@ -104,10 +104,12 @@ jobs:
   mutation:
     # Scoped to affected workspaces in PRs; full runs happen on merge to dev.
     runs-on: ubuntu-latest
-    needs: build-lint-test
+    needs: [changes, build-lint-test]
     if: needs.changes.outputs.packages != '[]'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc

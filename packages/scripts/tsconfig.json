@@ -2,8 +2,7 @@
   "extends": "@xitter/tsconfig/base.json",
   "compilerOptions": {
     "module": "nodenext",
-    "moduleResolution": "nodenext",
-    "noEmit": true
+    "moduleResolution": "nodenext"
   },
   "include": ["src"]
 }

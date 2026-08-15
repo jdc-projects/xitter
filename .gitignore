@@ -8,6 +8,8 @@ out/
 build/
 .turbo/
 *.tsbuildinfo
+**/*.js.map
+**/*.d.ts.map
 
 # Generated Prisma clients (prisma-client generator output)
 **/src/generated/prisma/
