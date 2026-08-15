@@ -25,6 +25,7 @@
     "undici": "^7"
   },
   "devDependencies": {
+    "@xitter/eslint-config": "*",
     "@xitter/tsconfig": "*",
     "vitest": "^4"
   }
