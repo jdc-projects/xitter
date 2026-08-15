@@ -13,27 +13,32 @@ Demo data is disposable by design: every environment can be wiped to a known sta
 
 ## Scope
 
-| Store                       | Reset action                                                                                                                        | Mechanism                                                                            |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| CNPG Postgres (service DBs) | Truncate all rows in every service database                                                                                         | Per-service `POST /internal/reseed` (performs truncation; reseed only when flag set) |
-| RustFS                      | Empty the `xitter-media` media bucket                                                                                               | Bucket wipe (delete all objects)                                                     |
-| Kafka                       | Remove topic records and delete consumer groups `xitter-fanout-worker`, `xitter-media-process-worker`, `xitter-search-index-worker` | Topic record deletion + consumer-group reset                                         |
-| OpenSearch                  | Delete the `posts` index                                                                                                            | Index delete (recreated on next indexing event)                                      |
-| Keycloak                    | Delete and recreate realm `xitter-demo` with users `demo1..demo10` (password `DemoPass123!`)                                        | Realm recreate via Keycloak admin API                                                |
-| Optional reseed             | Deterministic content: faker seed `42`                                                                                              | Same reseed flag drives per-service `/internal/reseed` payload                       |
+| Store                       | Reset action                                                                                                                                                                        | Mechanism                                                                            |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| CNPG Postgres (service DBs) | Truncate all rows in every service database                                                                                                                                         | Per-service `POST /internal/reseed` (performs truncation; reseed only when flag set) |
+| cms Postgres                | Truncate Payload _content_ tables only (landing intro, FAQ); admin users/sessions are re-established, not lost                                                                      | CMS content re-apply from repo seed files                                            |
+| RustFS                      | Empty the `xitter-media` media bucket                                                                                                                                               | Bucket wipe (delete all objects)                                                     |
+| Kafka                       | Reset consumer groups `xitter-fanout-worker`, `xitter-media-process-worker`, `xitter-search-index-worker` so workers resume from the new epoch (retained messages are not replayed) | Consumer-group reset                                                                 |
+| OpenSearch                  | Delete the `posts` index                                                                                                                                                            | Index delete (recreated on next indexing event)                                      |
+| Keycloak                    | Delete and recreate realm `xitter-demo` with users `demo1..demo10` (password `DemoPass123!`)                                                                                        | Realm recreate via Keycloak admin API                                                |
+| Valkey                      | Flush ephemeral keys (pub/sub channels, rate limits)                                                                                                                                | Flush                                                                                |
+| Optional reseed             | Deterministic content: faker seed `42`                                                                                                                                              | Same reseed flag drives per-service `/internal/reseed` payload                       |
 
 ## Execution order
 
-Order matters: identities must exist before reseeded content references them, and queues/indexes must be empty before new events flow.
+Order matters: identities must exist before reseeded content references them, workers must be quiet before stores are wiped, and queues/indexes must be empty before new events flow. This ordering is authoritative; [../data/03-data-lifecycle.md](../data/03-data-lifecycle.md) repeats it for the data view.
 
 ```mermaid
 flowchart TD
-  S(["Reset job starts"]) --> T["Truncate service DBs\n(per-service /internal/reseed)"]
+  S(["Reset job starts"]) --> Q["Quiesce event consumption\n(scale workers to zero / pause groups)"]
+  Q --> C["Recreate Keycloak realm xitter-demo\n(demo1..demo10)"]
+  C --> T["Truncate service DBs + CMS content tables\n(per-service /internal/reseed)"]
   T --> M["Wipe RustFS xitter-media bucket"]
-  M --> K["Reset Kafka topics + consumer groups"]
-  K --> O["Delete OpenSearch posts index"]
-  O --> C["Recreate Keycloak realm xitter-demo\n(demo1..demo10)"]
-  C --> R{Reseed flag?}
+  M --> O["Delete OpenSearch posts index"]
+  O --> K["Reset Kafka consumer groups"]
+  K --> FL["Flush Valkey"]
+  FL --> W["Resume workers"]
+  W --> R{Reseed flag?}
   R -->|true| D["Deterministic reseed (faker seed 42)"]
   R -->|false| E["Leave empty"]
   D --> V(["Verify + report"])
