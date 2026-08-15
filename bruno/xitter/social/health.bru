@@ -1,0 +1,14 @@
+meta {
+  name: Health
+  seq: 1
+}
+
+get {
+  url: {{seedBase}}/api/social/v1/healthz
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: 200
+}

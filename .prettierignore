@@ -1,11 +1,1 @@
-node_modules
-dist
-.next
-out
-coverage
-.turbo
-**/src/generated
-package-lock.json
-*.bru
-docs/specs/architecture/openapi
-bruno
+bruno/

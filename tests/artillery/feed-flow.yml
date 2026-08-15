@@ -1,0 +1,31 @@
+# Load tests run against prod-like mode locally, or a deployed environment
+# when absolute numbers matter. See docs/specs/testing/02-suites.md.
+config:
+  target: "{{ $processEnvironment.E2E_BASE_URL || 'http://localhost:8080' }}"
+  processor: ./processors.js
+  phases:
+    - name: warm-up
+      duration: 30
+      arrivalRate: 1
+    - name: ramp
+      duration: 120
+      arrivalRate: 2
+      rampTo: 10
+scenarios:
+  - name: browse feed
+    flow:
+      - function: loginDemo
+      - get:
+          url: /api/feed/v1/feed
+          headers:
+            authorization: "Bearer {{ token }}"
+  - name: create post
+    weight: 2
+    flow:
+      - function: loginDemo
+      - post:
+          url: /api/posts/v1/posts
+          headers:
+            authorization: "Bearer {{ token }}"
+          json:
+            text: "load test post"

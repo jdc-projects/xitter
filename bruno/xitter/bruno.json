@@ -1,0 +1,8 @@
+{
+  "name": "xitter",
+  "version": "1.0.0",
+  "spec": "xa2",
+  "auth": {
+    "mode": "bearer"
+  }
+}
