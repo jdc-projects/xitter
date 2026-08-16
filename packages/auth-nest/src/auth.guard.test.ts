@@ -120,6 +120,15 @@ describe('AuthGuard (user routes)', () => {
     ).resolves.toBe(true);
   });
 
+  it('rejects an invalid X-Access-Token - forwarded tokens are re-validated', async () => {
+    const guard = makeGuard({}, {}, true, false);
+    const err = await guard
+      .canActivate(createContext({ headers: { 'x-access-token': 'forged-or-expired' } }))
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(HttpException);
+    expect((err as HttpException).getStatus()).toBe(401);
+  });
+
   it('trusts edge identity headers in cluster mode when no token is present', async () => {
     const guard = makeGuard({}, {}, true, false, { ...options, trustEdgeHeaders: true });
     const request: { headers: Record<string, string>; user?: RequestUser } = {

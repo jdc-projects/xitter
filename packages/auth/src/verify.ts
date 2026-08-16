@@ -36,7 +36,7 @@ interface JoseModule {
     token: string,
     key: unknown,
     options: Record<string, unknown>,
-  ): Promise<{ payload: Record<string, unknown> }>;
+  ): Promise<{ payload: Record<string, unknown>; protectedHeader: Record<string, unknown> }>;
 }
 
 let josePromise: Promise<JoseModule> | undefined;
@@ -55,10 +55,15 @@ export function createTokenVerifier(options: TokenVerifierOptions): TokenVerifie
       jwks ??= j.createRemoteJWKSet(
         new URL(options.jwksUri ?? `${options.issuer}/protocol/openid-connect/certs`),
       );
-      const { payload } = await j.jwtVerify(token, jwks, {
+      const { payload, protectedHeader } = await j.jwtVerify(token, jwks, {
         issuer: options.issuer,
         ...(options.audience ? { audience: options.audience } : {}),
       });
+      // Keycloak stamps ID tokens with typ "ID". They pass signature and
+      // azp checks like access tokens, but must never authenticate API calls.
+      if (protectedHeader.typ === 'ID') {
+        throw new Error('ID token presented where an access token is required');
+      }
       const realmAccess = payload.realm_access as { roles?: string[] } | undefined;
       const aud = Array.isArray(payload.aud) ? payload.aud.join(', ') : payload.aud;
       return {

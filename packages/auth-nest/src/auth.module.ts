@@ -1,4 +1,5 @@
 import { Global, Module, Provider } from '@nestjs/common';
+import { createLogger } from '@xitter/observability';
 import { createTokenVerifier } from '@xitter/auth';
 import {
   AUTH_OPTIONS,
@@ -9,6 +10,8 @@ import {
 import { AuthGuard } from './auth.guard.js';
 import { RateLimitGuard } from './rate-limit.guard.js';
 import { TokenBucketRateLimiter } from './rate-limiter.js';
+
+const logger = createLogger({ service: 'auth-nest' });
 
 /**
  * Wires the shared verifiers and guards for one service. Import once:
@@ -22,6 +25,13 @@ import { TokenBucketRateLimiter } from './rate-limiter.js';
 @Module({})
 export class AuthModule {
   static forRoot(options: AuthModuleOptions) {
+    if (options.trustEdgeHeaders) {
+      logger.warn(
+        `${options.serviceName}: AUTH edge-header trust is ENABLED - identity headers are accepted without validation. ` +
+          'This is a full auth bypass unless the validating ingress is the only network path to this service ' +
+          '(local Traefik does not strip these headers - keep it off locally).',
+      );
+    }
     const providers: Provider[] = [
       { provide: AUTH_OPTIONS, useValue: options },
       {

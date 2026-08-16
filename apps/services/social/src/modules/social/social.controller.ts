@@ -28,6 +28,8 @@ export class SocialController {
 
   @Post('profiles/:userId/block')
   @HttpCode(204)
+  @UseGuards(RateLimitGuard)
+  @RateLimit()
   block(@Param('userId') userId: string) {
     this.social.block(userId);
   }

@@ -28,6 +28,9 @@ type RequestWithUser = { headers: Record<string, unknown>; user?: RequestUser };
  * trusted for requests carrying no bearer token at all; `X-Access-Token` is
  * always re-validated. Keeping both modes in one guard removes the
  * route-guard ordering trap a separate internal guard would create.
+ * Precondition: the validating ingress must be the only network path to the
+ * service - anything that reaches it directly (local Traefik does not strip
+ * these headers) bypasses authentication entirely.
  */
 @Injectable()
 export class AuthGuard implements CanActivate {

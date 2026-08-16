@@ -14,6 +14,14 @@ export interface Session {
 /** Refresh a little before real expiry to absorb clock skew. */
 const EXPIRY_SKEW_MS = 30_000;
 
+/**
+ * One refresh grant in flight per session id: layout and page render both
+ * call getSession() concurrently and must share it - two grants with the
+ * same refresh token would log the user out under rotation. Module state is
+ * fine on the long-lived node server (no serverless recycling).
+ */
+const refreshInFlight = new Map<string, Promise<Session | null>>();
+
 export function recordFromTokens(
   tokens: Awaited<ReturnType<typeof oidc.refreshTokenGrant>>,
 ): SessionRecord {
@@ -47,28 +55,52 @@ export async function resolveSession(
   id: string | undefined,
 ): Promise<Session | null> {
   if (!id) return null;
-  const record = await store.get(id);
+
+  // Store outage (Valkey down): treat as signed out - a redirect to login
+  // beats an unhandled 500 on every authenticated page.
+  let record: SessionRecord | null;
+  try {
+    record = await store.get(id);
+  } catch {
+    return null;
+  }
   if (!record) return null;
 
   if (Date.now() < record.expiresAt) return toSession(id, record);
   if (!record.refreshToken) {
-    await store.delete(id);
+    await store.delete(id).catch(() => undefined);
     return null;
   }
 
+  const inFlight = refreshInFlight.get(id);
+  if (inFlight) return inFlight;
+
+  const refreshToken = record.refreshToken;
+  const refresh = refreshSession(store, id, refreshToken).finally(() => refreshInFlight.delete(id));
+  refreshInFlight.set(id, refresh);
+  return refresh;
+}
+
+async function refreshSession(
+  store: SessionStore,
+  id: string,
+  refreshToken: string,
+): Promise<Session | null> {
   try {
     const config = await oidcConfig();
-    const tokens = await oidc.refreshTokenGrant(config, record.refreshToken);
+    const tokens = await oidc.refreshTokenGrant(config, refreshToken);
     const refreshed: SessionRecord = {
       ...recordFromTokens(tokens),
-      // Keycloak rotates refresh tokens; keep the old one when the response
-      // omits it (some providers reuse the original).
-      refreshToken: tokens.refresh_token ?? record.refreshToken,
+      // The demo realm does not rotate refresh tokens, so the response may
+      // omit one - keep the stored token rather than dropping the session.
+      refreshToken: tokens.refresh_token ?? refreshToken,
     };
     await store.save(id, refreshed);
     return toSession(id, refreshed);
   } catch {
-    await store.delete(id);
+    // Refresh rejected, or the store is down mid-refresh: unusable either
+    // way. Cleanup is best-effort (the store may be the thing that failed).
+    await store.delete(id).catch(() => undefined);
     return null;
   }
 }

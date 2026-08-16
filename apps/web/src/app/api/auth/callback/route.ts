@@ -1,13 +1,17 @@
 import { NextResponse } from 'next/server';
 import { oidc, oidcConfig } from '@/lib/auth/oidc';
 import { recordFromTokens } from '@/lib/auth/session';
-import { valkeyStores } from '@/lib/auth/session-store';
+import { valkeyStores, type LoginState } from '@/lib/auth/session-store';
 import { SESSION_COOKIE, SESSION_TTL_SECONDS, webEnv } from '@/lib/server-env';
 
 export const runtime = 'nodejs';
 
-function loginRedirect(base: string, reason: string): NextResponse {
-  return NextResponse.redirect(new URL(`/login?error=${reason}`, base), 303);
+function loginRedirect(base: string, reason: string, next?: string): NextResponse {
+  const target = new URL('/login', base);
+  target.searchParams.set('error', reason);
+  // Keep the destination across error redirects so a retry returns there.
+  if (next) target.searchParams.set('next', next);
+  return NextResponse.redirect(target, 303);
 }
 
 /**
@@ -27,7 +31,13 @@ export async function GET(request: Request) {
   const state = callbackUrl.searchParams.get('state');
   if (!state) return loginRedirect(base, 'state');
 
-  const login = await valkeyStores().logins.take(state);
+  let login: LoginState | null;
+  try {
+    login = await valkeyStores().logins.take(state);
+  } catch {
+    // Store outage: the state cannot be validated - clean bounce to login.
+    return loginRedirect(base, 'state');
+  }
   if (!login) return loginRedirect(base, 'state');
 
   try {
@@ -49,6 +59,6 @@ export async function GET(request: Request) {
     });
     return response;
   } catch {
-    return loginRedirect(base, 'callback');
+    return loginRedirect(base, 'callback', login.next);
   }
 }

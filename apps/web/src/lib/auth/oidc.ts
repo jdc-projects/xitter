@@ -6,9 +6,9 @@ let configPromise: Promise<oidc.Configuration> | undefined;
 /**
  * Discovery document for the demo realm's public `web` client, cached for
  * the process lifetime. Server-side only (BFF model - browsers never talk
- * OIDC directly). Local Keycloak is plain HTTP, which openid-client blocks
- * by default (private-use OAuth protections) - allowed there only, so a
- * misconfigured deployed issuer still fails closed.
+ * OIDC directly). `allowInsecureRequests` permits requests to plain-http
+ * issuer endpoints (local Keycloak); it is enabled only when the configured
+ * issuer is itself http, so a deployed https issuer still requires TLS.
  */
 export function oidcConfig(): Promise<oidc.Configuration> {
   configPromise ??= (async () => {

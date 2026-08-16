@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { memoryStores } from './session-store.js';
+import { memoryStores, type SessionStore } from './session-store.js';
 
 // The session module consumes openid-client only through ./oidc.js - mock
 // that boundary; the real discovery/grant code is covered by the e2e flow.
@@ -144,6 +144,66 @@ describe('resolveSession', () => {
     await expect(resolveSession(sessions, id)).resolves.toMatchObject({
       accessToken: 'new-access',
     });
+  });
+
+  it('shares one in-flight refresh between concurrent callers (layout + page)', async () => {
+    const { sessions } = memoryStores();
+    const id = await sessions.create({
+      subject: 'user-1',
+      username: 'demo1',
+      accessToken: 'stale-access',
+      refreshToken: 'old-refresh',
+      expiresAt: clockNow - 1_000,
+    });
+    let resolveGrant: (tokens: unknown) => void = () => {};
+    refreshTokenGrantMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveGrant = resolve;
+      }) as never,
+    );
+
+    const first = resolveSession(sessions, id);
+    const second = resolveSession(sessions, id);
+    resolveGrant(tokenResponse());
+
+    const results = await Promise.all([first, second]);
+    expect(refreshTokenGrantMock).toHaveBeenCalledTimes(1);
+    expect(results[0]).toEqual(results[1]);
+    expect(results[0]).toMatchObject({ accessToken: 'new-access' });
+  });
+
+  it('treats a store outage on load as no session (no unhandled 500)', async () => {
+    const { sessions } = memoryStores();
+    const down: SessionStore = {
+      ...sessions,
+      async get() {
+        throw new Error('valkey unavailable');
+      },
+    };
+
+    await expect(resolveSession(down, 'any-id')).resolves.toBeNull();
+    expect(refreshTokenGrantMock).not.toHaveBeenCalled();
+  });
+
+  it('returns null when persisting the refreshed session fails', async () => {
+    const { sessions } = memoryStores();
+    const id = await sessions.create({
+      subject: 'user-1',
+      username: 'demo1',
+      accessToken: 'stale-access',
+      refreshToken: 'refresh',
+      expiresAt: clockNow - 1_000,
+    });
+    refreshTokenGrantMock.mockResolvedValue(tokenResponse() as never);
+    const down: SessionStore = {
+      ...sessions,
+      async save() {
+        throw new Error('valkey unavailable');
+      },
+    };
+
+    await expect(resolveSession(down, id)).resolves.toBeNull();
+    await expect(sessions.get(id)).resolves.toBeNull();
   });
 });
 
