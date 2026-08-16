@@ -3,14 +3,15 @@ import client from 'prom-client';
 
 export interface MetricsServer {
   registry: client.Registry;
-  /** Resolves when the /metrics listener is listening. */
-  started: Promise<void>;
+  /** Resolves with the bound port when the listener is up (useful for port 0). */
+  started: Promise<number>;
   stop(): Promise<void>;
 }
 
 /**
  * Minimal Prometheus scrape endpoint for workers (services expose /metrics via
- * their HTTP stack instead). One registry per process.
+ * their HTTP stack instead). One registry per process. Also answers /healthz
+ * liveness probes - the listener being up means the process is alive.
  */
 export function createMetricsServer(port: number): MetricsServer {
   const registry = new client.Registry();
@@ -30,11 +31,21 @@ export function createMetricsServer(port: number): MetricsServer {
         });
       return;
     }
+    if (req.url === '/healthz') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ status: 'ok' }));
+      return;
+    }
     res.writeHead(404);
     res.end();
   });
 
-  const started = new Promise<void>((resolve) => server.listen(port, () => resolve()));
+  const started = new Promise<number>((resolve) =>
+    server.listen(port, () => {
+      const address = server.address();
+      resolve(typeof address === 'object' && address !== null ? address.port : port);
+    }),
+  );
   return {
     registry,
     started,
