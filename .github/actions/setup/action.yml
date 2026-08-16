@@ -1,16 +1,21 @@
 name: 'xitter setup'
 description: >-
-  Cached Node + node_modules + Playwright chromium for xitter CI jobs.
-  Runs AFTER actions/checkout (local actions need the repo present).
-  node_modules is cached on the lockfile hash (immutable key); npm ci only
-  runs on a miss. Set `playwright: true` to also cache the chromium download.
+  Cached Node + node_modules for xitter CI jobs. Runs AFTER actions/checkout
+  (local actions need the repo present).
 
-  The node_modules save is guarded on job success so a failed job can never
-  poison the immutable cache entry with a partial tree.
+  Exactly one job per run should set `save: true` (the earliest job, so the
+  entry exists for restore-only jobs on the next run); restore-only jobs fall
+  back to a direct npm ci on a miss (first run of a lockfile change). The
+  node_modules save is guarded on job success so a failed job can never poison
+  the immutable cache entry with a partial tree.
 
 inputs:
   playwright:
     description: 'Cache and install Playwright chromium'
+    required: false
+    default: 'false'
+  save:
+    description: 'Allow writing the node_modules cache entry (designate ONE job)'
     required: false
     default: 'false'
 
@@ -22,19 +27,24 @@ runs:
         node-version-file: .nvmrc
         cache: npm
 
-    # v2 namespace: the initial run of this action failed before npm ci and
-    # cached an empty tree under the v1 key. Immutable keys never re-save, so
-    # bump the namespace to orphan the poisoned entry.
-    - uses: actions/cache@v6
+    - name: Restore node_modules
       id: node-modules
+      uses: actions/cache/restore@v6
       with:
         path: node_modules
-        key: node-modules-v2-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+        key: node-modules-v3-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
     - name: Install dependencies
       if: steps.node-modules.outputs.cache-hit != 'true'
       run: npm ci
       shell: bash
+
+    - name: Save node_modules
+      if: inputs.save == 'true' && steps.node-modules.outputs.cache-hit != 'true' && success()
+      uses: actions/cache/save@v6
+      with:
+        path: node_modules
+        key: node-modules-v3-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
     - name: Cache Playwright chromium
       if: inputs.playwright == 'true'
