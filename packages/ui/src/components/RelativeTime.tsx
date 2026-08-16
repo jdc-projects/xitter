@@ -1,0 +1,52 @@
+'use client';
+
+import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
+import utc from 'dayjs/plugin/utc';
+import { Text, type TextProps } from '@mantine/core';
+
+dayjs.extend(relativeTime);
+dayjs.extend(utc);
+
+/**
+ * Feed timestamp label: relative to the most significant figure only (e.g. "1h"
+ * not "1h 20m") when less than 24h old, otherwise absolute date + time (UTC,
+ * so the rendered value is deterministic regardless of viewer timezone).
+ */
+export function formatFeedTimestamp(date: string | Date, now: string | Date = new Date()): string {
+  const from = dayjs.utc(date);
+  const reference = dayjs.utc(now);
+  if (reference.diff(from, 'hour') >= 24) {
+    return from.format('D MMM YYYY HH:mm');
+  }
+  const minutes = reference.diff(from, 'minute');
+  if (minutes < 1) return `${Math.max(reference.diff(from, 'second'), 0)}s`;
+  if (minutes < 60) return `${minutes}m`;
+  return `${reference.diff(from, 'hour')}h`;
+}
+
+export interface RelativeTimeProps extends Omit<TextProps, 'children'> {
+  /** ISO timestamp of the post. */
+  date: string | Date;
+  /** Reference point for relative rendering - defaults to now. */
+  now?: string | Date;
+}
+
+export function RelativeTime({ date, now, ...textProps }: RelativeTimeProps) {
+  const from = dayjs.utc(date);
+  const label = formatFeedTimestamp(date, now ?? new Date());
+  const title = from.format('dddd, D MMMM YYYY HH:mm');
+
+  return (
+    <Text
+      component="time"
+      dateTime={from.toISOString()}
+      title={title}
+      size="sm"
+      c="dimmed"
+      {...textProps}
+    >
+      {label}
+    </Text>
+  );
+}

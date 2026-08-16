@@ -1,0 +1,24 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model FeedEntry {
+  id            String   @id @default(uuid())
+  userId        String
+  postId        String
+  authorId      String
+  reason        String // post | repost
+  repostedById  String?
+  postCreatedAt DateTime
+  insertedAt    DateTime @default(now())
+
+  @@unique([userId, postId, reason, repostedById])
+  @@index([userId, insertedAt])
+}

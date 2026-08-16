@@ -1,0 +1,32 @@
+{
+  "name": "@xitter/testing",
+  "version": "0.0.0",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@testcontainers/kafka": "^12",
+    "@testcontainers/postgresql": "^12",
+    "testcontainers": "^12",
+    "undici": "^7"
+  },
+  "devDependencies": {
+    "@xitter/eslint-config": "*",
+    "@xitter/tsconfig": "*",
+    "vitest": "^4"
+  }
+}

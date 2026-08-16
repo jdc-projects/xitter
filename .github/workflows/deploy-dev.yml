@@ -1,0 +1,66 @@
+name: Deploy dev
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+jobs:
+  full-mutation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - name: Full mutation run (all workspaces, incremental reports)
+        run: npm run mutate
+
+  build-images:
+    # Builds and pushes per-app images; deploy wiring lands with feature
+    # tickets as workloads are added to the Tofu environments.
+    runs-on: ubuntu-latest
+    needs: full-mutation
+    if: success()
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        workspace:
+          - web
+          - cms
+          - admin
+          - '@xitter/service-social'
+          - '@xitter/service-posts'
+          - '@xitter/service-media'
+          - '@xitter/service-feed'
+          - '@xitter/service-search'
+          - '@xitter/worker-fanout'
+          - '@xitter/worker-media-process'
+          - '@xitter/worker-search-index'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: npm run build --filter=${{ matrix.workspace }}
+      # Image build + push step activates with the first deploy ticket.
+
+  tofu-apply:
+    # Applies infra/iac/environments/dev after images exist. Self-hosted
+    # runner - the cluster API is private.
+    runs-on: self-hosted
+    needs: build-images
+    steps:
+      - uses: actions/checkout@v7
+      - uses: opentofu/setup-opentofu@v2
+      - name: Write kubeconfig
+        run: |
+          if [ -z "${{ secrets.CLUSTER_KUBECONFIG }}" ]; then
+            echo '::error::CLUSTER_KUBECONFIG secret is not set - see docs/runbooks/04-ci-and-secrets.md'
+            exit 1
+          fi
+          mkdir -p infra
+          printf '%s' "${{ secrets.CLUSTER_KUBECONFIG }}" > infra/cluster.yml
+      - name: tofu apply (dev)
+        working-directory: infra/iac/environments/dev
+        run: |
+          tofu init
+          tofu apply -auto-approve -input=false

@@ -1,0 +1,98 @@
+# Dynamic edge routing - Go-templated so every target port is env-driven
+# (XITTER_*_PORT), matching the deployed path-based routing layout:
+#   /                -> web (catch-all, lowest priority)
+#   /api/{service}/* -> service (no strip - services own their /api/{svc}/v1 prefix)
+#   /media/*         -> RustFS (strip /media -> bucket path)
+#   /cms/*           -> CMS
+#   /admin/*         -> admin panel
+
+http:
+  routers:
+    web:
+      rule: 'PathPrefix(`/`)'
+      priority: 1
+      service: web
+
+    api-social:
+      rule: 'PathPrefix(`/api/social`)'
+      priority: 200
+      service: api-social
+
+    api-posts:
+      rule: 'PathPrefix(`/api/posts`)'
+      priority: 200
+      service: api-posts
+
+    api-media:
+      rule: 'PathPrefix(`/api/media`)'
+      priority: 200
+      service: api-media
+
+    api-feed:
+      rule: 'PathPrefix(`/api/feed`)'
+      priority: 200
+      service: api-feed
+
+    api-search:
+      rule: 'PathPrefix(`/api/search`)'
+      priority: 200
+      service: api-search
+
+    media:
+      rule: 'PathPrefix(`/media`)'
+      priority: 300
+      service: rustfs
+      middlewares: [strip-media]
+
+    cms:
+      rule: 'PathPrefix(`/cms`)'
+      priority: 150
+      service: cms
+
+    admin:
+      rule: 'PathPrefix(`/admin`)'
+      priority: 150
+      service: admin
+
+  middlewares:
+    strip-media:
+      stripPrefix:
+        prefixes: ['/media']
+
+  services:
+    web:
+      loadBalancer:
+        servers:
+          - url: 'http://host.docker.internal:{{ env `XITTER_WEB_PORT` | default `3456` }}'
+    cms:
+      loadBalancer:
+        servers:
+          - url: 'http://host.docker.internal:{{ env `XITTER_CMS_PORT` | default `3457` }}'
+    admin:
+      loadBalancer:
+        servers:
+          - url: 'http://host.docker.internal:{{ env `XITTER_ADMIN_PORT` | default `3458` }}'
+    api-social:
+      loadBalancer:
+        servers:
+          - url: 'http://host.docker.internal:{{ env `XITTER_SOCIAL_PORT` | default `8101` }}'
+    api-posts:
+      loadBalancer:
+        servers:
+          - url: 'http://host.docker.internal:{{ env `XITTER_POSTS_PORT` | default `8102` }}'
+    api-media:
+      loadBalancer:
+        servers:
+          - url: 'http://host.docker.internal:{{ env `XITTER_MEDIA_PORT` | default `8103` }}'
+    api-feed:
+      loadBalancer:
+        servers:
+          - url: 'http://host.docker.internal:{{ env `XITTER_FEED_PORT` | default `8104` }}'
+    api-search:
+      loadBalancer:
+        servers:
+          - url: 'http://host.docker.internal:{{ env `XITTER_SEARCH_PORT` | default `8105` }}'
+    rustfs:
+      loadBalancer:
+        servers:
+          - url: 'http://rustfs:9000'

@@ -1,0 +1,207 @@
+name: PR gates
+
+on:
+  pull_request:
+    branches: [dev]
+
+concurrency:
+  group: gates-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.filter.outputs.changes }}
+      infra: ${{ steps.filter.outputs.infra }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            packages:
+              - "packages/**"
+              - "apps/**"
+              - "package.json"
+              - "package-lock.json"
+              - "turbo.json"
+            infra:
+              - "infra/iac/**"
+
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - run: npm run format:check
+
+  build:
+    # Build once; the turbo cache (repo .turbo) is shared with downstream jobs
+    # via the immutable-key save/restore below, so they replay instead of
+    # rebuilding.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - uses: actions/cache@v6
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
+      - name: Build once (XITTER_ENV matches e2e so the turbo cache replays)
+        run: npm run build
+        env:
+          XITTER_ENV: ci
+
+  gates:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - uses: actions/cache/restore@v6
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
+      - run: npm run gates
+
+  repo-analysis:
+    # fallow + react-doctor + mermaid validation; needs the base ref for
+    # changed-file attribution and chromium for diagram rendering
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+        with:
+          playwright: true
+      - name: Materialise package builds (diagrams imports @xitter/config dist)
+        run: npm run build:packages
+      - name: Fetch base ref
+        run: git fetch origin dev:refs/remotes/origin/dev
+      - run: npm run lint:repo
+
+  playwright-web:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          playwright: true
+      - uses: actions/cache/restore@v6
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
+      - name: Materialise package builds (turbo cache replay)
+        run: npm run build:packages
+      - run: npm run test:web
+        env:
+          CI: 'true'
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-web-report
+          path: tests/playwright/web/report
+          retention-days: 7
+
+  e2e:
+    # Full-stack e2e against the docker dependency stack. Skeleton phase:
+    # specs cover public pages only; grows with each feature ticket.
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          playwright: true
+      - uses: actions/cache/restore@v6
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
+      - name: Start stack
+        run: |
+          npm run deps:up
+          npm run topics:create
+          npm run build
+        env:
+          XITTER_ENV: ci
+      - run: npm run test:e2e
+        env:
+          CI: 'true'
+          XITTER_ENV: ci
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-e2e-report
+          path: tests/playwright/e2e/report
+          retention-days: 7
+
+  mutation:
+    # Scoped to affected workspaces in PRs; full runs happen on merge to dev.
+    needs: [changes, build]
+    runs-on: ubuntu-latest
+    if: needs.changes.outputs.packages != '[]'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - uses: actions/cache/restore@v6
+        with:
+          path: .turbo
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: turbo-${{ runner.os }}-
+      - name: Fetch base ref
+        run: git fetch origin dev:refs/remotes/origin/dev
+      - run: npm run mutate:affected
+
+  tofu:
+    # Syntax + validate for both environments. Self-hosted runner: the
+    # cluster API is on a private LAN address - GitHub-hosted runners
+    # cannot reach it (validate itself needs no backend, but this keeps
+    # all tofu jobs on one runner class).
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v7
+      - uses: opentofu/setup-opentofu@v2
+      - name: fmt
+        run: tofu -chdir=infra/iac/environments/dev fmt -check -recursive && tofu -chdir=infra/iac/environments/prod fmt -check -recursive
+      - name: validate (dev)
+        working-directory: infra/iac/environments/dev
+        run: |
+          tofu init -backend=false
+          tofu validate
+      - name: validate (prod)
+        working-directory: infra/iac/environments/prod
+        run: |
+          tofu init -backend=false
+          tofu validate
+
+  tofu-plan:
+    # Full plan against the real backend when infra changes. Self-hosted
+    # runner - the cluster API is private.
+    needs: [changes, tofu]
+    runs-on: self-hosted
+    if: needs.changes.outputs.infra == 'true'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: opentofu/setup-opentofu@v2
+      - name: Write kubeconfig
+        run: |
+          if [ -z "${{ secrets.CLUSTER_KUBECONFIG }}" ]; then
+            echo '::error::CLUSTER_KUBECONFIG secret is not set - see docs/runbooks/04-ci-and-secrets.md'
+            exit 1
+          fi
+          mkdir -p infra
+          printf '%s' "${{ secrets.CLUSTER_KUBECONFIG }}" > infra/cluster.yml
+      - name: tofu plan (dev)
+        working-directory: infra/iac/environments/dev
+        run: |
+          tofu init
+          tofu plan -input=false

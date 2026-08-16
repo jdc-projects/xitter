@@ -1,0 +1,8 @@
+{
+  "extends": "@xitter/tsconfig/base.json",
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext"
+  },
+  "include": ["src"]
+}

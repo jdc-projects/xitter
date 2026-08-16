@@ -1,0 +1,39 @@
+{
+  "name": "cms",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "tsx scripts/serve.ts dev",
+    "build": "payload generate:importmap && payload generate:types && next build --turbopack",
+    "start": "tsx scripts/serve.ts start",
+    "generate": "payload generate:importmap && payload generate:types",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@payloadcms/db-postgres": "^3",
+    "@payloadcms/live-preview-react": "^3",
+    "@payloadcms/next": "^3",
+    "@payloadcms/richtext-lexical": "^3",
+    "@xitter/config": "*",
+    "next": "^16",
+    "payload": "^3",
+    "react": "^19",
+    "react-dom": "^19",
+    "sharp": "^0.35",
+    "zod": "^4"
+  },
+  "devDependencies": {
+    "@types/node": "^26",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@xitter/eslint-config": "*",
+    "@xitter/tsconfig": "*",
+    "tsx": "^4",
+    "typescript": "^6",
+    "vitest": "^4"
+  },
+  "type": "module"
+}

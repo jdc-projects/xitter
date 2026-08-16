@@ -1,0 +1,15 @@
+# Browser-level load test using Artillery's Playwright engine.
+config:
+  target: "{{ $processEnvironment.E2E_BASE_URL || 'http://localhost:8080' }}"
+  engines:
+    playwright:
+      testMatch: '**/*.playwright.ts'
+  phases:
+    - name: browse
+      duration: 120
+      arrivalRate: 1
+      rampTo: 5
+scenarios:
+  - engine: playwright
+    testFunction: browseFeedFlow
+    name: browse feed (browser)

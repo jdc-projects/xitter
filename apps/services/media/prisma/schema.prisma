@@ -1,0 +1,23 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model MediaAsset {
+  id        String   @id @default(uuid())
+  ownerId   String
+  status    String // pending | ready | failed
+  objectKey String
+  mimeType  String
+  bytes     Int
+  variants  Json
+  createdAt DateTime @default(now())
+
+  @@index([ownerId])
+}

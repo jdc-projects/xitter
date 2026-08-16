@@ -1,0 +1,7 @@
+# Linux-only override: resolve host.docker.internal to the host gateway.
+# Docker Desktop (macOS/Windows) resolves it natively; applied automatically
+# by @xitter/scripts on Linux (see packages/scripts/src/lib/compose.ts).
+services:
+  traefik:
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'

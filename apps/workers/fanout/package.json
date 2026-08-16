@@ -1,0 +1,38 @@
+{
+  "name": "@xitter/worker-fanout",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "mutate": "stryker run"
+  },
+  "dependencies": {
+    "@xitter/api-client": "*",
+    "@xitter/api-contracts": "*",
+    "@xitter/auth": "*",
+    "@xitter/config": "*",
+    "@xitter/eslint-config": "*",
+    "@xitter/events": "*",
+    "@xitter/observability": "*",
+    "@xitter/tsconfig": "*",
+    "kafkajs": "^2",
+    "prom-client": "^15",
+    "zod": "^4"
+  },
+  "devDependencies": {
+    "@stryker-mutator/core": "^10",
+    "@stryker-mutator/vitest-runner": "^10",
+    "@types/node": "^26",
+    "@xitter/testing": "*",
+    "tsx": "^4",
+    "typescript": "^6",
+    "vitest": "^4"
+  }
+}

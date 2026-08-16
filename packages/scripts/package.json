@@ -1,0 +1,29 @@
+{
+  "name": "@xitter/scripts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@faker-js/faker": "^10",
+    "@keycloak/keycloak-admin-client": "^26",
+    "@xitter/api-contracts": "*",
+    "@xitter/config": "*",
+    "@xitter/events": "*",
+    "dotenv": "^17",
+    "kafkajs": "^2",
+    "playwright-core": "^1",
+    "zod": "^4"
+  },
+  "devDependencies": {
+    "@xitter/eslint-config": "*",
+    "@xitter/tsconfig": "*",
+    "vitest": "^4"
+  }
+}

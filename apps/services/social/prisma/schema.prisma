@@ -1,0 +1,51 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Profile {
+  id          String   @id // Keycloak user id (sub)
+  username    String   @unique
+  displayName String
+  bio         String?
+  createdAt   DateTime @default(now())
+
+  following   Follow[] @relation("follower")
+  followers   Follow[] @relation("followee")
+  blockedBy   Block[]  @relation("blocker")
+  blocking    Block[]  @relation("blocked")
+
+  @@index([username])
+}
+
+model Follow {
+  id         String   @id @default(uuid())
+  followerId String
+  followeeId String
+  createdAt  DateTime @default(now())
+
+  follower Profile @relation("follower", fields: [followerId], references: [id], onDelete: Cascade)
+  followee Profile @relation("followee", fields: [followeeId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followeeId])
+  @@index([followeeId])
+}
+
+model Block {
+  id         String   @id @default(uuid())
+  blockerId  String
+  blockedId  String
+  createdAt  DateTime @default(now())
+
+  blocker Profile @relation("blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked Profile @relation("blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
+}

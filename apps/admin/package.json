@@ -1,0 +1,36 @@
+{
+  "name": "admin",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "tsx scripts/serve.ts dev",
+    "build": "vite build",
+    "start": "tsx scripts/serve.ts preview",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@refinedev/antd": "^6.0.1",
+    "@refinedev/core": "^5",
+    "@refinedev/react-router": "^2",
+    "@xitter/config": "*",
+    "antd": "^5",
+    "react": "^19",
+    "react-dom": "^19",
+    "react-router": "^7"
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^6",
+    "@xitter/eslint-config": "*",
+    "@xitter/tsconfig": "*",
+    "happy-dom": "^20",
+    "tsx": "^4",
+    "typescript": "^6",
+    "vite": "^8",
+    "vitest": "^4"
+  }
+}

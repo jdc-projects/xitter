@@ -1,0 +1,18 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model SearchCheckpoint {
+  id             String   @id @default(uuid())
+  consumerGroup  String   @unique
+  lastEventId    String?
+  lastEventAt    DateTime?
+  updatedAt      DateTime @updatedAt
+}

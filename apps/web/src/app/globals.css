@@ -1,0 +1,6 @@
+/* Minimal global styles only - prefer Mantine props over CSS (see AGENTS.md). */
+
+html,
+body {
+  height: 100%;
+}

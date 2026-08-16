@@ -1,0 +1,14 @@
+meta {
+  name: Search posts
+  seq: 5
+}
+
+get {
+  url: {{seedBase}}/api/search/v1/posts?q=hello
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: 200
+}

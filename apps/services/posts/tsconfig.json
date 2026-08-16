@@ -1,0 +1,11 @@
+{
+  "extends": "@xitter/tsconfig/base.json",
+  "compilerOptions": {
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "strictPropertyInitialization": false,
+    "noEmit": true
+  },
+  "include": ["src", "openapi.gen.mts"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -1,0 +1,44 @@
+{
+  "name": "web",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "tsx scripts/serve.ts dev",
+    "build": "next build --turbopack",
+    "start": "tsx scripts/serve.ts start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@mantine/core": "^9",
+    "@mantine/hooks": "^9",
+    "@tabler/icons-react": "^3",
+    "@xitter/api-client": "*",
+    "@xitter/config": "*",
+    "@xitter/ui": "*",
+    "dayjs": "^1",
+    "next": "^16",
+    "react": "^19",
+    "react-dom": "^19"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16",
+    "@types/react": "^19",
+    "@eslint/eslintrc": "^3",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^6",
+    "@xitter/eslint-config": "*",
+    "@xitter/tsconfig": "*",
+    "babel-plugin-react-compiler": "^1",
+    "eslint-config-next": "^16",
+    "happy-dom": "^20",
+    "postcss": "^8",
+    "postcss-preset-mantine": "^1",
+    "postcss-simple-vars": "^7",
+    "tsx": "^4",
+    "typescript": "^6",
+    "vitest": "^4"
+  }
+}

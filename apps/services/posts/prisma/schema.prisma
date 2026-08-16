@@ -1,0 +1,40 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Post {
+  id         String    @id @default(uuid())
+  authorId   String
+  text       String
+  replyToId  String?
+  repostOfId String?
+  createdAt  DateTime  @default(now())
+  deletedAt  DateTime?
+
+  interactions Interaction[]
+  replies      Post[]         @relation("replies")
+  parent       Post?          @relation("replies", fields: [replyToId], references: [id])
+
+  @@index([authorId, createdAt])
+  @@index([replyToId])
+}
+
+model Interaction {
+  id        String   @id @default(uuid())
+  kind      String // like | bookmark | repost
+  postId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([kind, postId, userId])
+  @@index([userId, kind])
+}

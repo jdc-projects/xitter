@@ -1,0 +1,17 @@
+import { buildServiceDocument } from '@xitter/api-contracts';
+import { mediaApi } from './src/modules/media.registry.js';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const document = buildServiceDocument(
+  {
+    service: 'media',
+    title: 'xitter media API',
+    description: 'Image uploads: pre-signed URLs, metadata, RustFS-backed storage.',
+    basePath: '/api/media',
+  },
+  mediaApi,
+);
+
+writeFileSync(join(process.cwd(), 'openapi.json'), `${JSON.stringify(document, null, 2)}\n`);
+console.log('wrote openapi.json');
