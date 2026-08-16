@@ -1,5 +1,5 @@
-import { Controller, Get, Param, Post } from '@nestjs/common';
-import { Internal, Public } from '@xitter/auth-nest';
+import { Controller, Param, Post } from '@nestjs/common';
+import { Internal } from '@xitter/auth-nest';
 import { PostsService } from './posts.service.js';
 
 /**
@@ -12,12 +12,6 @@ import { PostsService } from './posts.service.js';
 @Controller()
 export class PostsController {
   constructor(private readonly service: PostsService) {}
-
-  @Get('healthz')
-  @Public()
-  healthz() {
-    return { status: 'ok' };
-  }
 
   @Post('posts')
   create() {

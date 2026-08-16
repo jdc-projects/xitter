@@ -1,5 +1,5 @@
 import { Controller, Get, Post } from '@nestjs/common';
-import { Internal, Public } from '@xitter/auth-nest';
+import { Internal } from '@xitter/auth-nest';
 import { FeedService } from './feed.service.js';
 /**
  * Materialised home feeds and real-time feed updates.
@@ -11,12 +11,6 @@ import { FeedService } from './feed.service.js';
 @Controller()
 export class FeedController {
   constructor(private readonly service: FeedService) {}
-
-  @Get('healthz')
-  @Public()
-  healthz() {
-    return { status: 'ok' };
-  }
 
   @Get('feed')
   getFeed() {

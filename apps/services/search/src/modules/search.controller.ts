@@ -1,5 +1,5 @@
 import { Controller, Get, Post } from '@nestjs/common';
-import { Internal, Public } from '@xitter/auth-nest';
+import { Internal } from '@xitter/auth-nest';
 import { SearchService } from './search.service.js';
 
 /**
@@ -12,12 +12,6 @@ import { SearchService } from './search.service.js';
 @Controller()
 export class SearchController {
   constructor(private readonly service: SearchService) {}
-
-  @Get('healthz')
-  @Public()
-  healthz() {
-    return { status: 'ok' };
-  }
 
   @Get('posts')
   search() {

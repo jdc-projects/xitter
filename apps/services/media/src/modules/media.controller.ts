@@ -1,5 +1,5 @@
-import { Controller, Get, Param, Post } from '@nestjs/common';
-import { Internal, Public } from '@xitter/auth-nest';
+import { Controller, Param, Post } from '@nestjs/common';
+import { Internal } from '@xitter/auth-nest';
 import { MediaService } from './media.service.js';
 
 /**
@@ -12,12 +12,6 @@ import { MediaService } from './media.service.js';
 @Controller()
 export class MediaController {
   constructor(private readonly service: MediaService) {}
-
-  @Get('healthz')
-  @Public()
-  healthz() {
-    return { status: 'ok' };
-  }
 
   @Post('uploads')
   createUpload() {

@@ -1,5 +1,5 @@
-import { Controller, Get, HttpCode, Param, Post, UseGuards } from '@nestjs/common';
-import { Internal, Public, RateLimit, RateLimitGuard } from '@xitter/auth-nest';
+import { Controller, HttpCode, Param, Post, UseGuards } from '@nestjs/common';
+import { Internal, RateLimit, RateLimitGuard } from '@xitter/auth-nest';
 import { SocialService } from './social.service.js';
 
 /**
@@ -11,12 +11,6 @@ import { SocialService } from './social.service.js';
 @Controller()
 export class SocialController {
   constructor(private readonly social: SocialService) {}
-
-  @Get('healthz')
-  @Public()
-  healthz() {
-    return { status: 'ok' };
-  }
 
   @Post('profiles/:userId/follow')
   @HttpCode(204)
