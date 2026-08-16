@@ -28,6 +28,7 @@
     "@prisma/client": "^7",
     "@xitter/api-contracts": "*",
     "@xitter/auth": "*",
+    "@xitter/auth-nest": "*",
     "@xitter/config": "*",
     "@xitter/events": "*",
     "@xitter/health": "*",

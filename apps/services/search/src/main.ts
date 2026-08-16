@@ -5,22 +5,13 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
+import { AuthGuard, ErrorEnvelopeFilter } from '@xitter/auth-nest';
 import { AppModule } from './app.module.js';
-import { kafkaBrokers, localPort, localUrl, parseEnv, serviceDbUrl } from '@xitter/config';
-import { z } from 'zod';
+import { env } from './env.js';
 import { createLogger, initSentry, initTracing } from '@xitter/observability';
-
-const envSchema = z.object({
-  PORT: z.coerce.number().int().positive().default(localPort('search')),
-  KEYCLOAK_BASE_URL: z.string().url().default(localUrl('keycloak')),
-  DEMO_REALM: z.string().min(1).default('xitter-demo'),
-  DATABASE_URL: z.string().min(1).default(serviceDbUrl('search')),
-  KAFKA_BROKERS: z.string().min(1).default(kafkaBrokers()),
-});
 
 const logger = createLogger({ service: 'search' });
 
-const env = parseEnv(envSchema);
 const tracing = initTracing('search');
 initSentry('search');
 
@@ -30,9 +21,9 @@ async function bootstrap(): Promise<void> {
     new FastifyAdapter({ trustProxy: true }),
   );
 
-  // Health probes are infrastructure-facing, not public API - they sit at the
-  // root, outside the versioned prefix.
-  app.setGlobalPrefix('api/search/v1', { exclude: ['healthz', 'readyz'] });
+  app.setGlobalPrefix('api/search/v1');
+  app.useGlobalGuards(app.get(AuthGuard));
+  app.useGlobalFilters(new ErrorEnvelopeFilter());
   app.enableShutdownHooks();
 
   await app.listen(env.PORT, '0.0.0.0');

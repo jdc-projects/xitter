@@ -5,7 +5,7 @@ import { expect, test } from '@playwright/test';
  * Accessibility smoke checks (WCAG 2.2 AA via axe-core). Each new page adds a
  * case here as it lands - see docs/specs/testing for the full strategy.
  */
-const pages = ['/', '/about'];
+const pages = ['/', '/about', '/login'];
 
 for (const path of pages) {
   test(`${path} has no serious axe violations`, async ({ page }) => {
