@@ -75,6 +75,8 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           playwright: true
+      - name: Materialise package builds (diagrams imports @xitter/config dist)
+        run: npm run build:packages
       - name: Fetch base ref
         run: git fetch origin dev:refs/remotes/origin/dev
       - run: npm run lint:repo
