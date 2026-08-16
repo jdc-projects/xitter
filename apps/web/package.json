@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@cap.js/widget": "^0.1.57",
     "@mantine/core": "^9",
     "@mantine/hooks": "^9",
     "@tabler/icons-react": "^3",
@@ -20,13 +21,14 @@
     "@xitter/ui": "*",
     "dayjs": "^1",
     "next": "^16",
+    "openid-client": "^6.8.5",
     "react": "^19",
     "react-dom": "^19"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3",
     "@testing-library/react": "^16",
     "@types/react": "^19",
-    "@eslint/eslintrc": "^3",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6",
     "@xitter/eslint-config": "*",
