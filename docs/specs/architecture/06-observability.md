@@ -18,6 +18,15 @@ Observability is part of development work, not an afterthought: dashboards and a
 - **Platform metrics**: feed freshness (age of newest entry per user cohort), reset job run status.
 - Scrape config via Prometheus `ServiceMonitor`s (and equivalent pod annotations for Knative worker revisions), declared in Tofu.
 
+## Health probes
+
+| Aspect | Rule                                                                                                                                                                                    |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Paths  | `GET /healthz` (liveness) and `GET /readyz` (readiness) at the root — outside the `api/{service}/v1` prefix, because they serve infrastructure probes, not the public API               |
+| Shape  | Nest Terminus via the shared `@xitter/health` module; workers answer `GET /healthz` on their metrics server (the listener being up means the process is alive)                          |
+| Checks | Liveness checks nothing (a slow dependency must not get a healthy pod killed). Readiness pings the service's Prisma database (`SELECT 1`, 2s timeout) and answers 503 until it responds |
+| Static | admin is static files behind Caddy; `/healthz` and `/admin/healthz` answer 200 there                                                                                                    |
+
 ## Logs
 
 - pino JSON to stdout via the shared observability package; Kubernetes collects. Never log tokens, credentials, or post bodies.
@@ -28,7 +37,7 @@ Observability is part of development work, not an afterthought: dashboards and a
 | Aspect          | Rule                                                                                          |
 | --------------- | --------------------------------------------------------------------------------------------- |
 | DSNs            | Per app/service/worker, injected as a secret at deploy (see [07-security.md](07-security.md)) |
-| Release tagging | Sentry release = image tag (semver, from CI)                                                  |
+| Release tagging | Sentry release = the deployed image tag (`sha-<short>` from CI, or the promoted release tag)  |
 | Environment     | `XITTER_ENV` maps directly to the Sentry environment (`dev`, `prod`)                          |
 | Scope           | Service name + trace id attached; release-health enabled for web                              |
 

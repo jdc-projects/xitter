@@ -100,13 +100,13 @@ In-cluster, the edge validates Keycloak access tokens (`auth_mode=oidc-api`) and
 
 Namespace-per-environment, deployed via Tofu environments using the homelab ingress module; all supporting infrastructure (CNPG, Kafka, OpenSearch, RustFS, Valkey, Keycloak, observability stack) is declared as CRs/providers, not hand-configured.
 
-|            | dev                                                            | prod                               |
-| ---------- | -------------------------------------------------------------- | ---------------------------------- |
-| Namespace  | `xitter-dev`                                                   | `xitter-prod`                      |
-| Domain     | `xitter-dev.jd-chapman.dev`                                    | `xitter.jd-chapman.dev`            |
-| Deployment | merges to `dev` branch                                         | gitflow `dev` → `release` → `prod` |
-| Versioning | semver images per app/service, built on merge (GitHub Actions) | same, promoted via release         |
-| Reset      | nightly                                                        | nightly                            |
+|            | dev                                                                                    | prod                               |
+| ---------- | -------------------------------------------------------------------------------------- | ---------------------------------- |
+| Namespace  | `xitter-dev`                                                                           | `xitter-prod`                      |
+| Domain     | `xitter-dev.jd-chapman.dev`                                                            | `xitter.jd-chapman.dev`            |
+| Deployment | merges to `dev` branch                                                                 | gitflow `dev` → `release` → `prod` |
+| Versioning | GHCR image per app/service on every merge: immutable `sha-<short>` + mutable `dev` tag | same, promoted via release tag     |
+| Reset      | nightly                                                                                | nightly                            |
 
 Both environments are demo environments: data is ephemeral, Velero backup excludes both namespaces, and the nightly reset (00:00 UTC, configurable) wipes and optionally reseeds state — see [05-data-platform.md](05-data-platform.md) and the [operations specs](../operations/).
 
