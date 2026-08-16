@@ -5,8 +5,8 @@ export interface AuthContext {
   username: string;
   /** Realm roles from `realm_access.roles`. */
   roles: string[];
-  /** Audience the token was validated against. */
-  audience: string;
+  /** Audiences the token carries (`aud` claim, comma-joined when multiple). */
+  audience: string | undefined;
   /** Raw claims for fine-grained authorisation. */
   claims: Record<string, unknown>;
 }
@@ -18,8 +18,12 @@ export interface TokenVerifier {
 export interface TokenVerifierOptions {
   /** OIDC issuer, e.g. https://keycloak/realms/xitter-demo */
   issuer: string;
-  /** Expected audience; defaults to the verifier's own service client id. */
-  audience: string;
+  /**
+   * Expected audience. Service (M2M) tokens must carry it; user tokens are
+   * validated by issuer + authorized party instead, so they use verifiers
+   * without an audience constraint (callers enforce `azp` themselves).
+   */
+  audience?: string;
   /** JWKS uri; defaults to `<issuer>/protocol/openid-connect/certs`. */
   jwksUri?: string;
 }
@@ -53,14 +57,15 @@ export function createTokenVerifier(options: TokenVerifierOptions): TokenVerifie
       );
       const { payload } = await j.jwtVerify(token, jwks, {
         issuer: options.issuer,
-        audience: options.audience,
+        ...(options.audience ? { audience: options.audience } : {}),
       });
       const realmAccess = payload.realm_access as { roles?: string[] } | undefined;
+      const aud = Array.isArray(payload.aud) ? payload.aud.join(', ') : payload.aud;
       return {
         subject: String(payload.sub ?? ''),
         username: String(payload.preferred_username ?? payload.client_id ?? ''),
         roles: realmAccess?.roles ?? [],
-        audience: options.audience,
+        audience: aud !== undefined ? String(aud) : undefined,
         claims: payload,
       };
     },

@@ -10,6 +10,7 @@
  */
 import KcAdminClient from '@keycloak/keycloak-admin-client';
 import { envInt, envString, loadRepoEnv, localUrl } from '@xitter/config';
+import { SERVICE_CLIENTS, WORKER_CLIENTS } from '@xitter/auth';
 import { keycloakBaseUrl } from './lib/wait.js';
 
 export interface DemoUser {
@@ -35,14 +36,9 @@ export const demoCredentials = () => ({
   password: envString('XITTER_DEMO_USER_PASSWORD', 'DemoPass123!'),
 });
 
-/** Service clients issued for machine-to-machine auth; receivers validate audience = own client id. */
-export const SERVICE_CLIENTS = [
-  'svc-social',
-  'svc-posts',
-  'svc-media',
-  'svc-feed',
-  'svc-search',
-] as const;
+// Re-exported for callers of this module; the canonical lists live in
+// @xitter/auth so services' guards and the provisioner cannot drift.
+export { SERVICE_CLIENTS, WORKER_CLIENTS };
 
 const edgeUrl = () => localUrl('edge');
 
@@ -183,7 +179,14 @@ export async function initDemoRealm(): Promise<DemoUser[]> {
       serviceAccount: true,
       secret: `${serviceClient}-local-secret`,
     });
-    await ensureAudienceMapper(kc, realm, uuid);
+    await ensureAudienceMapper(kc, realm, uuid, SERVICE_CLIENTS);
+  }
+  for (const worker of WORKER_CLIENTS) {
+    const uuid = await ensureClient(kc, realm, worker.clientId, {
+      serviceAccount: true,
+      secret: `${worker.clientId}-local-secret`,
+    });
+    await ensureAudienceMapper(kc, realm, uuid, worker.audiences);
   }
 
   const users: DemoUser[] = [];
@@ -194,15 +197,16 @@ export async function initDemoRealm(): Promise<DemoUser[]> {
 }
 
 /**
- * Audience protocol mapper: service-account tokens carry every other service
- * client id in `aud`, so receivers can validate audience = own client id
- * (the contract @xitter/auth createTokenVerifier enforces). Idempotent by
- * mapper name.
+ * Audience protocol mapper: the client's service-account tokens carry the
+ * given audience client ids in `aud`, so receivers can validate audience =
+ * own client id (the contract @xitter/auth createTokenVerifier enforces).
+ * Idempotent by mapper name.
  */
 async function ensureAudienceMapper(
   kc: KcAdminClient,
   realm: string,
   clientUuid: string,
+  audiences: readonly string[],
 ): Promise<void> {
   const name = 'xitter-service-audience';
   const existing = await kc.clients.listProtocolMappers({ realm, id: clientUuid });
@@ -214,7 +218,7 @@ async function ensureAudienceMapper(
       name,
       protocolMapper: 'oidc-audience-mapper',
       config: {
-        'included.client.audience': SERVICE_CLIENTS.join(', '),
+        'included.client.audience': audiences.join(', '),
         'access.token.claim': 'true',
       },
     },
