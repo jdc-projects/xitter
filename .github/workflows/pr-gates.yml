@@ -162,10 +162,11 @@ jobs:
       - run: npm run mutate:affected
 
   tofu:
-    # Syntax + validate for both environments (no secrets needed).
-    # Uses working-directory, not -chdir: tofu resolves relative module
-    # symlinks from the process cwd, so -chdir breaks "../modules/*".
-    runs-on: ubuntu-latest
+    # Syntax + validate for both environments. Self-hosted runner: the
+    # cluster API is on a private LAN address - GitHub-hosted runners
+    # cannot reach it (validate itself needs no backend, but this keeps
+    # all tofu jobs on one runner class).
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v7
       - uses: opentofu/setup-opentofu@v2
@@ -183,9 +184,10 @@ jobs:
           tofu validate
 
   tofu-plan:
-    # Full plan against the real backend when infra changes.
+    # Full plan against the real backend when infra changes. Self-hosted
+    # runner - the cluster API is private.
     needs: [changes, tofu]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: needs.changes.outputs.infra == 'true'
     steps:
       - uses: actions/checkout@v7

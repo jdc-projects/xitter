@@ -44,8 +44,9 @@ jobs:
       # Image build + push step activates with the first deploy ticket.
 
   tofu-apply:
-    # Applies infra/iac/environments/dev after images exist.
-    runs-on: ubuntu-latest
+    # Applies infra/iac/environments/dev after images exist. Self-hosted
+    # runner - the cluster API is private.
+    runs-on: self-hosted
     needs: build-images
     steps:
       - uses: actions/checkout@v7
