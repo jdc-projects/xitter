@@ -22,6 +22,13 @@ RUN npx turbo@2 run build --filter=admin
 FROM caddy:2-alpine AS runtime
 COPY apps/admin/Caddyfile /etc/caddy/Caddyfile
 COPY --from=build /app/apps/admin/dist /srv
+# Caddy ships with file capabilities on the binary (CAP_NET_BIND_SERVICE for
+# :80/:443). Under Kubernetes' no-new-privileges + dropped capabilities,
+# exec of a file-capabilities binary fails with "operation not permitted".
+# We bind :8080 as an unprivileged user, so strip them.
+RUN apk add --no-cache libcap \
+  && setcap -r /usr/bin/caddy \
+  && apk del libcap
 # Caddy defaults to root; a static SPA needs neither root nor TLS.
 RUN chown -R 1000:1000 /data /config /srv /etc/caddy
 USER 1000

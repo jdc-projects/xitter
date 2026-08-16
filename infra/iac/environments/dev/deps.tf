@@ -200,10 +200,13 @@ resource "kubernetes_manifest" "kafka_node_pool" {
       roles    = ["controller", "broker"]
 
       storage = {
-        type        = "persistent-claim"
-        size        = "10Gi"
-        class       = local.bulk_storage_class
-        deleteClaim = false
+        type  = "persistent-claim"
+        size  = "10Gi"
+        class = local.bulk_storage_class
+        # Dev data is disposable (nightly reset wipes Kafka anyway - ops spec
+        # 02). true also lets a CR recreate converge onto fresh storage when
+        # the cluster id changes instead of crash-looping on stale volumes.
+        deleteClaim = true
       }
 
       resources = {

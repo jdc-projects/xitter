@@ -15,6 +15,7 @@ type RouteKind = 'public' | 'internal' | 'user';
 function createContext(
   request: {
     headers?: Record<string, string | string[]>;
+    url?: string;
     user?: RequestUser;
   },
   kind: RouteKind = 'user',
@@ -149,6 +150,19 @@ describe('AuthGuard (user routes)', () => {
   it('lets @Public routes through without a token', async () => {
     const guard = makeGuard({}, {}, true, true);
     await expect(guard.canActivate(createContext({ headers: {} }, 'public'))).resolves.toBe(true);
+  });
+
+  it.each(['/healthz', '/readyz'])('lets kubelet probe %s through without a token', async (url) => {
+    const guard = makeGuard({}, {}, true, true);
+    await expect(guard.canActivate(createContext({ headers: {}, url }))).resolves.toBe(true);
+  });
+
+  it('still guards a non-probe root path (only exact probe URLs are exempt)', async () => {
+    const guard = makeGuard({}, {}, true, true);
+    const err = await guard
+      .canActivate(createContext({ headers: {}, url: '/healthz-other' }))
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(HttpException);
   });
 });
 
