@@ -43,7 +43,7 @@ sequenceDiagram
     participant P as Posts svc
     participant M as Media svc
     U->>W: Compose: text + optional image files
-    W->>W: Client-side validation: text 1–512 chars; ≤4 images; ≤5 MB each; png/jpeg/webp/gif
+    W->>W: Client-side validation (text 1–512 chars, ≤4 images, ≤5 MB each, png/jpeg/webp/gif)
     alt invalid
         W-->>U: Inline errors, draft preserved
     else valid
@@ -53,7 +53,7 @@ sequenceDiagram
         end
         W->>P: Create post (text + media ids)
         P-->>W: Post created
-        Note over P,M: media.processed event; thumbnails generated; feed + search fan out
+        Note over P,M: media.processed event (thumbnails generated, feed + search fan out)
         W-->>U: Post appears (optimistically, then confirmed)
     end
 ```
@@ -100,7 +100,7 @@ sequenceDiagram
     W->>S: Create follow
     S-->>W: Follow created
     Note over S: social.follow.created event → feed rebuilt for follower
-    W-->>U: Badge/state updates; their posts (and reposts) enter feed going forward
+    W-->>U: Badge/state updates - their posts (and reposts) enter feed going forward
     U->>W: Click Unfollow
     W->>S: Delete follow
     Note over S: social.follow.deleted event
@@ -138,7 +138,7 @@ sequenceDiagram
     W->>SE: Full-text posts search
     SE-->>W: Matching posts (no deleted), newest-weighted
     W-->>U: Results with standard post cards
-    Note over SE: Index is event-fed; lags seconds, not minutes
+    Note over SE: Index is event-fed (lags seconds, not minutes)
 ```
 
 Edge cases: empty query (no search fired); post deleted since indexing (excluded on next index update, tolerated if briefly stale); no results state.

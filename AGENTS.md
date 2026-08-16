@@ -70,7 +70,8 @@ turbo lint/typecheck/**Vitest test**/build) matches the CI `gates` job; `npm run
 - **Logging**: pino via `@xitter/observability`. Never log tokens or post bodies.
 - **Secrets**: never commit. Local `.env` contains only non-secret defaults.
 - **Docs**: update relevant specs in the same PR as behaviour changes. Decision
-  records are immutable - supersede, don't edit. Specs self-contained.
+  records are immutable once on `dev`/`main` — supersede, don't edit (within an
+  open PR, edit freely). Specs self-contained.
 - **PRs**: vertical slices, all to `dev` (gitflow). Run `npm run check` first.
 - **Libraries**: prefer well-supported libraries over custom code; check what's
   already in the repo before adding anything; check current versions rather

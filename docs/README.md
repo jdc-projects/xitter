@@ -12,7 +12,7 @@ flowchart LR
 | Directory    | Purpose                                                                                       |
 | ------------ | --------------------------------------------------------------------------------------------- |
 | `specs/`     | Living documents describing the **desired end-state** of the system (never current state).    |
-| `decisions/` | Decision records. Immutable once created; changes supersede via a new record.                 |
+| `decisions/` | Decision records. Immutable once merged to `dev`/`main`; changes supersede via a new record.  |
 | `runbooks/`  | Step-by-step manual procedures (setup, deploy, content promotion). Idempotent where possible. |
 
 ## Conventions
@@ -22,6 +22,9 @@ flowchart LR
 - Use Mermaid diagrams, tables, and other structured formats over prose walls.
 - When a spec changes and creates a gap with reality, tickets are created to close the gap.
 - Decision records use a consistent format: state, context, decision, options.
+  They are immutable once merged to a protected branch (`dev`/`main`) — within
+  an open PR they may be edited freely. After merge, a change in decision
+  supersedes the old record with a new one.
 - Runbooks use: context/intro, execution steps, validation steps.
 
 ## Spec areas

@@ -35,7 +35,7 @@
     "format:check": "prettier --check .",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
-    "lint:repo": "fallow audit --base ${FALLOW_BASE:-origin/dev} --dead-code-baseline .fallow/dead-code.json --health-baseline .fallow/health.json --dupes-baseline .fallow/dupes.json && react-doctor -y --no-supply-chain",
+    "lint:repo": "npm run docs:diagrams && fallow audit --base ${FALLOW_BASE:-origin/dev} --dead-code-baseline .fallow/dead-code.json --health-baseline .fallow/health.json --dupes-baseline .fallow/dupes.json && react-doctor -y --no-supply-chain",
     "test": "turbo run test",
     "test:watch": "turbo run test:watch",
     "test:unit": "turbo run test",
@@ -59,10 +59,12 @@
     "predeps:down": "npm run build:packages",
     "predeps:status": "npm run build:packages",
     "gates": "turbo run lint typecheck test build",
-    "test:install": "playwright install --with-deps chromium"
+    "test:install": "playwright install --with-deps chromium",
+    "docs:diagrams": "tsx packages/scripts/src/diagrams.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
+    "@mermaid-js/mermaid-cli": "^11.16.0",
     "@playwright/test": "^1",
     "@types/node": "^26",
     "@usebruno/cli": "^4",
@@ -70,6 +72,7 @@
     "artillery": "^2",
     "eslint": "^9",
     "fallow": "^3",
+    "playwright-core": "^1.62.1",
     "prettier": "^3",
     "react-doctor": "^0.9",
     "tsx": "^4",

@@ -32,14 +32,14 @@ Deterministic seeding for the nightly reset (and local bootstrap). Goals, volume
 
 ```mermaid
 flowchart LR
-    A[Users\n(fixed demo1..demo10)] --> B[Profiles]
-    B --> C[Follow graph]
+    A["Users (fixed demo1..demo10)"] --> B[Profiles]
+    B --> C["Follow graph"]
     C --> D[Posts]
-    D --> E[Replies\n(self-referencing posts)]
-    E --> F[Interactions\nlikes/reposts/bookmarks]
-    F --> G[Media\n(a few posts with images)]
-    G --> H[Feed rebuild\nvia replayed events]
-    H --> I[Search reindex\nfrom posts events]
+    D --> E["Replies (self-referencing posts)"]
+    E --> F["Interactions: likes/reposts/bookmarks"]
+    F --> G["Media (a few posts with images)"]
+    G --> H["Feed rebuild via replayed events"]
+    H --> I["Search reindex from posts events"]
 ```
 
 Feed and search are **not** written directly: the seed emits the same events the real services emit, and the fanout/index workers build derived stores exactly as in production. This exercises the event path and guarantees consistency.

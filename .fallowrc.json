@@ -11,5 +11,6 @@
     "**/next-env.d.ts",
     "apps/cms/src/app/(payload)/admin/importMap.js",
     "apps/cms/src/payload-types.ts"
-  ]
+  ],
+  "ignoreDependencies": ["@mermaid-js/mermaid-cli"]
 }

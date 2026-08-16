@@ -65,13 +65,16 @@ jobs:
       - run: npm run gates
 
   repo-analysis:
-    # fallow + react-doctor; needs the base ref for changed-file attribution
+    # fallow + react-doctor + mermaid validation; needs the base ref for
+    # changed-file attribution and chromium for diagram rendering
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup
+        with:
+          playwright: true
       - name: Fetch base ref
         run: git fetch origin dev:refs/remotes/origin/dev
       - run: npm run lint:repo
