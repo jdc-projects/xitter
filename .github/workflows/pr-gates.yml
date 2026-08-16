@@ -25,18 +25,19 @@ jobs:
               - "package-lock.json"
               - "turbo.json"
 
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/setup
+      - run: npm run format:check
+
   build:
     # Build once; the turbo cache (repo .turbo) is shared with downstream jobs
     # via the immutable-key save/restore below, so they replay instead of
     # rebuilding.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/setup
       - uses: actions/cache@v4
         with:
           path: .turbo
@@ -44,27 +45,11 @@ jobs:
           restore-keys: turbo-${{ runner.os }}-
       - run: npm run build
 
-  format:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
-      - run: npm run format:check
-
   gates:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/setup
       - uses: actions/cache/restore@v4
         with:
           path: .turbo
@@ -76,14 +61,9 @@ jobs:
     # fallow + react-doctor; needs the base ref for changed-file attribution
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
         with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
+          fetch-depth: '0'
       - name: Fetch base ref
         run: git fetch origin dev:refs/remotes/origin/dev
       - run: npm run lint:repo
@@ -92,20 +72,14 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: ./.github/actions/setup
         with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
+          playwright: true
       - uses: actions/cache/restore@v4
         with:
           path: .turbo
           key: turbo-${{ runner.os }}-${{ github.sha }}
           restore-keys: turbo-${{ runner.os }}-
-      - run: npm run test:install
-      - name: Materialise package builds (turbo cache replay)
-        run: npm run build --filter=./packages/*
       - run: npm run test:web
         env:
           CI: 'true'
@@ -122,18 +96,14 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: ./.github/actions/setup
         with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
+          playwright: true
       - uses: actions/cache/restore@v4
         with:
           path: .turbo
           key: turbo-${{ runner.os }}-${{ github.sha }}
           restore-keys: turbo-${{ runner.os }}-
-      - run: npm run test:install
       - name: Start stack
         run: |
           npm run deps:up
@@ -158,17 +128,14 @@ jobs:
     runs-on: ubuntu-latest
     if: needs.changes.outputs.packages != '[]'
     steps:
-      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
         with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
+          fetch-depth: '0'
       - uses: actions/cache/restore@v4
         with:
           path: .turbo
           key: turbo-${{ runner.os }}-${{ github.sha }}
           restore-keys: turbo-${{ runner.os }}-
+      - name: Fetch base ref
+        run: git fetch origin dev:refs/remotes/origin/dev
       - run: npm run mutate:affected

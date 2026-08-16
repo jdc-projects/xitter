@@ -1,0 +1,53 @@
+name: 'xitter setup'
+description: >-
+  Cached Node + node_modules + Playwright chromium for xitter CI jobs.
+  node_modules is cached on the lockfile hash (immutable key); npm ci only
+  runs on a miss. Set `playwright: true` to also cache the chromium download.
+
+inputs:
+  playwright:
+    description: 'Cache and install Playwright chromium'
+    required: false
+    default: 'false'
+  fetch-depth:
+    description: 'Checkout fetch depth (0 = full history, for turbo affected filters / fallow)'
+    required: false
+    default: '1'
+
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: ${{ inputs.fetch-depth }}
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version-file: .nvmrc
+        cache: npm
+
+    # node_modules keyed on the lockfile: immutable per dependency change, so
+    # a hit is always the exact tree npm ci would produce (symlinks included).
+    - uses: actions/cache@v4
+      id: node-modules
+      with:
+        path: node_modules
+        key: node-modules-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+    - name: Install dependencies
+      if: steps.node-modules.outputs.cache-hit != 'true'
+      run: npm ci
+      shell: bash
+
+    - name: Cache Playwright chromium
+      if: inputs.playwright == 'true'
+      uses: actions/cache@v4
+      id: playwright-browsers
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+    - name: Install Playwright chromium
+      if: inputs.playwright == 'true' && steps.playwright-browsers.outputs.cache-hit != 'true'
+      run: npm run test:install
+      shell: bash

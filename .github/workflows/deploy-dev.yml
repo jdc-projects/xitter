@@ -9,12 +9,7 @@ jobs:
   full-mutation:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/setup
       - name: Full mutation run (all workspaces, incremental reports)
         run: npm run mutate
 
@@ -42,12 +37,7 @@ jobs:
           - '@xitter/worker-media-process'
           - '@xitter/worker-search-index'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
+      - uses: ./.github/actions/setup
       - run: npm run build --filter=${{ matrix.workspace }}
       # Image build + push step activates with the first deploy ticket.
 
