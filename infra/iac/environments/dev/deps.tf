@@ -203,9 +203,10 @@ resource "kubernetes_manifest" "kafka_node_pool" {
         type  = "persistent-claim"
         size  = "10Gi"
         class = local.bulk_storage_class
-        # Dev data is disposable (nightly reset wipes Kafka anyway - ops spec
-        # 02). true also lets a CR recreate converge onto fresh storage when
-        # the cluster id changes instead of crash-looping on stale volumes.
+        # Recreating the CR (cluster id change, env rebuild) converges onto
+        # fresh storage instead of crash-looping on stale volumes. Dev data
+        # is disposable per ops spec 01; the nightly reset itself does NOT
+        # wipe Kafka (ops spec 02 resets consumer groups only).
         deleteClaim = true
       }
 

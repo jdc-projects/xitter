@@ -5,6 +5,7 @@ import { config as parseDotenv, parse as parseDotenvToStrings } from 'dotenv';
 export * from './ports.js';
 export * from './schema.js';
 export * from './service-env.js';
+export * from './health-routes.js';
 
 /** Find the repo root by walking up from cwd (or the module itself) to package.json + turbo.json. */
 export function findRepoRoot(start: string = process.cwd()): string {

@@ -1,5 +1,6 @@
 import { CanActivate, ExecutionContext, HttpException, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { HEALTH_ROUTES } from '@xitter/config';
 import { INTERNAL_CLIENTS, type TokenVerifier } from '@xitter/auth';
 import {
   AUTH_OPTIONS,
@@ -54,12 +55,12 @@ export class AuthGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest<RequestWithUser>();
 
-    // Infrastructure probes: /healthz + /readyz sit at the service root,
-    // outside the versioned prefix, and are never edge-exposed (spec 03) -
-    // only the kubelet reaches them in-cluster. They must answer regardless
-    // of auth or every restart becomes a crash loop.
+    // Infrastructure probes: the shared health routes sit at the service
+    // root, outside the versioned prefix, and are never edge-exposed
+    // (spec 03) - only the kubelet reaches them in-cluster. They must answer
+    // regardless of auth or every restart becomes a crash loop.
     const path = (request.url ?? '').split('?')[0];
-    if (path === '/healthz' || path === '/readyz') {
+    if (HEALTH_ROUTES.some((route) => `/${route}` === path)) {
       return true;
     }
 
