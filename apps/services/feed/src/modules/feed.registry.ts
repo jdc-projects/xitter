@@ -11,6 +11,12 @@ const feedPage = z.object({
 
 export const feedApi = new OpenAPIRegistry();
 
+feedApi.registerComponent('securitySchemes', 'bearerAuth', {
+  type: 'http',
+  scheme: 'bearer',
+  bearerFormat: 'JWT',
+});
+
 feedApi.registerPath({
   method: 'get',
   path: '/feed',

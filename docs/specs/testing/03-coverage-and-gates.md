@@ -13,7 +13,7 @@
 | Mutation (scoped)  | Stryker on affected workspaces via turbo filters | `npm run mutate -- --filter=...`    |
 | Format             | `prettier --check .`                             | `npm run format:check`              |
 
-All gates: `npm run check` = `turbo run lint typecheck test build` (repo lint, web/e2e, format run via their own scripts).
+All gates: `npm run check` = `format:check` + `build:packages` + `turbo run lint typecheck test build`. Repo lint (fallow + react-doctor), web/e2e Playwright, and scoped mutation are separate — `npm run check:all` is full CI parity.
 
 ## Local-first policy
 

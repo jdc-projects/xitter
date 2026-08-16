@@ -11,6 +11,12 @@ const searchPage = z.object({
 
 export const searchApi = new OpenAPIRegistry();
 
+searchApi.registerComponent('securitySchemes', 'bearerAuth', {
+  type: 'http',
+  scheme: 'bearer',
+  bearerFormat: 'JWT',
+});
+
 searchApi.registerPath({
   method: 'get',
   path: '/posts',

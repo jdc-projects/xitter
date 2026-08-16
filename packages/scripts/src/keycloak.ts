@@ -67,29 +67,47 @@ async function ensureRealm(kc: KcAdminClient, realm: string): Promise<void> {
   console.log(`realm ${realm}: created`);
 }
 
+interface EnsureClientOptions {
+  public?: boolean;
+  serviceAccount?: boolean;
+  redirectUris?: string[];
+  secret?: string;
+  directGrants?: boolean;
+}
+
 async function ensureClient(
   kc: KcAdminClient,
   realm: string,
   clientId: string,
-  options: { public?: boolean; serviceAccount?: boolean; redirectUris?: string[]; secret?: string },
-): Promise<void> {
+  options: EnsureClientOptions,
+): Promise<string> {
   const clients = await kc.clients.find({ realm, clientId });
-  if (clients.length > 0) {
+  const existing = clients[0]?.id;
+  if (existing) {
     console.log(`client ${realm}/${clientId}: exists`);
-    return;
+    return existing;
   }
-  await kc.clients.create({
+
+  const payload = clientPayload(realm, clientId, options);
+  const created = await kc.clients.create(payload);
+  console.log(`client ${realm}/${clientId}: created`);
+  return created.id;
+}
+
+function clientPayload(realm: string, clientId: string, options: EnsureClientOptions) {
+  const redirectUris = options.redirectUris ?? [];
+  return {
     realm,
     clientId,
-    publicClient: options.public ?? false,
-    standardFlowEnabled: (options.redirectUris?.length ?? 0) > 0,
-    serviceAccountsEnabled: options.serviceAccount ?? false,
-    directAccessGrantsEnabled: false,
+    publicClient: options.public === true,
+    standardFlowEnabled: redirectUris.length > 0,
+    serviceAccountsEnabled: options.serviceAccount === true,
+    // Only the seeder uses the password grant (packages/scripts/src/seed.ts).
+    directAccessGrantsEnabled: options.directGrants === true,
     secret: options.secret,
-    redirectUris: options.redirectUris ?? [],
-    webOrigins: options.redirectUris ? [edgeUrl()] : [],
-  });
-  console.log(`client ${realm}/${clientId}: created`);
+    redirectUris,
+    webOrigins: redirectUris.length > 0 ? [edgeUrl()] : [],
+  };
 }
 
 async function ensureRole(kc: KcAdminClient, realm: string, name: string): Promise<void> {
@@ -157,12 +175,15 @@ export async function initDemoRealm(): Promise<DemoUser[]> {
   await ensureClient(kc, realm, 'web', {
     public: true,
     redirectUris: [`${edgeUrl()}/*`],
+    // Password grant for the deterministic seeder only; user login is OIDC.
+    directGrants: true,
   });
   for (const serviceClient of SERVICE_CLIENTS) {
-    await ensureClient(kc, realm, serviceClient, {
+    const uuid = await ensureClient(kc, realm, serviceClient, {
       serviceAccount: true,
       secret: `${serviceClient}-local-secret`,
     });
+    await ensureAudienceMapper(kc, realm, uuid);
   }
 
   const users: DemoUser[] = [];
@@ -170,6 +191,35 @@ export async function initDemoRealm(): Promise<DemoUser[]> {
     users.push(await ensureUser(kc, realm, `${userPrefix}${i}`, password, 'demo-user'));
   }
   return users;
+}
+
+/**
+ * Audience protocol mapper: service-account tokens carry every other service
+ * client id in `aud`, so receivers can validate audience = own client id
+ * (the contract @xitter/auth createTokenVerifier enforces). Idempotent by
+ * mapper name.
+ */
+async function ensureAudienceMapper(
+  kc: KcAdminClient,
+  realm: string,
+  clientUuid: string,
+): Promise<void> {
+  const name = 'xitter-service-audience';
+  const existing = await kc.clients.listProtocolMappers({ realm, id: clientUuid });
+  if (existing.some((m) => m.name === name)) return;
+  await kc.clients.addProtocolMapper(
+    { realm, id: clientUuid },
+    {
+      protocol: 'openid-connect',
+      name,
+      protocolMapper: 'oidc-audience-mapper',
+      config: {
+        'included.client.audience': SERVICE_CLIENTS.join(', '),
+        'access.token.claim': 'true',
+      },
+    },
+  );
+  console.log(`client ${realm}: audience mapper added`);
 }
 
 export async function initLocalAdminRealm(): Promise<void> {
@@ -201,4 +251,25 @@ export async function resetDemoRealm(): Promise<void> {
     if ((err as { response?: { status?: number } }).response?.status === 404) return;
     throw err;
   }
+}
+
+const command = process.argv[2] ?? 'init';
+
+switch (command) {
+  case 'init':
+    await initDemoRealm();
+    await initLocalAdminRealm();
+    break;
+  case 'init-demo':
+    await initDemoRealm();
+    break;
+  case 'init-admin':
+    await initLocalAdminRealm();
+    break;
+  case 'reset-demo':
+    await resetDemoRealm();
+    break;
+  default:
+    console.error(`Unknown command: ${command}. Use init | init-demo | init-admin | reset-demo.`);
+    process.exit(1);
 }

@@ -1,6 +1,6 @@
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { findRepoRoot, loadRepoEnv, localPort, type PortName } from '@xitter/config';
 import { run, capture } from './exec.js';
 
@@ -15,6 +15,11 @@ const COMPOSE_PORTS: PortName[] = [
   'web',
   'cms',
   'admin',
+  'social',
+  'posts',
+  'media',
+  'feed',
+  'search',
   'postgres',
   'kafka',
   'opensearch',
@@ -50,6 +55,11 @@ function resolvedEnvFile(): string {
   return file;
 }
 
+/** Remove the generated env file + its temp dir on exit or interrupt. */
+function cleanupResolvedEnv(file: string): void {
+  rmSync(dirname(file), { recursive: true, force: true });
+}
+
 function composeArgs(): string[] {
   // --env-file order matters: repo .env first (non-port defaults), resolved
   // ports last (later files win), so offsets reach interpolation deterministically.
@@ -60,8 +70,13 @@ function composeArgs(): string[] {
   const resolved = resolvedEnvFile();
   args.push('--env-file', resolved);
   args.push('--project-name', composeProject());
-  // Remove the temp dir once compose has parsed it (after args are read).
-  process.once('exit', () => rmSync(resolved, { recursive: true, force: true }));
+  // Docker reads env files at command start; remove the temp dir on any exit
+  // path (SIGINT doesn't fire 'exit' without an explicit handler).
+  process.once('exit', () => cleanupResolvedEnv(resolved));
+  process.once('SIGINT', () => {
+    cleanupResolvedEnv(resolved);
+    process.exit(130);
+  });
   return args;
 }
 

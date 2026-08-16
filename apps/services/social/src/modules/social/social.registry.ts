@@ -11,6 +11,12 @@ const profilePage = z.object({
 
 export const socialApi = new OpenAPIRegistry();
 
+socialApi.registerComponent('securitySchemes', 'bearerAuth', {
+  type: 'http',
+  scheme: 'bearer',
+  bearerFormat: 'JWT',
+});
+
 socialApi.registerPath({
   method: 'get',
   path: '/profiles/{userId}',

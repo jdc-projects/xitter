@@ -20,11 +20,6 @@
         "count": 1
       }
     },
-    "packages/scripts/src/keycloak.ts": {
-      "crap_high": {
-        "count": 1
-      }
-    },
     "packages/scripts/src/lib/wait.ts": {
       "crap_moderate": {
         "count": 1

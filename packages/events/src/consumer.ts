@@ -15,8 +15,10 @@ export interface EventConsumerOptions {
 export interface EventConsumer {
   consumer: Consumer;
   /**
-   * Subscribe and process messages. Handlers must be idempotent (at-least-once delivery);
-   * a thrown error retries per the consumer retry policy and eventually parks the partition.
+   * Subscribe and process messages. Malformed envelopes are logged and
+   * skipped. Handlers must be idempotent (at-least-once delivery); a thrown
+   * handler error retries per the consumer retry policy and eventually parks
+   * the partition.
    */
   run(handler: (envelope: unknown, raw: EachMessagePayload) => Promise<void>): Promise<void>;
   disconnect(): Promise<void>;
@@ -36,7 +38,18 @@ export function createEventConsumer(options: EventConsumerOptions): EventConsume
       await consumer.run({
         eachMessage: async (payload) => {
           const value = payload.message.value?.toString('utf8') ?? '{}';
-          const envelope = eventEnvelopeSchema.parse(JSON.parse(value));
+          let envelope: unknown;
+          try {
+            envelope = eventEnvelopeSchema.parse(JSON.parse(value));
+          } catch (err) {
+            // Poison message: log + skip (offset commits on return). A throw
+            // here would crash the consumer and hot-loop the partition.
+            console.error(
+              `skipping malformed event on ${payload.topic}[${payload.partition}]@${payload.message.offset}`,
+              err,
+            );
+            return;
+          }
           await handler(envelope, payload);
         },
       });

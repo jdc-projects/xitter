@@ -11,6 +11,12 @@ const postPage = z.object({
 
 export const postsApi = new OpenAPIRegistry();
 
+postsApi.registerComponent('securitySchemes', 'bearerAuth', {
+  type: 'http',
+  scheme: 'bearer',
+  bearerFormat: 'JWT',
+});
+
 postsApi.registerPath({
   method: 'post',
   path: '/posts',

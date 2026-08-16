@@ -3,6 +3,10 @@ meta {
   seq: 2
 }
 
+vars:pre-request {
+  userId: 00000000-0000-4000-8000-000000000002
+}
+
 pre_request:script {
   const body = {
     grant_type: "password",

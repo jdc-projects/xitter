@@ -20,23 +20,27 @@ remove(join(root, 'test-results'));
 remove(join(root, 'tests/playwright/web/report'));
 remove(join(root, 'tests/playwright/e2e/report'));
 
+const cleanWorkspace = (dir: string): void => {
+  for (const artifact of ['.turbo', 'dist', 'coverage', 'reports', 'mutation']) {
+    remove(join(dir, artifact));
+  }
+  for (const f of readdirSync(dir)) {
+    if (f.endsWith('.tsbuildinfo')) rmSync(join(dir, f), { force: true });
+  }
+};
+
 for (const target of targets) {
   const base = join(root, target);
   if (!existsSync(base)) continue;
-  for (const workspace of readdirSync(base, { withFileTypes: true })) {
-    if (!workspace.isDirectory()) continue;
-    const dir = join(base, workspace.name);
-    const sub = join(dir, workspace.name); // nested: apps/services/social, apps/workers/*
-    const dirs = existsSync(sub) ? [dir, sub] : [dir];
-    for (const d of dirs) {
-      for (const artifact of ['.turbo', 'dist', 'coverage', 'reports', 'mutation']) {
-        remove(join(d, artifact));
-      }
-      if (existsSync(d)) {
-        for (const f of readdirSync(d)) {
-          if (f.endsWith('.tsbuildinfo')) rmSync(join(d, f), { force: true });
-        }
-      }
+  for (const entry of readdirSync(base, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const dir = join(base, entry.name);
+    cleanWorkspace(dir);
+    // Nested workspaces: apps/services/*, apps/workers/*
+    for (const nested of readdirSync(dir, { withFileTypes: true })) {
+      if (!nested.isDirectory()) continue;
+      const nestedDir = join(dir, nested.name);
+      if (existsSync(join(nestedDir, 'package.json'))) cleanWorkspace(nestedDir);
     }
   }
 }

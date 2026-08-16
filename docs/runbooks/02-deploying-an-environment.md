@@ -6,7 +6,7 @@ Apply OpenTofu to the homelab Kubernetes cluster for the `dev` or `prod` xitter 
 
 ## Execution steps
 
-1. **Prerequisites**: `tofu` CLI, and the cluster kubeconfig from the homelab repo at `iac/cluster.yml` (see `github.com/jdc-projects/homelab`). By convention, copy/link it to the repo-root-adjacent path expected by the environment (`../../../cluster.yml` relative to the environment directory).
+1. **Prerequisites**: `tofu` CLI, and the cluster kubeconfig from the homelab repo at `iac/cluster.yml` (see `github.com/jdc-projects/homelab`). By convention, copy/link it to `infra/cluster.yml` (gitignored) — the path the environment configs resolve via `config_path = "../../../cluster.yml"` relative to each env directory.
 2. `cd infra/iac/environments/dev` (or `prod`).
 3. `tofu init -backend-config=secret_suffix=xitter-dev` — state lives in the cluster's `tf-state` namespace, using the kubeconfig from step 1.
 4. `tofu plan` — review what will land (namespace `xitter-dev`, service modules, ingress).

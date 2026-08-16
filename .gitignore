@@ -27,6 +27,7 @@ artillery-report/
 .stryker-tmp/
 reports/
 mutation/
+tests/playwright/*/report/
 
 # Generated per-service OpenAPI artifacts (collected into docs/specs/architecture/openapi)
 apps/**/openapi.json
@@ -35,6 +36,9 @@ apps/**/openapi.json
 .env
 .env.*
 !.env.example
+
+# Cluster kubeconfig (homelab credentials) - placed per the deploy runbook
+infra/cluster.yml
 
 # Local state
 .DS_Store

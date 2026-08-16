@@ -6,6 +6,12 @@ extendZodWithOpenApi(z);
 
 export const mediaApi = new OpenAPIRegistry();
 
+mediaApi.registerComponent('securitySchemes', 'bearerAuth', {
+  type: 'http',
+  scheme: 'bearer',
+  bearerFormat: 'JWT',
+});
+
 mediaApi.registerPath({
   method: 'post',
   path: '/uploads',

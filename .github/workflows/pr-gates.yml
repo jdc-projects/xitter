@@ -21,6 +21,7 @@ jobs:
           filters: |
             packages:
               - "packages/**"
+              - "apps/**"
               - "package.json"
               - "package-lock.json"
               - "turbo.json"
@@ -45,7 +46,10 @@ jobs:
           path: .turbo
           key: turbo-${{ runner.os }}-${{ github.sha }}
           restore-keys: turbo-${{ runner.os }}-
-      - run: npm run build
+      - name: Build once (XITTER_ENV matches e2e so the turbo cache replays)
+        run: npm run build
+        env:
+          XITTER_ENV: ci
 
   gates:
     needs: build

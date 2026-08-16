@@ -1,7 +1,10 @@
 import 'dotenv/config';
 import { defineConfig, env } from 'prisma/config';
 
-process.env.DATABASE_URL ??= `postgresql://search:search-local@localhost:5532/search`;
+// Offset-aware local fallback (mirrors @xitter/config serviceDbUrl; kept
+// inline because prisma loads this config before workspace builds).
+const port = 5532 + (Number.parseInt(process.env.XITTER_PORT_OFFSET ?? '0', 10) || 0);
+process.env.DATABASE_URL ??= `postgresql://search:search-local@localhost:${port}/search`;
 
 export default defineConfig({
   schema: 'prisma/schema.prisma',

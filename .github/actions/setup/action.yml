@@ -32,6 +32,6 @@ runs:
         key: playwright-v2-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
     - name: Install Playwright chromium
-      if: inputs.playwright == 'true' && steps.playwright-browsers.outputs.cache-hit != 'true'
+      if: inputs.playwright == 'true'
       run: npm run test:install
       shell: bash

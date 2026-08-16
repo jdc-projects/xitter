@@ -40,6 +40,9 @@ switch (command) {
       'rustfs',
       'valkey',
       'keycloak',
+      'fanoutMetrics',
+      'mediaProcessMetrics',
+      'searchIndexMetrics',
     ] as const;
     for (const name of names) {
       console.log(`${name.padEnd(14)} ${localPort(name)}`);
