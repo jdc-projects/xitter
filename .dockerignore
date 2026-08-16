@@ -4,7 +4,9 @@
 # (tsbuildinfo, dist, generated clients) are excluded: turbo prune cannot use
 # git to filter files (no .git in the context), so anything present would be
 # copied verbatim and break in-image builds (e.g. a stale tsbuildinfo makes
-# tsc skip emitting dist entirely).
+# tsc skip emitting dist entirely). Artifact patterns are `**/`-prefixed so
+# they also match files generated inside workspace dirs, not just at the
+# repo root.
 .git
 .github
 .fallow
@@ -15,20 +17,20 @@
 **/.next
 **/*.tsbuildinfo
 **/src/generated
-out
-coverage
-test-results
-playwright-report
-artillery-report
-reports
-mutation
-.stryker-tmp
+**/out
+**/coverage
+**/test-results
+**/playwright-report
+**/artillery-report
+**/reports
+**/mutation
+**/.stryker-tmp
 docs
 tests
 bruno
 infra
-.env
-.env.*
+**/.env
+**/.env.*
 !.env.example
-*.log
-.DS_Store
+**/*.log
+**/.DS_Store
