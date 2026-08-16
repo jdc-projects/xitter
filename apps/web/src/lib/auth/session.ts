@@ -1,11 +1,7 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { oidc, oidcConfig } from './oidc';
-import {
-  valkeyStores,
-  type SessionRecord,
-  type SessionStore,
-} from './session-store';
+import { valkeyStores, type SessionRecord, type SessionStore } from './session-store';
 import { SESSION_COOKIE } from '../server-env';
 
 export interface Session {

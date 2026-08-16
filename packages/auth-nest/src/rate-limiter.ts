@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import type { AuthModuleOptions } from './auth.tokens.js';
+import { Inject, Injectable } from '@nestjs/common';
+import { AUTH_OPTIONS, type AuthModuleOptions } from './auth.tokens.js';
 
 /**
  * Structural slice of ioredis used by the token bucket - keeps the limiter
@@ -55,7 +55,8 @@ return -math.ceil((requested - tokens) / refill)
 export class TokenBucketRateLimiter {
   private connection?: RedisConnectionLike;
 
-  constructor(private readonly options: AuthModuleOptions) {}
+  // Interfaces vanish at runtime - inject via token, not type.
+  constructor(@Inject(AUTH_OPTIONS) private readonly options: AuthModuleOptions) {}
 
   /** Test seam: inject a fake/scripted connection. */
   useConnection(connection: RedisConnectionLike): void {

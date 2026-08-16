@@ -1,8 +1,12 @@
-import { CanActivate, ExecutionContext, HttpException, Injectable } from '@nestjs/common';
+import { CanActivate, ExecutionContext, HttpException, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import type { TokenVerifier } from '@xitter/auth';
+import { INTERNAL_CLIENTS, type TokenVerifier } from '@xitter/auth';
 import {
+  AUTH_OPTIONS,
+  INTERNAL_KEY,
   IS_PUBLIC_KEY,
+  SERVICE_VERIFIER,
+  USER_VERIFIER,
   type AuthModuleOptions,
   type RequestUser,
 } from './auth.tokens.js';
@@ -11,57 +15,88 @@ import { authorizedParty, bearerToken, edgeIdentity, unauthenticated } from './h
 type RequestWithUser = { headers: Record<string, unknown>; user?: RequestUser };
 
 /**
- * Global guard for public (user-facing) routes: validates Bearer user tokens
- * against the demo realm and attaches the principal to the request. In
- * cluster mode, edge-injected identity headers are trusted when the request
- * carries no token. `@Public()` opts a route out (health endpoints).
+ * Global request guard, applied once per service. Route kind decides the
+ * token model:
+ *
+ * - default: Bearer **user** token (demo realm, azp = a user client).
+ * - `@Internal()`: client-credentials **service** token whose audience is
+ *   this service's own client id (workers, reset job, other services). Edge
+ *   identity headers are never trusted here.
+ * - `@Public()`: no auth (health checks).
+ *
+ * In cluster mode (`trustEdgeHeaders`), edge-injected identity headers are
+ * trusted for requests carrying no bearer token at all; `X-Access-Token` is
+ * always re-validated. Keeping both modes in one guard removes the
+ * route-guard ordering trap a separate internal guard would create.
  */
 @Injectable()
 export class AuthGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
-    private readonly options: AuthModuleOptions,
-    private readonly userVerifier: TokenVerifier,
+    // Interfaces vanish at runtime - inject via token, not type.
+    @Inject(AUTH_OPTIONS) private readonly options: AuthModuleOptions,
+    @Inject(USER_VERIFIER) private readonly userVerifier: TokenVerifier,
+    @Inject(SERVICE_VERIFIER) private readonly serviceVerifier: TokenVerifier,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
-      context.getHandler(),
-      context.getClass(),
+    const [handler, controller] = [context.getHandler(), context.getClass()];
+    if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [handler, controller])) {
+      return true;
+    }
+    const isInternal = this.reflector.getAllAndOverride<boolean>(INTERNAL_KEY, [
+      handler,
+      controller,
     ]);
-    if (isPublic) return true;
 
     const request = context.switchToHttp().getRequest<RequestWithUser>();
     const token = bearerToken(request.headers);
 
     if (!token) {
-      if (this.options.trustEdgeHeaders) {
+      if (!isInternal && this.options.trustEdgeHeaders) {
         const identity = edgeIdentity(request.headers);
         if (identity) {
           request.user = identity;
           return true;
         }
       }
-      throw unauthenticated();
+      throw unauthenticated(isInternal ? 'Service token required' : undefined);
     }
 
-    const userClients = this.options.userClients ?? ['web'];
     try {
-      const auth = await this.userVerifier.verify(token);
-      const azp = authorizedParty(auth.claims);
-      if (!azp || !userClients.includes(azp)) {
-        throw unauthenticated('Token not issued to an allowed client');
-      }
+      const auth = isInternal
+        ? await this.verifyServiceToken(token)
+        : await this.verifyUserToken(token);
       request.user = {
         subject: auth.subject,
         username: auth.username,
         roles: auth.roles,
-        service: false,
+        service: isInternal === true,
       };
       return true;
     } catch (err) {
       if (err instanceof HttpException) throw err;
-      throw unauthenticated();
+      throw unauthenticated(isInternal ? 'Service token required' : undefined);
     }
+  }
+
+  private async verifyUserToken(token: string) {
+    const auth = await this.userVerifier.verify(token);
+    const azp = authorizedParty(auth.claims);
+    const allowed = this.options.userClients ?? ['web'];
+    if (!azp || !allowed.includes(azp)) {
+      throw unauthenticated('Token not issued to an allowed client');
+    }
+    return auth;
+  }
+
+  private async verifyServiceToken(token: string) {
+    const auth = await this.serviceVerifier.verify(token);
+    const azp = authorizedParty(auth.claims);
+    const allowed = this.options.serviceClients ?? INTERNAL_CLIENTS;
+    if (!azp || !allowed.includes(azp)) {
+      throw unauthenticated('Service token required');
+    }
+    return auth;
   }
 }

@@ -4,7 +4,7 @@ import { requireSession } from '@/lib/auth/session';
 export const metadata = { title: 'Feed' };
 
 export default async function FeedPage() {
-  const session = await requireSession('/feed');
+  await requireSession('/feed');
   return (
     <Container size="sm" py="xl">
       <Stack gap="md">

@@ -1,12 +1,12 @@
 import { Controller, Get, HttpCode, Param, Post, UseGuards } from '@nestjs/common';
-import { InternalGuard, Public, RateLimit, RateLimitGuard } from '@xitter/auth-nest';
+import { Internal, Public, RateLimit, RateLimitGuard } from '@xitter/auth-nest';
 import { SocialService } from './social.service.js';
 
 /**
  * Profiles, follows, and blocks.
  * Skeleton controller - request validation via zod pipes and Kafka events land
  * with the social feature ticket. Auth is enforced by the global AuthGuard
- * (user tokens); `internal/*` additionally requires service tokens.
+ * (user tokens); `@Internal()` routes require service (M2M) tokens.
  */
 @Controller()
 export class SocialController {
@@ -33,7 +33,7 @@ export class SocialController {
   }
 
   @Post('internal/reseed')
-  @UseGuards(InternalGuard)
+  @Internal()
   reseed() {
     return { ok: true };
   }

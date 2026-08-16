@@ -18,9 +18,9 @@ afterEach(() => {
 describe('verifyCaptcha', () => {
   it('accepts a successful siteverify reply', async () => {
     mockCapEnv();
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ success: true }), { status: 200 }),
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ success: true }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(verifyCaptcha('good-token')).resolves.toBe(true);

@@ -7,20 +7,30 @@ vars:pre-request {
   userId: 00000000-0000-4000-8000-000000000002
 }
 
-pre_request:script {
-  const body = {
-    grant_type: "password",
-    client_id: "web",
-    username: bru.getEnvVar("username") || "demo1",
-    password: bru.getEnvVar("password") || "DemoPass123!",
-  };
+script:pre-request {
+  const form =
+    "grant_type=password&client_id=web" +
+    "&username=" +
+    encodeURIComponent(bru.getEnvVar("username") || "demo1") +
+    "&password=" +
+    encodeURIComponent(bru.getEnvVar("password") || "DemoPass123!");
+  // bru.sendRequest forwards to axios: body key is `data`, and a
+  // pre-encoded urlencoded string survives both CLI and app runtimes.
   const res = await bru.sendRequest({
     method: "POST",
     url: `${bru.getEnvVar("keycloak")}/realms/${bru.getEnvVar("realm")}/protocol/openid-connect/token`,
     headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: { mode: "urlencoded", urlencoded: [body] },
+    data: form,
   });
-  const json = JSON.parse(res.body.toString());
+  const raw =
+    typeof res.data === "string"
+      ? res.data
+      : res.data && typeof res.data === "object" && "byteLength" in res.data
+        ? new TextDecoder().decode(res.data)
+        : typeof res.data === "object" && res.data !== null
+          ? JSON.stringify(res.data)
+          : String(res.data ?? "");
+  const json = JSON.parse(raw);
   bru.setEnvVar("token", json.access_token);
 }
 

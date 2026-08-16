@@ -15,13 +15,7 @@ export interface CaptchaConfig {
  * redirect. The widget script only loads client-side (it registers a custom
  * element at import time).
  */
-export function LoginForm({
-  next,
-  captcha,
-}: {
-  next: string;
-  captcha: CaptchaConfig | null;
-}) {
+export function LoginForm({ next, captcha }: { next: string; captcha: CaptchaConfig | null }) {
   useEffect(() => {
     if (captcha) void import('@cap.js/widget');
   }, [captcha]);

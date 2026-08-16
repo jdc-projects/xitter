@@ -61,7 +61,7 @@ test.describe('login flow', () => {
     await page.locator('#username').fill('demo1');
     await page.locator('#password').fill('DefinitelyWrong1!');
     await page.locator('#kc-login').click();
-    await expect(page.locator('#input-error')).toBeVisible();
+    await expect(page.getByText('Invalid username or password')).toBeVisible();
 
     await page.goto('/feed');
     await expect(page).toHaveURL(/\/login/);

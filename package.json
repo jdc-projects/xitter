@@ -43,7 +43,7 @@
     "test:e2e": "playwright test -c tests/playwright/e2e",
     "test:a11y": "playwright test -c tests/playwright/e2e --project=a11y",
     "test:load": "artillery run tests/artillery/feed-flow.yml",
-    "test:api": "bru run --env local bruno/xitter",
+    "test:api": "npm test --prefix bruno/xitter",
     "deps:up": "tsx packages/scripts/src/docker.ts up",
     "deps:down": "tsx packages/scripts/src/docker.ts down",
     "deps:status": "tsx packages/scripts/src/docker.ts status",

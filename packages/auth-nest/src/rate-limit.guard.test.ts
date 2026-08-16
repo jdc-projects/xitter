@@ -1,5 +1,5 @@
-import { ExecutionContext } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
+import { type ExecutionContext } from '@nestjs/common';
+import { type Reflector } from '@nestjs/core';
 import { describe, expect, it } from 'vitest';
 import { type RateLimitOptions, type RequestUser } from './auth.tokens.js';
 import { RateLimitGuard } from './rate-limit.guard.js';
@@ -75,7 +75,10 @@ describe('RateLimitGuard', () => {
     const calls: { script: string; args: (string | number)[] }[] = [];
     const limiter = new TokenBucketRateLimiter({ serviceName: 'social', issuer: '', audience: '' });
     limiter.useConnection(fakeRedis(calls, () => 1));
-    const guard = new RateLimitGuard(reflectorReturning({ capacity: 5, refillPerSecond: 2 }), limiter);
+    const guard = new RateLimitGuard(
+      reflectorReturning({ capacity: 5, refillPerSecond: 2 }),
+      limiter,
+    );
 
     const { context } = createContext({ ip: '10.0.0.1', user });
     await guard.canActivate(context);

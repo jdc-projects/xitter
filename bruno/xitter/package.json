@@ -1,0 +1,7 @@
+{
+  "name": "xitter-bruno",
+  "private": true,
+  "scripts": {
+    "test": "bru run -r --env local ."
+  }
+}

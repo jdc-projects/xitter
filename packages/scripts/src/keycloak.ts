@@ -145,6 +145,7 @@ async function ensureUser(
     const userId = existing[0]!.id;
     if (!userId) throw new Error(`User ${username} has no id`);
     await assignRole(kc, realm, userId, roleName);
+    await repairDemoUser(kc, realm, userId, username, existing[0]!);
     return { username, userId };
   }
   const created = await kc.users.create({
@@ -152,12 +153,34 @@ async function ensureUser(
     username,
     enabled: true,
     firstName: username,
+    // The default user profile requires all three for role "user"; without
+    // them Keycloak answers "Account is not fully set up" at login.
+    lastName: 'Demo',
+    email: `${username}@demo.xitter.local`,
+    emailVerified: true,
     requiredActions: [],
     credentials: [{ type: 'password', value: password, temporary: false }],
   });
   await assignRole(kc, realm, created.id, roleName);
   console.log(`user ${realm}/${username}: created`);
   return { username, userId: created.id };
+}
+
+/** Backfill profile completeness on users created before the fix (idempotent). */
+async function repairDemoUser(
+  kc: KcAdminClient,
+  realm: string,
+  userId: string,
+  username: string,
+  user: { email?: string; lastName?: string; emailVerified?: boolean },
+): Promise<void> {
+  const patch: Record<string, unknown> = {};
+  if (!user.email) patch.email = `${username}@demo.xitter.local`;
+  if (!user.lastName) patch.lastName = 'Demo';
+  if (user.emailVerified !== true) patch.emailVerified = true;
+  if (Object.keys(patch).length === 0) return;
+  await kc.users.update({ realm, id: userId }, patch);
+  console.log(`user ${realm}/${username}: profile repaired`);
 }
 
 export async function initDemoRealm(): Promise<DemoUser[]> {
@@ -197,10 +220,11 @@ export async function initDemoRealm(): Promise<DemoUser[]> {
 }
 
 /**
- * Audience protocol mapper: the client's service-account tokens carry the
- * given audience client ids in `aud`, so receivers can validate audience =
- * own client id (the contract @xitter/auth createTokenVerifier enforces).
- * Idempotent by mapper name.
+ * Audience protocol mappers: the client's service-account tokens carry each
+ * audience client id as its own `aud` entry, so receivers can validate
+ * audience = own client id (the contract @xitter/auth createTokenVerifier
+ * enforces). Keycloak's oidc-audience-mapper takes exactly one audience per
+ * mapper, so one mapper is created per audience; idempotent by mapper name.
  */
 async function ensureAudienceMapper(
   kc: KcAdminClient,
@@ -208,22 +232,39 @@ async function ensureAudienceMapper(
   clientUuid: string,
   audiences: readonly string[],
 ): Promise<void> {
-  const name = 'xitter-service-audience';
   const existing = await kc.clients.listProtocolMappers({ realm, id: clientUuid });
-  if (existing.some((m) => m.name === name)) return;
-  await kc.clients.addProtocolMapper(
-    { realm, id: clientUuid },
-    {
-      protocol: 'openid-connect',
-      name,
-      protocolMapper: 'oidc-audience-mapper',
-      config: {
-        'included.client.audience': audiences.join(', '),
-        'access.token.claim': 'true',
+  const existingNames = new Set(existing.map((m) => m.name));
+
+  // Legacy single mapper with a comma-joined audience value - that produced
+  // one bogus aud string instead of separate entries; remove when found.
+  const legacy = existing.find((m) => m.name === 'xitter-service-audience');
+  if (legacy?.id) {
+    await kc.clients.delProtocolMapper({
+      realm,
+      id: clientUuid,
+      mapperId: legacy.id,
+    });
+    existingNames.delete('xitter-service-audience');
+    console.log(`client ${realm}: legacy audience mapper removed`);
+  }
+
+  for (const audience of audiences) {
+    const name = `xitter-audience-${audience}`;
+    if (existingNames.has(name)) continue;
+    await kc.clients.addProtocolMapper(
+      { realm, id: clientUuid },
+      {
+        protocol: 'openid-connect',
+        name,
+        protocolMapper: 'oidc-audience-mapper',
+        config: {
+          'included.client.audience': audience,
+          'access.token.claim': 'true',
+        },
       },
-    },
-  );
-  console.log(`client ${realm}: audience mapper added`);
+    );
+    console.log(`client ${realm}: audience mapper added (${audience})`);
+  }
 }
 
 export async function initLocalAdminRealm(): Promise<void> {

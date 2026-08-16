@@ -5,8 +5,9 @@ const nextConfig: NextConfig = {
   // SSR calls services over the local network; ports are env-driven via
   // @xitter/api-client. Assets are served same-origin through the edge.
   poweredByHeader: false,
-  // ioredis keeps TCP connections - it must not be bundled.
-  serverExternalPackages: ['ioredis'],
+  // ioredis keeps TCP connections and openid-client is ESM-only - keep both
+  // out of the server bundle.
+  serverExternalPackages: ['ioredis', 'openid-client'],
 };
 
 export default nextConfig;

@@ -40,7 +40,9 @@ export class ErrorEnvelopeFilter implements ExceptionFilter {
         return;
       }
       const message =
-        typeof body === 'string' ? body : ((body as { message?: string | string[] }).message ?? exception.message);
+        typeof body === 'string'
+          ? body
+          : ((body as { message?: string | string[] }).message ?? exception.message);
       response.status(status).send({
         error: {
           code: errorCodeFor(status),

@@ -1,4 +1,9 @@
-import { ArgumentsHost, BadRequestException, HttpException, NotFoundException } from '@nestjs/common';
+import {
+  type ArgumentsHost,
+  BadRequestException,
+  HttpException,
+  NotFoundException,
+} from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 import { ErrorEnvelopeFilter } from './error.filter.js';
 

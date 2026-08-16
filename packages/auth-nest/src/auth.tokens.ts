@@ -9,13 +9,13 @@
  *   trusted when no bearer token is present; `X-Access-Token` is re-validated.
  * - Rate limiting: Valkey token bucket per user id + IP on mutation routes.
  */
-import { SetMetadata, createParamDecorator, ExecutionContext } from '@nestjs/common';
+import { SetMetadata, createParamDecorator, type ExecutionContext } from '@nestjs/common';
 
 export const AUTH_OPTIONS = Symbol('AUTH_OPTIONS');
 export const USER_VERIFIER = Symbol('USER_VERIFIER');
 export const SERVICE_VERIFIER = Symbol('SERVICE_VERIFIER');
-export const RATE_LIMITER = Symbol('RATE_LIMITER');
 export const IS_PUBLIC_KEY = 'xitter:public';
+export const INTERNAL_KEY = 'xitter:internal';
 export const RATE_LIMIT_KEY = 'xitter:rate-limit';
 
 export interface AuthModuleOptions {
@@ -58,6 +58,13 @@ export const DEFAULT_RATE_LIMIT: Required<RateLimitOptions> = {
 
 /** Mark a route as unauthenticated (health checks, docs). */
 export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
+
+/**
+ * Mark a route as service-token-only (client credentials, audience = this
+ * service's client id). The global AuthGuard switches to M2M validation for
+ * these routes - user tokens are rejected even when their signature is valid.
+ */
+export const Internal = () => SetMetadata(INTERNAL_KEY, true);
 
 /** Apply a Valkey token-bucket limit to a mutation route. */
 export const RateLimit = (options: RateLimitOptions = {}) => SetMetadata(RATE_LIMIT_KEY, options);

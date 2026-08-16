@@ -1,5 +1,5 @@
 import { Global, Module, Provider } from '@nestjs/common';
-import { createTokenVerifier, type TokenVerifier } from '@xitter/auth';
+import { createTokenVerifier } from '@xitter/auth';
 import {
   AUTH_OPTIONS,
   SERVICE_VERIFIER,
@@ -7,7 +7,6 @@ import {
   type AuthModuleOptions,
 } from './auth.tokens.js';
 import { AuthGuard } from './auth.guard.js';
-import { InternalGuard } from './internal.guard.js';
 import { RateLimitGuard } from './rate-limit.guard.js';
 import { TokenBucketRateLimiter } from './rate-limiter.js';
 
@@ -16,8 +15,8 @@ import { TokenBucketRateLimiter } from './rate-limiter.js';
  *
  *   AuthModule.forRoot({ serviceName: 'social', issuer, audience: 'svc-social' })
  *
- * `AuthGuard` is registered globally (with `@Public()` as the opt-out);
- * `InternalGuard` and `RateLimitGuard` are applied per-route.
+ * `AuthGuard` is registered globally (with `@Public()`/`@Internal()` as the
+ * mode switches); `RateLimitGuard` is applied per-route.
  */
 @Global()
 @Module({})
@@ -34,7 +33,6 @@ export class AuthModule {
         useValue: createTokenVerifier({ issuer: options.issuer, audience: options.audience }),
       },
       AuthGuard,
-      InternalGuard,
       RateLimitGuard,
       TokenBucketRateLimiter,
     ];
