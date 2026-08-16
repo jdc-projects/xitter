@@ -98,6 +98,10 @@ module "ingress_admin" {
 # `/media/<key>` → RustFS bucket root: rewrite /media/<key> to
 # /xitter-media/<key> (S3 path-style: bucket + key), so the public bucket URL
 # is https://<domain>/media/<key> without exposing the bucket name.
+# Named `media-store`, NOT `media`: the ingress module derives its resource
+# names from `name`, and `xitter-dev-media-internal` is already taken by the
+# /api/media route above - sharing it made the two routes overwrite each
+# other on every apply.
 resource "kubernetes_manifest" "media_path_rewrite" {
   manifest = {
     apiVersion = "traefik.io/v1alpha1"
@@ -120,7 +124,7 @@ resource "kubernetes_manifest" "media_path_rewrite" {
 module "ingress_media" {
   source = "github.com/jdc-projects/homelab//iac/modules/ingress"
 
-  name      = "xitter-${var.environment}-media"
+  name      = "xitter-${var.environment}-media-store"
   namespace = local.ns
   domain    = var.domain
   path      = "media"
