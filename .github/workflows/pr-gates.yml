@@ -31,7 +31,6 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with:
-          save: true # earliest-starting job owns the cache entry
       - run: npm run format:check
 
   build:

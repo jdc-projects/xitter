@@ -1,21 +1,14 @@
 name: 'xitter setup'
 description: >-
-  Cached Node + node_modules for xitter CI jobs. Runs AFTER actions/checkout
-  (local actions need the repo present).
-
-  Exactly one job per run should set `save: true` (the earliest job, so the
-  entry exists for restore-only jobs on the next run); restore-only jobs fall
-  back to a direct npm ci on a miss (first run of a lockfile change). The
-  node_modules save is guarded on job success so a failed job can never poison
-  the immutable cache entry with a partial tree.
+  Node + npm download cache + optional Playwright chromium cache for xitter
+  CI jobs. Runs AFTER actions/checkout (local actions need the repo present).
+  node_modules itself is NOT cached: actions/cache tar of the ~200k-file tree
+  silently truncated (39MB of 2.3GB), so jobs restore a broken tree. The
+  npm download cache + npm ci is reliable and only ~60-90s per job.
 
 inputs:
   playwright:
     description: 'Cache and install Playwright chromium'
-    required: false
-    default: 'false'
-  save:
-    description: 'Allow writing the node_modules cache entry (designate ONE job)'
     required: false
     default: 'false'
 
@@ -27,24 +20,8 @@ runs:
         node-version-file: .nvmrc
         cache: npm
 
-    - name: Restore node_modules
-      id: node-modules
-      uses: actions/cache/restore@v6
-      with:
-        path: node_modules
-        key: node-modules-v3-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-
-    - name: Install dependencies
-      if: steps.node-modules.outputs.cache-hit != 'true'
-      run: npm ci
+    - run: npm ci
       shell: bash
-
-    - name: Save node_modules
-      if: inputs.save == 'true' && steps.node-modules.outputs.cache-hit != 'true' && success()
-      uses: actions/cache/save@v6
-      with:
-        path: node_modules
-        key: node-modules-v3-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
     - name: Cache Playwright chromium
       if: inputs.playwright == 'true'
