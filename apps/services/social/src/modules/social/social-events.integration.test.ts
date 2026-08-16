@@ -59,6 +59,12 @@ describe.skipIf(!hasGeneratedClient)('social events (testcontainers kafka)', () 
       groupId: `social-events-test-${crypto.randomUUID()}`,
     });
     await consumer.connect();
+    // Auto-create only fires on produce (the broker refuses it on metadata
+    // requests) - create the topic up front so subscribe has something to find.
+    const admin = new Kafka({ clientId: 'social-events-test', brokers }).admin();
+    await admin.connect();
+    await admin.createTopics({ topics: [{ topic: 'xitter.social.v1' }] });
+    await admin.disconnect();
     await consumer.subscribe({ topic: 'xitter.social.v1', fromBeginning: true });
     await consumer.run({
       eachMessage: async ({ message }) => {
@@ -72,7 +78,7 @@ describe.skipIf(!hasGeneratedClient)('social events (testcontainers kafka)', () 
   }, 180_000);
 
   afterAll(async () => {
-    await consumer.disconnect().catch(() => undefined);
+    await consumer?.disconnect().catch(() => undefined);
     await emitter?.shutdown().catch(() => undefined);
     await db?.$disconnect().catch(() => undefined);
     await pool?.end().catch(() => undefined);
