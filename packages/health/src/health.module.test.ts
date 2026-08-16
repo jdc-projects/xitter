@@ -61,6 +61,39 @@ describe('HealthModule', () => {
     expect(res.json()).toMatchObject({ status: 'error' });
   });
 
+  it('does not surface an unhandled rejection when the ping rejects after the timeout', async () => {
+    // Contract guard: a DB ping that rejects after the 2s race window must
+    // never surface as an unhandled rejection (Node's process killer).
+    // Promise.race handles its losers today; this pins that so a refactor
+    // of the race cannot reintroduce the hazard. Runs in real time: the
+    // ping timeout has to fire first.
+    const unhandled: string[] = [];
+    const onUnhandled = () => unhandled.push('unhandledRejection');
+    process.on('unhandledRejection', onUnhandled);
+    let rejectPing: (reason: Error) => void = () => {};
+    const db = fakeDb({
+      $queryRawUnsafe: () =>
+        new Promise<unknown>((_, reject) => {
+          rejectPing = reject;
+        }),
+    });
+    app = await createApp(db);
+
+    try {
+      const res = await app.inject({ method: 'GET', url: '/readyz' });
+      expect(res.statusCode).toBe(503);
+
+      // The race has settled; the query rejects a tick later.
+      rejectPing(new Error('connection terminated'));
+      await new Promise((resolve) => setImmediate(resolve));
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(unhandled).toHaveLength(0);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+  });
+
   it('disconnects the database on shutdown', async () => {
     const disconnect = vi.fn().mockResolvedValue(undefined);
     app = await createApp(fakeDb({ $disconnect: disconnect }));

@@ -63,7 +63,13 @@ export class DatabasePingIndicator {
           DB_PING_TIMEOUT_MS,
         );
       });
-      await Promise.race([db.$queryRawUnsafe('SELECT 1'), timeout]);
+      // Promise.race subscribes to - and so "handles" - the losing promise,
+      // but that is incidental. Attach an explicit no-op catch so a refactor
+      // of this race can never turn a late ping rejection (database outage)
+      // into an unhandled rejection, which Node treats as fatal.
+      const ping = db.$queryRawUnsafe('SELECT 1');
+      ping.catch(() => {});
+      await Promise.race([ping, timeout]);
     } catch {
       return check.down();
     } finally {
