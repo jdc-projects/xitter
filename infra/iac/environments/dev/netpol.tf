@@ -485,7 +485,7 @@ resource "kubernetes_network_policy" "postgres_ingress" {
 
   spec {
     pod_selector {
-      match_labels = { "cnpg.io/clusterName" = "xitter-postgres" }
+      match_labels = { "cnpg.io/cluster" = "xitter-postgres" }
     }
 
     policy_types = ["Ingress"]

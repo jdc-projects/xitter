@@ -147,6 +147,12 @@ resource "kubernetes_deployment" "this" {
     labels    = local.labels
   }
 
+  # The dev tag is mutable and may not exist yet (CI publishes images on
+  # merge): waiting for rollout would turn every pre-image apply into a
+  # 10-minute timeout on ImagePullBackOff. Rollout is validated with kubectl
+  # (runbook 02) instead of blocking the apply.
+  wait_for_rollout = false
+
   spec {
     replicas = var.replicas
 

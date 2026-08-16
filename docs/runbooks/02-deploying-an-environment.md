@@ -6,15 +6,15 @@ Apply OpenTofu to the homelab Kubernetes cluster for the `dev` or `prod` xitter 
 
 The dev environment deploys, in one root module:
 
-| Piece          | What                                                                                                                                       |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Namespace      | `xitter-dev` (namespace module) + Velero exclusion label                                                                                    |
-| Deps           | CNPG Postgres `xitter-postgres` (1 instance in dev), Strimzi Kafka + `xitter.{posts,social,media}.v1` topics, Valkey (Helm), OpenSearch (operator CR), RustFS (Helm) + public-read `xitter-media` bucket |
-| Databases      | `db-init` Job creates per-service roles/DBs (`social`, `posts`, `media`, `feed`, `search`, `cms`); per-service `DATABASE_URL` Secrets        |
-| Keycloak       | `xitter-demo` realm, `web` client, `svc-*` / `svc-worker-*` / `svc-reset` clients with per-audience mappers; creds into K8s Secrets         |
-| Workloads      | 11 `xitter-service` instances: 5 API services (+HPA), 3 Knative workers, web, cms, admin                                                    |
-| Edge           | Homelab ingress module routes for `/`, `/api/{service}`, `/media`, `/cms`, `/admin`                                                          |
-| NetworkPolicies | Default deny + explicit allows (edge, Prometheus, same-namespace, per-dependency egress)                                                    |
+| Piece           | What                                                                                                                                                                                                     |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Namespace       | `xitter-dev` (namespace module) + Velero exclusion label                                                                                                                                                 |
+| Deps            | CNPG Postgres `xitter-postgres` (1 instance in dev), Strimzi Kafka + `xitter.{posts,social,media}.v1` topics, Valkey (Helm), OpenSearch (operator CR), RustFS (Helm) + public-read `xitter-media` bucket |
+| Databases       | `db-init` Job creates per-service roles/DBs (`social`, `posts`, `media`, `feed`, `search`, `cms`); per-service `DATABASE_URL` Secrets                                                                    |
+| Keycloak        | `xitter-demo` realm, `web` client, `svc-*` / `svc-worker-*` / `svc-reset` clients with per-audience mappers; creds into K8s Secrets                                                                      |
+| Workloads       | 11 `xitter-service` instances: 5 API services (+HPA), 3 Knative workers, web, cms, admin                                                                                                                 |
+| Edge            | Homelab ingress module routes for `/`, `/api/{service}`, `/media`, `/cms`, `/admin`                                                                                                                      |
+| NetworkPolicies | Default deny + explicit allows (edge, Prometheus, same-namespace, per-dependency egress)                                                                                                                 |
 
 **Deploys are CI-driven**: merge to `dev` runs `tofu-apply` in Actions (see `.github/workflows/deploy-dev.yml`). This runbook covers the one-time setup and the manual/local path — use it when iterating on IaC or deploying `prod` (T13 wires prod deploys).
 
@@ -54,6 +54,7 @@ The dev environment deploys, in one root module:
 
 ## Manual follow-ups / notes
 
+- **Keycloak provider reachability**: `tofu plan/apply` needs the `keycloak` provider to log in at `https://idp.jd-chapman.dev` (master realm, admin creds from the `keycloak-config` remote state). If the edge blocks your egress IP (Cloudflare/crowdsec 403 on every `*.jd-chapman.dev` host), every plan/apply fails at provider init with `failed to perform initial login ... 403 Forbidden` — that is an edge block, not bad credentials. In that state the realm/clients plus the five `xitter-dev-{service}` API routes cannot be applied; everything else can (the client Secrets are derived from the same `random_password`s the clients are created with, so workloads get valid creds once the realm converges). Re-run the full `tofu apply` once the block clears.
 - DNS for `xitter-dev.jd-chapman.dev` is a wildcard on the homelab domain (`*.jd-chapman.dev`) — no per-host record needed; if a route 404s at the edge, check the IngressRoute exists for that host first.
 - Velero: the `xitter-dev` namespace carries `velero.io/exclude-from-backup=true` (verified against the homelab's exclusion mechanism — the label, applied the same way the velero namespace itself is excluded). Nothing from the environment is backed up, matching the nightly-reset data policy.
 - The reset job (T6) recreates demo users in the realm nightly; tofu owns the realm/client skeleton. If the reset ever deletes the whole realm, re-run `tofu apply` to converge it back.

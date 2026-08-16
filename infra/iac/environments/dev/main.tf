@@ -103,21 +103,9 @@ module "namespace" {
   environment = var.environment
 }
 
-# Velero: the nightly cluster backup must never carry this disposable
-# namespace (spec 07 - no user-generated data leaves the cluster). Verified
-# read-only: the homelab's exclusion mechanism is this namespace label.
-resource "kubernetes_labels" "velero_exclusion" {
-  api_version = "v1"
-  kind        = "Namespace"
-  metadata {
-    name = module.namespace.name
-  }
-
-  labels = {
-    "velero.io/exclude-from-backup" = "true"
-  }
-}
-
+# The namespace module labels the namespace `velero.io/exclude-from-backup`
+# (spec 07 - no user-generated data leaves the cluster), so nothing from this
+# environment is backed up, matching the nightly-reset data policy.
 locals {
   ns = module.namespace.name
 

@@ -68,6 +68,16 @@ resource "kubernetes_job" "db_init" {
           name  = "db-init"
           image = local.postgres_image
 
+          env {
+            name = "PGPASSWORD"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.postgres_app.metadata[0].name
+                key  = "password"
+              }
+            }
+          }
+
           command = [
             "/bin/sh",
             "-c",
@@ -93,6 +103,15 @@ resource "kubernetes_job" "db_init" {
               WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'search') \gexec
               SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', 'cms', :'cms_pw')
               WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'cms') \gexec
+              -- Postgres 16: CREATEROLE must be a member of a role to SET ROLE
+              -- into it, which CREATE DATABASE ... OWNER requires. Plain GRANT
+              -- (default INHERIT+SET) and idempotent, unlike CREATE ROLE.
+              GRANT "social" TO app;
+              GRANT "posts" TO app;
+              GRANT "media" TO app;
+              GRANT "feed" TO app;
+              GRANT "search" TO app;
+              GRANT "cms" TO app;
               SELECT 'CREATE DATABASE social OWNER social'
               WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'social') \gexec
               SELECT 'CREATE DATABASE posts OWNER posts'

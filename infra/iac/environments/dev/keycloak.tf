@@ -134,6 +134,10 @@ resource "keycloak_openid_audience_protocol_mapper" "audience" {
 # Client credentials materialised as Kubernetes Secrets, consumed by the
 # workloads via secret_env (KEYCLOAK_CLIENT_SECRET). Key names equal the env
 # var names so the Knative workers can inject them with envFrom.
+# No depends_on on the Keycloak clients: both consume the same random_password
+# value (the Keycloak client is created with this secret, not the other way
+# round), so the Secrets apply even when the Keycloak API is unreachable -
+# workloads then start with correct creds as soon as the realm converges.
 resource "kubernetes_secret" "keycloak_client" {
   for_each = local.machine_clients
 
@@ -147,6 +151,4 @@ resource "kubernetes_secret" "keycloak_client" {
     "KEYCLOAK_CLIENT_ID"     = each.key
     "KEYCLOAK_CLIENT_SECRET" = random_password.machine_client_secret[each.key].result
   }
-
-  depends_on = [keycloak_openid_client.machine]
 }
