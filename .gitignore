@@ -43,6 +43,10 @@ infra/cluster.yml
 # OpenTofu working directories (providers, module caches)
 .terraform/
 
+# Module dirs get standalone `tofu init` only for local validation; the
+# committed lockfiles live with the root modules (environments/*).
+infra/iac/modules/**/.terraform.lock.hcl
+
 # Local state
 .DS_Store
 *.log
