@@ -1,13 +1,15 @@
 # NetworkPolicies (spec 07): default deny for xitter workloads, every allow
 # explicit. Ingress to workloads only from the edge (traefik), Prometheus
-# (metrics scrape), and same-namespace pods (internal APIs). Egress limited
-# to DNS, the owned dependencies, OTLP, and Keycloak (identity).
+# (metrics scrape), the Knative autoscaler (worker queue-proxy metrics), and
+# same-namespace xitter pods (internal APIs). Egress limited to DNS, the
+# owned dependencies, OTLP, Keycloak (identity), and TLS to the cluster +
+# Cloudflare ranges.
 #
 # Scope note: the deny applies to xitter workload pods (app.kubernetes.io/
 # part-of=xitter - every pod the xitter-service module creates, including
 # Knative revisions, which inherit the template labels). Dependency pods
 # (CNPG/Kafka/OpenSearch/Valkey/RustFS) additionally get deny-ingress+allow
-# policies so datastores are reachable only from this namespace and their
+# policies so datastores are reachable only from their consumers and their
 # operators - but no egress deny, because the cluster operators (which run
 # in other namespaces) need to reach their CRs' pods and vice versa.
 
@@ -21,6 +23,8 @@ locals {
     "app.kubernetes.io/part-of"  = "xitter"
     "app.kubernetes.io/instance" = var.environment
   }
+
+  workers = ["fanout", "media-process", "search-index"]
 
   # Metrics listener per workload: services share the app port, workers use
   # their dedicated metrics ports.
@@ -134,8 +138,11 @@ resource "kubernetes_network_policy" "allow_metrics_ingress" {
   }
 }
 
-# Same-namespace → workloads (internal service APIs, worker callbacks,
-# kubelet-adjacent checks). L7 authorisation stays with the services.
+# Same-namespace workloads → workloads (internal service APIs, worker
+# callbacks). Sources are scoped to xitter pods: dependency pods have no
+# egress deny (their operators need connectivity), so an unscoped `from`
+# would let a compromised datastore pod reach workload ports. L7
+# authorisation stays with the services.
 resource "kubernetes_network_policy" "allow_internal_ingress" {
   metadata {
     name      = "xitter-allow-internal-ingress"
@@ -151,7 +158,50 @@ resource "kubernetes_network_policy" "allow_internal_ingress" {
 
     ingress {
       from {
-        pod_selector {}
+        pod_selector {
+          match_labels = local.workload_match_labels
+        }
+      }
+    }
+  }
+}
+
+# Knative autoscaler → worker revision queue-proxy metrics (:9090). The KPA
+# scrapes each revision's pod IP directly to drive scale decisions; with
+# default-deny ingress this must be explicit or revision pods never go Ready.
+# Workers only - API/web/cms/admin pods are plain Deployments with no
+# queue-proxy. knative-serving itself runs no deny policies (verified
+# read-only), so no matching egress rule is needed there.
+# TODO: confirm scrape success once worker images are published (revisions
+# are RevisionMissing pre-images, so this is static reasoning, not verified).
+resource "kubernetes_network_policy" "allow_knative_autoscaler_ingress" {
+  for_each = toset(local.workers)
+
+  metadata {
+    name      = "xitter-allow-knative-metrics-${each.key}"
+    namespace = local.ns
+  }
+
+  spec {
+
+    policy_types = ["Ingress"]
+    pod_selector {
+      match_labels = {
+        "app.kubernetes.io/name"     = each.key
+        "app.kubernetes.io/instance" = var.environment
+      }
+    }
+
+    ingress {
+      from {
+        namespace_selector {
+          match_labels = { "kubernetes.io/metadata.name" = "knative-serving" }
+        }
+      }
+
+      ports {
+        port     = 9090
+        protocol = "TCP"
       }
     }
   }
@@ -255,9 +305,53 @@ resource "kubernetes_network_policy" "allow_keycloak_egress" {
 }
 
 # TLS egress to the canonical Keycloak issuer (https://idp.jd-chapman.dev,
-# Cloudflare-fronted, so it cannot be expressed as a CIDR) - workloads that
-# validate tokens fetch JWKS from the issuer URL, which must match the token
-# `iss` claim exactly. Scoped to 443 only.
+# Cloudflare-fronted). Workloads reach Keycloak via this external URL
+# (KEYCLOAK_BASE_URL comes from the homelab remote state; the cluster's
+# CoreDNS has no split-horizon, so the name resolves to Cloudflare anycast
+# and traffic hairpins back through the edge). Services fetch JWKS / token
+# endpoints over 443 from it - the issuer URL must match the token `iss`
+# claim exactly, so an internal rewrite is not an option.
+#
+# What does and does not need outbound 443:
+#   - Keycloak (Cloudflare ranges) and future in-cluster TLS (pod CIDR
+#     10.42.0.0/16, service CIDR 10.43.0.0/16 - k3s/Calico defaults,
+#     verified on the cluster): allowed below.
+#   - OTLP export is plain HTTP to the otel namespace (allow_otel_egress).
+#   - Image pulls are node-side (containerd), unaffected by pod egress.
+#   - Keycloak's in-cluster service is HTTP :80 (allow_keycloak_egress).
+#
+# Cloudflare's published ranges move slowly; refresh deliberately from
+# https://www.cloudflare.com/ips-v4 when identity calls start failing.
+variable "cloudflare_ipv4" {
+  description = "Cloudflare IPv4 ranges permitted for TLS egress (identity fronting). Refresh from https://www.cloudflare.com/ips-v4."
+  type        = list(string)
+
+  default = [
+    "173.245.48.0/20",
+    "103.21.244.0/22",
+    "103.22.200.0/22",
+    "103.31.4.0/22",
+    "141.101.64.0/18",
+    "108.162.192.0/18",
+    "190.93.240.0/20",
+    "188.114.96.0/20",
+    "197.234.240.0/22",
+    "198.41.128.0/17",
+    "162.158.0.0/15",
+    "104.16.0.0/13",
+    "104.24.0.0/14",
+    "172.64.0.0/13",
+    "131.0.72.0/22",
+  ]
+}
+
+locals {
+  tls_egress_cidrs = concat(
+    ["10.42.0.0/16", "10.43.0.0/16"],
+    var.cloudflare_ipv4,
+  )
+}
+
 resource "kubernetes_network_policy" "allow_identity_tls_egress" {
   metadata {
     name      = "xitter-allow-identity-tls-egress"
@@ -272,9 +366,13 @@ resource "kubernetes_network_policy" "allow_identity_tls_egress" {
     }
 
     egress {
-      to {
-        ip_block {
-          cidr = "0.0.0.0/0"
+      dynamic "to" {
+        for_each = local.tls_egress_cidrs
+
+        content {
+          ip_block {
+            cidr = to.value
+          }
         }
       }
 
@@ -286,11 +384,17 @@ resource "kubernetes_network_policy" "allow_identity_tls_egress" {
   }
 }
 
-# Same-namespace service-to-service (workers → internal APIs, web → SSR
-# service calls).
+# Same-namespace service-to-service: workers → internal APIs, web → SSR
+# service calls, service → service. Scoped to the five API service pods as
+# destinations (spec 07: per-dependency egress) - dependency pods (Postgres,
+# Kafka, OpenSearch, Valkey, RustFS) are each reachable only via the dedicated
+# egress policies below, keyed by the workloads that actually use them.
+# Knative revision pods carry the same app.kubernetes.io/name label as their
+# worker (set in the revision template - verified on the live Revision CR), so
+# worker sources/destinations select correctly.
 resource "kubernetes_network_policy" "allow_same_namespace_egress" {
   metadata {
-    name      = "xitter-allow-same-namespace-egress"
+    name      = "xitter-allow-api-egress"
     namespace = local.ns
   }
 
@@ -303,7 +407,16 @@ resource "kubernetes_network_policy" "allow_same_namespace_egress" {
 
     egress {
       to {
-        pod_selector {}
+        pod_selector {
+          match_expressions {
+            key      = "app.kubernetes.io/name"
+            operator = "In"
+            values   = ["social", "posts", "media", "feed", "search"]
+          }
+          match_labels = {
+            "app.kubernetes.io/instance" = var.environment
+          }
+        }
       }
     }
   }
@@ -347,6 +460,8 @@ resource "kubernetes_network_policy" "allow_postgres_egress" {
   }
 }
 
+# Producers (posts/social/media) and consumers (the three workers) only -
+# feed/search/cms/admin/web never touch Kafka.
 resource "kubernetes_network_policy" "allow_kafka_egress" {
   metadata {
     name      = "xitter-allow-kafka-egress"
@@ -357,7 +472,14 @@ resource "kubernetes_network_policy" "allow_kafka_egress" {
 
     policy_types = ["Egress"]
     pod_selector {
-      match_labels = local.workload_match_labels
+      match_expressions {
+        key      = "app.kubernetes.io/name"
+        operator = "In"
+        values   = concat(["posts", "social", "media"], local.workers)
+      }
+      match_labels = {
+        "app.kubernetes.io/instance" = var.environment
+      }
     }
 
     egress {
@@ -375,6 +497,11 @@ resource "kubernetes_network_policy" "allow_kafka_egress" {
   }
 }
 
+# Valkey users: feed (ws fan-out pub/sub, spec 05) plus the services with
+# spec'd mutation endpoints for the Valkey rate limiter (spec 07: post/reply
+# creation + interactions → posts, follows/blocks → social, upload slots →
+# media). web/cms/admin/search and the workers have no Valkey use; the rate
+# limiter is a service-side concern so web needs no direct access.
 resource "kubernetes_network_policy" "allow_valkey_egress" {
   metadata {
     name      = "xitter-allow-valkey-egress"
@@ -385,8 +512,12 @@ resource "kubernetes_network_policy" "allow_valkey_egress" {
 
     policy_types = ["Egress"]
     pod_selector {
+      match_expressions {
+        key      = "app.kubernetes.io/name"
+        operator = "In"
+        values   = ["feed", "posts", "social", "media"]
+      }
       match_labels = {
-        "app.kubernetes.io/name"     = "feed"
         "app.kubernetes.io/instance" = var.environment
       }
     }
@@ -475,8 +606,11 @@ resource "kubernetes_network_policy" "allow_rustfs_egress" {
 # ---------------------------------------------------------------------------
 # Datastore ingress isolation (deny + narrow allows)
 # ---------------------------------------------------------------------------
-# Postgres: only this namespace's pods (workloads + db-init job), the CNPG
-# operator (instance status API), and Prometheus (metrics scrape via PodMonitor).
+# Postgres: only its consumers on 5432 (the five API services + cms, and the
+# db-init bootstrap job - mirrors allow_postgres_egress), the cluster's own
+# pods (CNPG replication/instance-manager traffic for when instances > 1),
+# the CNPG operator (instance status API), and Prometheus (metrics via
+# PodMonitor).
 resource "kubernetes_network_policy" "postgres_ingress" {
   metadata {
     name      = "xitter-postgres-ingress"
@@ -492,7 +626,22 @@ resource "kubernetes_network_policy" "postgres_ingress" {
 
     ingress {
       from {
-        pod_selector {}
+        pod_selector {
+          match_expressions {
+            key      = "app.kubernetes.io/name"
+            operator = "In"
+            values   = ["social", "posts", "media", "feed", "search", "cms", "db-init"]
+          }
+          match_labels = {
+            "app.kubernetes.io/instance" = var.environment
+          }
+        }
+      }
+
+      from {
+        pod_selector {
+          match_labels = { "cnpg.io/cluster" = "xitter-postgres" }
+        }
       }
 
       ports {
@@ -533,7 +682,11 @@ resource "kubernetes_network_policy" "postgres_ingress" {
   }
 }
 
-# Kafka: Strimzi manages its own policies; add this-namespace access on 9092.
+# Kafka: producers + consumers only (mirrors allow_kafka_egress). Caveat:
+# Strimzi additionally manages its own policy (`kafka-network-policy-kafka`)
+# whose 9092 rule has no `from` - i.e. cluster-wide. Our rule documents the
+# xitter allow-list and would be the effective gate if Strimzi's generated
+# policy is ever tightened via the Kafka CR.
 resource "kubernetes_network_policy" "kafka_ingress" {
   metadata {
     name      = "xitter-kafka-ingress"
@@ -549,7 +702,16 @@ resource "kubernetes_network_policy" "kafka_ingress" {
 
     ingress {
       from {
-        pod_selector {}
+        pod_selector {
+          match_expressions {
+            key      = "app.kubernetes.io/name"
+            operator = "In"
+            values   = concat(["posts", "social", "media"], local.workers)
+          }
+          match_labels = {
+            "app.kubernetes.io/instance" = var.environment
+          }
+        }
       }
 
       ports {
@@ -560,7 +722,8 @@ resource "kubernetes_network_policy" "kafka_ingress" {
   }
 }
 
-# Valkey: only this namespace's pods + Prometheus (metrics exporter).
+# Valkey: its users only (mirrors allow_valkey_egress) + Prometheus
+# (metrics exporter).
 resource "kubernetes_network_policy" "valkey_ingress" {
   metadata {
     name      = "xitter-valkey-ingress"
@@ -576,7 +739,16 @@ resource "kubernetes_network_policy" "valkey_ingress" {
 
     ingress {
       from {
-        pod_selector {}
+        pod_selector {
+          match_expressions {
+            key      = "app.kubernetes.io/name"
+            operator = "In"
+            values   = ["feed", "posts", "social", "media"]
+          }
+          match_labels = {
+            "app.kubernetes.io/instance" = var.environment
+          }
+        }
       }
 
       ports {
@@ -600,7 +772,11 @@ resource "kubernetes_network_policy" "valkey_ingress" {
   }
 }
 
-# OpenSearch: this namespace + the operator namespace (lifecycle management).
+# OpenSearch: the search service only (spec 04/05 - search-index keeps the
+# index in sync via search's internal bulk API, never OpenSearch directly;
+# the index is owned by search), the cluster's own pods on the transport
+# port (inter-node traffic once nodePools > 1), and the operator namespace
+# (lifecycle management).
 resource "kubernetes_network_policy" "opensearch_ingress" {
   metadata {
     name      = "xitter-opensearch-ingress"
@@ -616,7 +792,12 @@ resource "kubernetes_network_policy" "opensearch_ingress" {
 
     ingress {
       from {
-        pod_selector {}
+        pod_selector {
+          match_labels = {
+            "app.kubernetes.io/name"     = "search"
+            "app.kubernetes.io/instance" = var.environment
+          }
+        }
       }
 
       from {
@@ -629,6 +810,15 @@ resource "kubernetes_network_policy" "opensearch_ingress" {
         port     = 9200
         protocol = "TCP"
       }
+    }
+
+    ingress {
+      from {
+        pod_selector {
+          match_labels = { "opensearch.org/opensearch-cluster" = "opensearch" }
+        }
+      }
+
       ports {
         port     = 9300
         protocol = "TCP"
@@ -637,7 +827,9 @@ resource "kubernetes_network_policy" "opensearch_ingress" {
   }
 }
 
-# RustFS: this namespace + the edge (public /media reads).
+# RustFS: its writers only (mirrors allow_rustfs_egress: media service,
+# media-process worker, rustfs-provision job) + the edge (public /media
+# reads).
 resource "kubernetes_network_policy" "rustfs_ingress" {
   metadata {
     name      = "xitter-rustfs-ingress"
@@ -653,7 +845,16 @@ resource "kubernetes_network_policy" "rustfs_ingress" {
 
     ingress {
       from {
-        pod_selector {}
+        pod_selector {
+          match_expressions {
+            key      = "app.kubernetes.io/name"
+            operator = "In"
+            values   = ["media", "media-process", "rustfs-provision"]
+          }
+          match_labels = {
+            "app.kubernetes.io/instance" = var.environment
+          }
+        }
       }
 
       from {
