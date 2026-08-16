@@ -85,6 +85,8 @@ jobs:
           path: .turbo
           key: turbo-${{ runner.os }}-${{ github.sha }}
           restore-keys: turbo-${{ runner.os }}-
+      - name: Materialise package builds (turbo cache replay)
+        run: npm run build:packages
       - run: npm run test:web
         env:
           CI: 'true'
