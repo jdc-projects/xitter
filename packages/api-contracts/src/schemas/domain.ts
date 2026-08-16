@@ -30,6 +30,18 @@ export const profileSchema = z.object({
 
 export type Profile = z.infer<typeof profileSchema>;
 
+export const profileCountsSchema = z.object({
+  following: z.number().int().nonnegative(),
+  followers: z.number().int().nonnegative(),
+});
+
+/** Profile as returned by `GET /profiles/:id` (spec 03: profile + counts). */
+export const profileWithCountsSchema = profileSchema.extend({
+  counts: profileCountsSchema,
+});
+
+export type ProfileWithCounts = z.infer<typeof profileWithCountsSchema>;
+
 export const mediaVariantSchema = z.object({
   kind: z.enum(['original', 'thumb']),
   objectKey: z.string().min(1),

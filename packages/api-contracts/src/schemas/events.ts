@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { interactionKindSchema, mediaIdSchema, postIdSchema, userIdSchema } from './domain.js';
+import {
+  interactionKindSchema,
+  mediaIdSchema,
+  postIdSchema,
+  userIdSchema,
+  usernameSchema,
+} from './domain.js';
 
 /**
  * Event payload schemas. Each becomes one member of the discriminated union in
@@ -68,6 +74,15 @@ export const blockDeleted = z.object({
   deletedAt: z.iso.datetime(),
 });
 
+export const profileUpdated = z.object({
+  eventType: z.literal('social.profile.updated'),
+  profileId: userIdSchema,
+  username: usernameSchema,
+  displayName: z.string().min(1).max(50),
+  bio: z.string().max(200).nullable(),
+  updatedAt: z.iso.datetime(),
+});
+
 export const mediaUploaded = z.object({
   eventType: z.literal('media.media.uploaded'),
   mediaId: mediaIdSchema,
@@ -103,5 +118,6 @@ export type FollowCreated = z.infer<typeof followCreated>;
 export type FollowDeleted = z.infer<typeof followDeleted>;
 export type BlockCreated = z.infer<typeof blockCreated>;
 export type BlockDeleted = z.infer<typeof blockDeleted>;
+export type ProfileUpdated = z.infer<typeof profileUpdated>;
 export type MediaUploaded = z.infer<typeof mediaUploaded>;
 export type MediaProcessed = z.infer<typeof mediaProcessed>;

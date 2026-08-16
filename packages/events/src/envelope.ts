@@ -10,6 +10,7 @@ import {
   mediaUploaded,
   postCreated,
   postDeleted,
+  profileUpdated,
 } from '@xitter/api-contracts';
 
 /** Envelope wrapped around every event payload on the wire. */
@@ -38,6 +39,7 @@ export const eventSchemas = z.discriminatedUnion('eventType', [
   followDeleted,
   blockCreated,
   blockDeleted,
+  profileUpdated,
   mediaUploaded,
   mediaProcessed,
 ]);
@@ -53,6 +55,7 @@ export const EVENT_TYPES = {
   followDeleted: 'social.follow.deleted',
   blockCreated: 'social.block.created',
   blockDeleted: 'social.block.deleted',
+  profileUpdated: 'social.profile.updated',
   mediaUploaded: 'media.media.uploaded',
   mediaProcessed: 'media.media.processed',
 } as const;
