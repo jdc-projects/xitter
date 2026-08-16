@@ -22,21 +22,20 @@ Shared, non-service-owned stores: Kafka (event bus), Valkey (ephemeral: ws pub/s
 ```mermaid
 erDiagram
     Profile ||--o{ Follow : "follower"
-    Profile ||--o{ Follow : "target"
+    Profile ||--o{ Follow : "followee"
     Profile ||--o{ Block : "blocker"
     Profile ||--o{ Block : "blocked"
     Profile {
-        string id PK
-        string userId UK "Keycloak sub"
+        string id PK "Keycloak sub"
+        string username UK
         string displayName
         string bio "nullable"
         datetime createdAt
-        datetime updatedAt
     }
     Follow {
         string id PK
         string followerId FK
-        string targetId FK
+        string followeeId FK
         datetime createdAt
     }
     Block {
@@ -47,7 +46,7 @@ erDiagram
     }
 ```
 
-Uniques: `Follow(followerId, targetId)`, `Block(blockerId, blockedId)`.
+Uniques: `Follow(followerId, followeeId)`, `Block(blockerId, blockedId)`. The profile row is keyed by the Keycloak `sub` itself (no separate user id); `username` is unique and mirrors the Keycloak `preferred_username`.
 
 ### posts
 
@@ -140,7 +139,7 @@ Field tables above (types/constraints inline in each ER diagram) are normative. 
 
 | Store      | Indexes (beyond PKs/uniques)                                                     | Serves                                       |
 | ---------- | -------------------------------------------------------------------------------- | -------------------------------------------- |
-| social     | `Follow(targetId)`, `Block(blockedId)`                                           | Followers lists; block checks on write paths |
+| social     | `Follow(followeeId)`, `Block(blockedId)`                                           | Followers lists; block checks on write paths |
 | posts      | `Post(authorId, createdAt desc)`, `Post(replyToId)`, `Interaction(userId, kind)` | Profiles, threads, "my bookmarks/likes"      |
 | media      | `MediaAsset(postId)`, `MediaAsset(status)`                                       | Attachment lookups; pending/failed cleanup   |
 | feed       | `FeedEntry(userId, createdAt desc)`                                              | The feed page itself — the hot path          |

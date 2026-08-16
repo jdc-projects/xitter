@@ -7,7 +7,7 @@ Kafka is the only asynchronous integration mechanism between services and worker
 | Topic              | Producer | Partitions | Retention | Partition key                            |
 | ------------------ | -------- | ---------- | --------- | ---------------------------------------- |
 | `xitter.posts.v1`  | posts    | 6          | 7d        | `postId` (interaction events: `postId`)  |
-| `xitter.social.v1` | social   | 6          | 7d        | acting user (`followerId` / `blockerId`) |
+| `xitter.social.v1` | social   | 6          | 7d        | acting user (`followerId` / `blockerId` / `profileId`) |
 | `xitter.media.v1`  | media    | 6          | 7d        | `mediaId`                                |
 
 Partition keys preserve per-aggregate ordering (a post's lifecycle, a user's graph changes, a media object's processing) — consumers must not assume cross-partition ordering.
@@ -55,6 +55,7 @@ Every message is JSON with a single envelope; consumers validate it at the bound
 | `social.follow.deleted`     | `xitter.social.v1` | `followerId`, `followeeId`, `deletedAt`                               | Unfollowed                                                 |
 | `social.block.created`      | `xitter.social.v1` | `blockerId`, `blockedId`, `createdAt`                                 | Block established                                          |
 | `social.block.deleted`      | `xitter.social.v1` | `blockerId`, `blockedId`, `deletedAt`                                 | Block removed                                              |
+| `social.profile.updated`    | `xitter.social.v1` | `profileId`, `username`, `displayName`, `bio`, `updatedAt`            | Own profile created (login bootstrap) or edited (name/bio) |
 | `media.media.uploaded`      | `xitter.media.v1`  | `mediaId`, `userId`, `mimeType`, `bytes`, `createdAt`                 | Upload slot fulfilled — object confirmed present in RustFS |
 | `media.media.processed`     | `xitter.media.v1`  | `mediaId`, `variants[] {kind, key}`, `processedAt`                    | Variants (`original`, `thumb`) written and recorded        |
 
