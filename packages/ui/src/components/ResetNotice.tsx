@@ -20,8 +20,8 @@ export function ResetNotice({
   return (
     <Alert
       color="yellow"
-      variant="light"
-      title="Demo data is reset every night"
+      variant="outline"
+      title={<b style={{ color: 'var(--mantine-color-text)' }}>Demo data is reset every night</b>}
       {...alertProps}
       data-testid="reset-notice"
     >

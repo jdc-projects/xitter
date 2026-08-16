@@ -1,6 +1,7 @@
 {
   "$schema": "https://turborepo.com/schema.json",
   "ui": "stream",
+  "concurrency": "16",
   "globalEnv": ["NODE_ENV", "XITTER_ENV", "XITTER_PORT_OFFSET", "CI"],
   "tasks": {
     "build": {
@@ -23,11 +24,7 @@
         "src/collections/**",
         "package.json"
       ],
-      "outputs": [
-        "src/generated/prisma/**",
-        "src/payload-types.ts",
-        "src/app/(payload)/admin/importMap.js"
-      ]
+      "outputs": ["src/generated/**", "src/payload-types.ts", "src/app/**/importMap.js"]
     },
     "dev": {
       "dependsOn": ["^build"],

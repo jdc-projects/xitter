@@ -137,6 +137,7 @@ jobs:
       - name: Start stack
         run: |
           npm run deps:up
+          npm run topics:create
           npm run build
         env:
           XITTER_ENV: ci

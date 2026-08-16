@@ -3,6 +3,7 @@
 import { defineConfig } from '@playwright/test';
 
 const port = process.env.XITTER_EDGE_PORT ?? '8080';
+const webPort = process.env.XITTER_WEB_PORT ?? '3456';
 const baseURL = process.env.E2E_BASE_URL ?? `http://localhost:${port}`;
 
 export default defineConfig({
@@ -21,7 +22,10 @@ export default defineConfig({
   ],
   webServer: {
     command: 'npm run start',
-    url: `http://localhost:${port}`,
+    // Probe the web app port, NOT the edge (:8080) - traefik holds the edge
+    // open whenever the docker stack is up, which would falsely signal ready
+    // and skip starting the apps under test.
+    url: `http://localhost:${webPort}`,
     reuseExistingServer: !process.env.CI,
     timeout: 300_000,
   },

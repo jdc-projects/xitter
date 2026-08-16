@@ -18,8 +18,6 @@ services:
     volumes:
       - ../proxy/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
       - ../proxy/traefik/dynamic:/etc/traefik/dynamic:ro
-    extra_hosts:
-      - 'host.docker.internal:host-gateway'
     environment:
       # Consumed by the dynamic file templates (host apps are env-port driven).
       XITTER_WEB_PORT: ${XITTER_WEB_PORT:-3456}
@@ -42,7 +40,9 @@ services:
     ports:
       - '${XITTER_POSTGRES_PORT:-5532}:5432'
     volumes:
-      - pg-data:/var/lib/postgresql/data
+      # Postgres 18+ wants a single mount at /var/lib/postgresql (it manages
+      # the data subdirectory itself - required for pg_upgrade --link).
+      - pg-data:/var/lib/postgresql
       - ./init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U xitter']
@@ -56,14 +56,16 @@ services:
     ports:
       - '${XITTER_KAFKA_PORT:-9092}:9092'
     environment:
+      CLUSTER_ID: '5L6g3nShT-eMCtK--X86sw'
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29092
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
       KAFKA_LISTENERS: PLAINTEXT://:29092,CONTROLLER://:29093,EXTERNAL://:9092
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,EXTERNAL://localhost:${XITTER_KAFKA_PORT:-9092}
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1

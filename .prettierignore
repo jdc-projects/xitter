@@ -1,3 +1,5 @@
 bruno/
 next-env.d.ts
 .fallow/
+playwright-report/
+**/report/
