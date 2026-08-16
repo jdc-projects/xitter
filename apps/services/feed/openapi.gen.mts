@@ -13,5 +13,5 @@ const document = buildServiceDocument(
   feedApi,
 );
 
-writeFileSync(join(process.cwd(), 'openapi.json'), JSON.stringify(document, null, 2));
+writeFileSync(join(process.cwd(), 'openapi.json'), `${JSON.stringify(document, null, 2)}\n`);
 console.log('wrote openapi.json');
