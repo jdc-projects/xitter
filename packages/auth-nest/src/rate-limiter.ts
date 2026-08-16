@@ -97,6 +97,9 @@ export class TokenBucketRateLimiter {
     return this.connection;
   }
 
+  // Nest invokes this via OnApplicationShutdown at shutdown - no direct
+  // references by design.
+  // fallow-ignore-next-line unused-class-member
   async onApplicationShutdown(): Promise<void> {
     await this.connection?.quit().catch(() => undefined);
   }

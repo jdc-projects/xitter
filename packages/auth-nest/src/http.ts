@@ -19,10 +19,6 @@ export function unauthenticated(message = 'Authentication required'): HttpExcept
   return new HttpException(errorBody('UNAUTHENTICATED', message), 401);
 }
 
-export function forbidden(message = 'Forbidden'): HttpException {
-  return new HttpException(errorBody('FORBIDDEN', message), 403);
-}
-
 /**
  * Bearer token from `Authorization`, falling back to the edge-forwarded
  * `X-Access-Token` (always re-validated, never trusted blindly).

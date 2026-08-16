@@ -1,4 +1,6 @@
 export { AuthModule } from './auth.module.js';
+export { bootstrapApiService } from './bootstrap.js';
+export type { ApiServiceOptions } from './bootstrap.js';
 export { AuthGuard } from './auth.guard.js';
 export { RateLimitGuard } from './rate-limit.guard.js';
 export { TokenBucketRateLimiter } from './rate-limiter.js';

@@ -2,6 +2,7 @@
 
 import { Button, Text } from '@mantine/core';
 import { useEffect } from 'react';
+import { loadCaptchaWidget } from './load-widget';
 
 export interface CaptchaConfig {
   siteKey: string;
@@ -17,7 +18,7 @@ export interface CaptchaConfig {
  */
 export function LoginForm({ next, captcha }: { next: string; captcha: CaptchaConfig | null }) {
   useEffect(() => {
-    if (captcha) void import('@cap.js/widget');
+    if (captcha) void loadCaptchaWidget();
   }, [captcha]);
 
   return (

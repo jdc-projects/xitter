@@ -1,5 +1,10 @@
 {
   "finding_counts": {
+    "apps/web/src/app/api/auth/logout/route.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
     "packages/api-client/src/client.ts": {
       "crap_critical": {
         "count": 1
@@ -10,14 +15,32 @@
         "count": 1
       }
     },
+    "packages/auth-nest/src/auth.guard.ts": {
+      "complexity_moderate": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "packages/auth-nest/src/rate-limit.guard.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
     "packages/auth/src/verify.ts": {
-      "crap_high": {
+      "crap_moderate": {
         "count": 1
       }
     },
     "packages/observability/src/logger.ts": {
       "crap_high": {
         "count": 1
+      }
+    },
+    "packages/scripts/src/keycloak.ts": {
+      "crap_moderate": {
+        "count": 2
       }
     },
     "packages/scripts/src/lib/wait.ts": {
@@ -32,5 +55,7 @@
     }
   },
   "runtime_coverage_findings": [],
-  "target_keys": []
+  "target_keys": [
+    "packages/auth-nest/src/http.ts:high impact"
+  ]
 }
