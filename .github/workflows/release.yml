@@ -11,5 +11,5 @@ jobs:
     runs-on: ubuntu-latest
     if: false # enable with the deploy pipeline ticket
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
