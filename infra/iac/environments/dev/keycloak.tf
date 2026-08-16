@@ -53,9 +53,9 @@ resource "keycloak_realm" "demo" {
   registration_allowed     = false
   login_with_email_allowed = false
 
-  access_token_lifespan    = 900
-  sso_session_idle_timeout = 3600
-  sso_session_max_lifespan = 43200
+  access_token_lifespan    = "15m"
+  sso_session_idle_timeout = "1h"
+  sso_session_max_lifespan = "12h"
 }
 
 resource "keycloak_role" "demo_user" {
