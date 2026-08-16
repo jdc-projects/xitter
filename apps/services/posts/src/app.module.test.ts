@@ -1,21 +1,44 @@
-import { Test } from '@nestjs/testing';
+import { Controller, Get } from '@nestjs/common';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
+import { Test } from '@nestjs/testing';
 import { afterEach, describe, expect, it } from 'vitest';
-import { HEALTH_DB } from '@xitter/health';
-import { AppModule } from './app.module.js';
+import { HEALTH_DB, HealthModule, type HealthCheckedDb } from '@xitter/health';
+
+// Deliberately does NOT import AppModule: that drags in the generated Prisma
+// client (src/generated/prisma), which is gitignored and so never reaches
+// Stryker's sandbox. HealthModule.forRoot() - the wiring under test - is the
+// real thing; a placeholder controller stands in for the service's API routes
+// so the global prefix has something to exclude the probes against.
+@Controller('placeholder')
+class PlaceholderController {
+  @Get()
+  find() {
+    return { ok: true };
+  }
+}
+
+const healthyDb: HealthCheckedDb = {
+  $queryRawUnsafe: () => Promise.resolve(1),
+  $disconnect: () => Promise.resolve(undefined),
+};
 
 async function createApp(dbOverride?: object): Promise<NestFastifyApplication> {
-  const builder = Test.createTestingModule({ imports: [AppModule] });
+  const builder = Test.createTestingModule({
+    imports: [HealthModule.forRoot({ prismaFactory: () => healthyDb })],
+    controllers: [PlaceholderController],
+  });
   if (dbOverride) builder.overrideProvider(HEALTH_DB).useValue(dbOverride);
   const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
   // Mirrors main.ts: probes sit at the root, outside the versioned prefix.
+  // Only this prefix wiring is replicated here - main.ts's bootstrap config
+  // (env parsing, tracing, Sentry) isn't unit-testable.
   app.setGlobalPrefix('api/posts/v1', { exclude: ['healthz', 'readyz'] });
   await app.init();
   return app;
 }
 
-describe('AppModule health wiring', () => {
+describe('health probe wiring', () => {
   let app: NestFastifyApplication | undefined;
 
   afterEach(async () => {
