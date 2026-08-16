@@ -27,38 +27,27 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - workspace: web
-            image: xitter-web
+          - image: xitter-web
             dockerfile: apps/web/Dockerfile
-          - workspace: cms
-            image: xitter-cms
+          - image: xitter-cms
             dockerfile: apps/cms/Dockerfile
-          - workspace: admin
-            image: xitter-admin
+          - image: xitter-admin
             dockerfile: apps/admin/Dockerfile
-          - workspace: '@xitter/service-social'
-            image: xitter-social
+          - image: xitter-social
             dockerfile: apps/services/social/Dockerfile
-          - workspace: '@xitter/service-posts'
-            image: xitter-posts
+          - image: xitter-posts
             dockerfile: apps/services/posts/Dockerfile
-          - workspace: '@xitter/service-media'
-            image: xitter-media
+          - image: xitter-media
             dockerfile: apps/services/media/Dockerfile
-          - workspace: '@xitter/service-feed'
-            image: xitter-feed
+          - image: xitter-feed
             dockerfile: apps/services/feed/Dockerfile
-          - workspace: '@xitter/service-search'
-            image: xitter-search
+          - image: xitter-search
             dockerfile: apps/services/search/Dockerfile
-          - workspace: '@xitter/worker-fanout'
-            image: xitter-fanout
+          - image: xitter-fanout
             dockerfile: apps/workers/fanout/Dockerfile
-          - workspace: '@xitter/worker-media-process'
-            image: xitter-media-process
+          - image: xitter-media-process
             dockerfile: apps/workers/media-process/Dockerfile
-          - workspace: '@xitter/worker-search-index'
-            image: xitter-search-index
+          - image: xitter-search-index
             dockerfile: apps/workers/search-index/Dockerfile
     steps:
       - uses: actions/checkout@v7
