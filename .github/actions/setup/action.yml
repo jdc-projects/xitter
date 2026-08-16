@@ -1,6 +1,7 @@
 name: 'xitter setup'
 description: >-
   Cached Node + node_modules + Playwright chromium for xitter CI jobs.
+  Runs AFTER actions/checkout (local actions need the repo present).
   node_modules is cached on the lockfile hash (immutable key); npm ci only
   runs on a miss. Set `playwright: true` to also cache the chromium download.
 
@@ -9,18 +10,10 @@ inputs:
     description: 'Cache and install Playwright chromium'
     required: false
     default: 'false'
-  fetch-depth:
-    description: 'Checkout fetch depth (0 = full history, for turbo affected filters / fallow)'
-    required: false
-    default: '1'
 
 runs:
   using: 'composite'
   steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: ${{ inputs.fetch-depth }}
-
     - uses: actions/setup-node@v4
       with:
         node-version-file: .nvmrc

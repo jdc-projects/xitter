@@ -28,6 +28,7 @@ jobs:
   format:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       - run: npm run format:check
 
@@ -37,6 +38,7 @@ jobs:
     # rebuilding.
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       - uses: actions/cache@v4
         with:
@@ -49,6 +51,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
       - uses: actions/cache/restore@v4
         with:
@@ -61,9 +64,10 @@ jobs:
     # fallow + react-doctor; needs the base ref for changed-file attribution
     runs-on: ubuntu-latest
     steps:
-      - uses: ./.github/actions/setup
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: '0'
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
       - name: Fetch base ref
         run: git fetch origin dev:refs/remotes/origin/dev
       - run: npm run lint:repo
@@ -72,6 +76,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
         with:
           playwright: true
@@ -96,6 +101,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
         with:
           playwright: true
@@ -128,9 +134,10 @@ jobs:
     runs-on: ubuntu-latest
     if: needs.changes.outputs.packages != '[]'
     steps:
-      - uses: ./.github/actions/setup
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: '0'
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
       - uses: actions/cache/restore@v4
         with:
           path: .turbo
