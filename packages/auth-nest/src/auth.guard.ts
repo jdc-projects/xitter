@@ -12,7 +12,7 @@ import {
 } from './auth.tokens.js';
 import { authorizedParty, bearerToken, edgeIdentity, unauthenticated } from './http.js';
 
-type RequestWithUser = { headers: Record<string, unknown>; user?: RequestUser };
+type RequestWithUser = { headers: Record<string, unknown>; url?: string; user?: RequestUser };
 
 /**
  * Global request guard, applied once per service. Route kind decides the
