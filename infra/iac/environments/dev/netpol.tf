@@ -335,7 +335,7 @@ resource "kubernetes_network_policy" "allow_postgres_egress" {
     egress {
       to {
         pod_selector {
-          match_labels = { "cnpg.io/clusterName" = "xitter-postgres" }
+          match_labels = { "cnpg.io/cluster" = "xitter-postgres" }
         }
       }
 
@@ -425,7 +425,7 @@ resource "kubernetes_network_policy" "allow_opensearch_egress" {
     egress {
       to {
         pod_selector {
-          match_labels = { "opster.io/opensearch-cluster" = "opensearch" }
+          match_labels = { "opensearch.org/opensearch-cluster" = "opensearch" }
         }
       }
 
@@ -609,7 +609,7 @@ resource "kubernetes_network_policy" "opensearch_ingress" {
 
   spec {
     pod_selector {
-      match_labels = { "opster.io/opensearch-cluster" = "opensearch" }
+      match_labels = { "opensearch.org/opensearch-cluster" = "opensearch" }
     }
 
     policy_types = ["Ingress"]
