@@ -1,0 +1,34 @@
+# Shared build context hygiene for every apps/*/Dockerfile (context = repo
+# root). Keeps `turbo prune` input small and never ships local state, secrets,
+# or unrelated trees into the builder. Critically, generated/stale artifacts
+# (tsbuildinfo, dist, generated clients) are excluded: turbo prune cannot use
+# git to filter files (no .git in the context), so anything present would be
+# copied verbatim and break in-image builds (e.g. a stale tsbuildinfo makes
+# tsc skip emitting dist entirely).
+.git
+.github
+.fallow
+.turbo
+**/.turbo
+**/node_modules
+**/dist
+**/.next
+**/*.tsbuildinfo
+**/src/generated
+out
+coverage
+test-results
+playwright-report
+artillery-report
+reports
+mutation
+.stryker-tmp
+docs
+tests
+bruno
+infra
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
