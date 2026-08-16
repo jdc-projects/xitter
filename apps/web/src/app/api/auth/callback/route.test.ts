@@ -16,9 +16,9 @@ const social = vi.hoisted(() => ({
 }));
 
 vi.mock('@xitter/api-client', async (importOriginal) => {
-  const actual = await importOriginal<
-    typeof import('@xitter/api-client')
-  >();
+  const actual = (await importOriginal()) as Record<string, unknown> & {
+    ApiError: typeof ApiErrorClass;
+  };
   return {
     ...actual,
     SocialClient: class {
@@ -65,6 +65,7 @@ vi.mock('@/lib/auth/session-store', () => ({
 }));
 
 import { oidc } from '@/lib/auth/oidc';
+import type { ApiError as ApiErrorClass } from '@xitter/api-client';
 import { GET } from './route.js';
 
 const authorizationCodeGrantMock = vi.mocked(oidc.authorizationCodeGrant);
