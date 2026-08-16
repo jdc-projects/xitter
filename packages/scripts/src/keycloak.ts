@@ -20,13 +20,24 @@ export interface DemoUser {
 
 export async function createAdminClient(): Promise<KcAdminClient> {
   const kc = new KcAdminClient({ baseUrl: keycloakBaseUrl(), realmName: 'master' });
-  await kc.auth({
-    grantType: 'password',
-    clientId: 'admin-cli',
-    username: envString('XITTER_KEYCLOAK_ADMIN_USER', 'admin'),
-    password: envString('XITTER_KEYCLOAK_ADMIN_PASSWORD', 'admin'),
-  });
-  return kc;
+  // Keycloak answers /realms/master before its token endpoint reliably
+  // accepts connections (transient "other side closed" resets during boot);
+  // retry the admin grant until it settles.
+  const deadline = Date.now() + 120_000;
+  for (;;) {
+    try {
+      await kc.auth({
+        grantType: 'password',
+        clientId: 'admin-cli',
+        username: envString('XITTER_KEYCLOAK_ADMIN_USER', 'admin'),
+        password: envString('XITTER_KEYCLOAK_ADMIN_PASSWORD', 'admin'),
+      });
+      return kc;
+    } catch (err) {
+      if (Date.now() > deadline) throw err;
+      await new Promise((r) => setTimeout(r, 2_000));
+    }
+  }
 }
 
 export const demoCredentials = () => ({
