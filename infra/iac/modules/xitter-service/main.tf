@@ -119,6 +119,22 @@ resource "kubernetes_service_account_v1" "this" {
   automount_service_account_token = false
 }
 
+# Plain env vars become a ConfigMap so the Knative manifest references them
+# with envFrom: the kubernetes provider panics converting env *lists* (whose
+# schema contains DynamicPseudoType fields) into the CRD type - the homelab
+# uses the same ConfigMap + envFrom shape for its manifests.
+resource "kubernetes_config_map_v1" "env" {
+  count = length(var.env) > 0 ? 1 : 0
+
+  metadata {
+    name      = var.name
+    namespace = var.namespace
+    labels    = local.labels
+  }
+
+  data = { for e in var.env : e.name => e.value }
+}
+
 # ---------------------------------------------------------------------------
 # Deployment (non-knative workloads: web, cms, admin, API services)
 # ---------------------------------------------------------------------------
@@ -357,12 +373,17 @@ resource "kubernetes_manifest" "knative" {
 
               ports = [{ containerPort = var.port }]
 
-              env = concat(
-                [for e in var.env : { name = e.name, value = e.value }],
-                [for e in var.secret_env : {
-                  name      = e.name
-                  valueFrom = { secretKeyRef = { name = e.secret_name, key = e.secret_key } }
-                }],
+              # All env (plain + secret) is injected with envFrom: the provider
+              # panics on env lists in CRD manifests (see the ConfigMap above).
+              # Secret keys must therefore be named exactly as the env vars the
+              # workload expects.
+              envFrom = concat(
+                length(var.env) > 0 ? [{ configMapRef = { name = kubernetes_config_map_v1.env[0].metadata[0].name } }] : [],
+                [
+                  for secret_name in toset([for e in var.secret_env : e.secret_name]) : {
+                    secretRef = { name = secret_name }
+                  }
+                ],
               )
 
               # Workers currently serve only a plain metrics listener (no
