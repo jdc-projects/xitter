@@ -2,7 +2,7 @@
  * Search-index worker: projects post and social events into the OpenSearch
  * posts index. Deployed as a Knative service; consumes Kafka only.
  */
-import { kafkaBrokers, loadRepoEnv, parseEnv } from '@xitter/config';
+import { kafkaBrokers, localPort, localUrl, loadRepoEnv, parseEnv } from '@xitter/config';
 import { CONSUMER_GROUPS, createEventConsumer } from '@xitter/events';
 import { createLogger, createMetricsServer, initSentry, initTracing } from '@xitter/observability';
 import { z } from 'zod';
@@ -13,12 +13,8 @@ loadRepoEnv();
 const env = parseEnv(
   z.object({
     KAFKA_BROKERS: z.string().min(1).default(kafkaBrokers()),
-    SEARCH_INTERNAL_URL: z.string().url().default('http://localhost:8105'),
-    METRICS_PORT: z.coerce
-      .number()
-      .int()
-      .positive()
-      .default(Number(process.env.XITTER_SEARCH_INDEX_METRICS_PORT ?? '9103')),
+    SEARCH_INTERNAL_URL: z.string().url().default(localUrl('search')),
+    METRICS_PORT: z.coerce.number().int().positive().default(localPort('searchIndexMetrics')),
   }),
 );
 

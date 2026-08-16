@@ -1,12 +1,27 @@
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { findRepoRoot, loadRepoEnv } from '@xitter/config';
+import { findRepoRoot, loadRepoEnv, localPort, type PortName } from '@xitter/config';
 import { run, capture } from './exec.js';
 
 const COMPOSE_FILE = join(findRepoRoot(), 'infra', 'docker', 'compose.yaml');
 // Docker Desktop resolves host.docker.internal natively; on Linux the edge
 // needs the host-gateway mapping, which Desktop's daemon rejects.
 const LINUX_OVERRIDE = join(findRepoRoot(), 'infra', 'docker', 'compose.linux.yaml');
+
+/** Ports compose interpolates and injects into the edge (traefik) container. */
+const COMPOSE_PORTS: PortName[] = [
+  'edge',
+  'web',
+  'cms',
+  'admin',
+  'postgres',
+  'kafka',
+  'opensearch',
+  'rustfs',
+  'valkey',
+  'keycloak',
+];
 
 /** Compose project name isolates every environment copy (containers, volumes, networks). */
 export function composeProject(): string {
@@ -19,16 +34,34 @@ function composeFiles(): string[] {
     : [COMPOSE_FILE];
 }
 
+/**
+ * Compose cannot compute default+XITTER_PORT_OFFSET itself, and .env-file vars
+ * beat the passing environment, so a generated env file (listed last - later
+ * files win) carries resolved explicit ports. This makes offset-only parallel
+ * copies shift published ports AND the edge's upstream targets together.
+ */
+function resolvedEnvFile(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'xitter-compose-'));
+  const lines = COMPOSE_PORTS.map(
+    (name) => `XITTER_${name.replace(/([A-Z])/g, '_$1').toUpperCase()}_PORT=${localPort(name)}`,
+  );
+  const file = join(dir, 'resolved.env');
+  writeFileSync(file, `${lines.join('\n')}\n`);
+  return file;
+}
+
 function composeArgs(): string[] {
-  // --env-file: compose's default .env lookup is the compose file's directory
-  // (infra/docker), so point it at the repo root explicitly when present - port
-  // overrides and XITTER_ENV isolation must reach interpolation. Compose's own
-  // defaults cover a missing file.
+  // --env-file order matters: repo .env first (non-port defaults), resolved
+  // ports last (later files win), so offsets reach interpolation deterministically.
   const args = ['compose'];
   for (const file of composeFiles()) args.push('--file', file);
   const rootEnv = join(findRepoRoot(), '.env');
   if (existsSync(rootEnv)) args.push('--env-file', rootEnv);
+  const resolved = resolvedEnvFile();
+  args.push('--env-file', resolved);
   args.push('--project-name', composeProject());
+  // Remove the temp dir once compose has parsed it (after args are read).
+  process.once('exit', () => rmSync(resolved, { recursive: true, force: true }));
   return args;
 }
 

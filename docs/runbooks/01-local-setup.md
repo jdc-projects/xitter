@@ -21,8 +21,9 @@ Get a full local xitter environment running from a clean checkout. All third-par
 Notes:
 
 - `npm run env:print` shows the resolved ports for this checkout.
-- The local edge (Traefik) is at `http://localhost:8080` (plus any port offset).
+- The local edge (Traefik) is at the default `http://localhost:8080` — shift `XITTER_PORT_OFFSET` and everything (docker publishes, edge upstreams, apps, tests, seeding) moves together; a pinned `XITTER_*_PORT` env var is an absolute override and ignores the offset.
 - Steps 5–6 are idempotent: topics already exist, realms already shaped, migrations already applied are no-ops.
+- Parallel copies: `XITTER_ENV` + `XITTER_PORT_OFFSET` isolate everything orchestrated through the repo scripts (docker, apps, tests, seeding). Bruno and Artillery default to the zero-offset ports — export `XITTER_SEED_BASE_URL`/`XITTER_SEED_KEYCLOAK_URL` (Bruno: edit `bruno/xitter/environments/local.bru`) when targeting an offset copy.
 
 ## Validation steps
 

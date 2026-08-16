@@ -9,9 +9,8 @@ const mode = process.argv[2] ?? 'dev';
 const port = String(localPort('admin'));
 
 const args =
-  mode === 'dev'
-    ? ['exec', '--', 'vite', '--port', port, '--strictPort']
-    : ['exec', '--', 'vite', 'preview', '--port', port, '--strictPort'];
+  mode === 'dev' ? ['--port', port, '--strictPort'] : ['preview', '--port', port, '--strictPort'];
 
-const child = spawn('npm', args, { stdio: 'inherit' });
+// Invoked via npm scripts, so node_modules/.bin is already on PATH.
+const child = spawn('vite', args, { stdio: 'inherit' });
 child.on('exit', (code) => process.exit(code ?? 0));

@@ -15,6 +15,9 @@ export const PORT_DEFAULTS = {
   rustfs: 9000,
   valkey: 6379,
   keycloak: 8090,
+  fanoutMetrics: 9101,
+  mediaProcessMetrics: 9102,
+  searchIndexMetrics: 9103,
 } as const;
 
 export type PortName = keyof typeof PORT_DEFAULTS;
@@ -25,7 +28,15 @@ export function portOffset(): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-/** Resolve a local port: env override `XITTER_<NAME>_PORT` wins, else default + offset. */
+/**
+ * Resolve a local port.
+ *
+ * Precedence: an explicit `XITTER_<NAME>_PORT` env var always wins (absolute,
+ * no offset applied - it is a full override). Otherwise the default plus
+ * `XITTER_PORT_OFFSET`. This is why .env.example ships the port vars
+ * commented out: uncommenting one pins it; leaving them unset lets the offset
+ * shift everything for parallel environment copies.
+ */
 export function localPort(name: PortName): number {
   const envKey = `XITTER_${name.replace(/([A-Z])/g, '_$1').toUpperCase()}_PORT`;
   const override = process.env[envKey];

@@ -1,10 +1,11 @@
 // E2E suite: runs against the full stack via the edge proxy (prod-like mode,
 // started automatically). Covers user flows end-to-end, including a11y.
 import { defineConfig } from '@playwright/test';
+import { loadRepoEnv, localPort } from '@xitter/config';
 
-const port = process.env.XITTER_EDGE_PORT ?? '8080';
-const webPort = process.env.XITTER_WEB_PORT ?? '3456';
-const baseURL = process.env.E2E_BASE_URL ?? `http://localhost:${port}`;
+loadRepoEnv();
+
+const baseURL = process.env.E2E_BASE_URL ?? `http://localhost:${localPort('edge')}`;
 
 export default defineConfig({
   testDir: '.',
@@ -25,7 +26,7 @@ export default defineConfig({
     // Probe the web app port, NOT the edge (:8080) - traefik holds the edge
     // open whenever the docker stack is up, which would falsely signal ready
     // and skip starting the apps under test.
-    url: `http://localhost:${webPort}`,
+    url: `http://localhost:${localPort('web')}`,
     reuseExistingServer: !process.env.CI,
     timeout: 300_000,
   },
