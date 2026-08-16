@@ -7,6 +7,10 @@ locals {
     "app.kubernetes.io/part-of"  = "xitter"
     "app.kubernetes.io/instance" = var.environment
     environment                  = var.environment
+
+    # Every xitter environment is disposable (nightly reset, spec 07): the
+    # nightly cluster backup must never carry their namespaces.
+    "velero.io/exclude-from-backup" = "true"
   }
 }
 

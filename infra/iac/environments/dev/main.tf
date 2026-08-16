@@ -20,12 +20,28 @@ terraform {
       source  = "keycloak/keycloak"
       version = "~> 5.8"
     }
+    helm = {
+      source  = "hashicorp/helm"
+      version = "~> 3.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
   }
 }
 
 provider "kubernetes" {
   config_path = "../../../cluster.yml"
 }
+
+provider "helm" {
+  kubernetes = {
+    config_path = "../../../cluster.yml"
+  }
+}
+
+provider "random" {}
 
 # The ingress module provisions Keycloak clients where auth_mode is set, so a
 # real keycloak provider is required (credentials come from the homelab's
@@ -70,38 +86,42 @@ variable "environment" {
   default = "dev"
 }
 
+variable "image_registry" {
+  description = "Container registry hosting the xitter images (part A publishes ghcr.io/jdc-projects/xitter-*)."
+  type        = string
+  default     = "ghcr.io/jdc-projects"
+}
+
+variable "image_tag" {
+  description = "Image tag for all workloads. dev tracks the mutable `dev` tag pushed on merge; prod will pin SHAs/semver."
+  type        = string
+  default     = "dev"
+}
+
 module "namespace" {
   source      = "../../modules/namespace"
   environment = var.environment
 }
 
-# ---------------------------------------------------------------------------
-# Demo realm (Keycloak)
-# The xitter-demo realm is created and seeded here; the nightly reset job
-# deletes and recreates it via the shared keycloak script.
-# Landed with the auth feature ticket - see docs/specs/architecture/07-security.md.
-# ---------------------------------------------------------------------------
+# The namespace module labels the namespace `velero.io/exclude-from-backup`
+# (spec 07 - no user-generated data leaves the cluster), so nothing from this
+# environment is backed up, matching the nightly-reset data policy.
+locals {
+  ns = module.namespace.name
+
+  # Canonical Keycloak: the token issuer for every realm (browser PKCE login,
+  # edge middleware discovery, service JWKS validation). From the homelab's
+  # keycloak-config remote state, same source the ingress module uses.
+  keycloak_url = data.terraform_remote_state.keycloak.outputs.keycloak_url
+
+  otel_endpoint = "http://otel-collector.otel.svc:4318"
+
+  kafka_bootstrap = "kafka.${local.ns}.svc:9092"
+}
 
 # ---------------------------------------------------------------------------
-# Edge routing (homelab ingress module - path-based, mirrors local Traefik)
-# Example wiring (one per public workload):
-#
-#   module "ingress_web" {
-#     source     = "github.com/jdc-projects/homelab//iac/modules/ingress"
-#     name       = "xitter-${var.environment}-web"
-#     namespace  = module.namespace.name
-#     domain     = var.domain
-#     target_port = 3000
-#     selector   = { "app.kubernetes.io/name" = "web" }
-#     kubeconfig_path = "../../../cluster.yml"
-#   }
-#
-# API services set auth_mode = "oidc-api" (Keycloak offload at the edge);
-# the demo realm name is passed via keycloak_auth_realm.
-# Implemented per-workload in feature tickets.
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
-# Workloads (services, workers, web, cms, admin) - module "xitter-service"
-# instances land with each vertical-slice feature ticket.
+# Real content: deps.tf (Postgres/Kafka/Valkey/OpenSearch/RustFS),
+# databases.tf (per-service DBs + secrets), keycloak.tf (realm + clients),
+# workloads.tf (11 xitter-service instances), edge.tf (ingress routing),
+# netpol.tf (default-deny + allows).
 # ---------------------------------------------------------------------------

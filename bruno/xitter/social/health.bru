@@ -1,14 +1,19 @@
 meta {
-  name: Health
+  name: Edge wiring (unauth)
   seq: 1
 }
 
+# Dev-environment only: asserts the edge's oidc-api 401 for unauthenticated
+# requests, proving routing + realm wiring. The local edge has no auth
+# middleware, so this request 200s (or 404s pre-seed) under `local` - run it
+# with `bru run --env dev`. Service-level health is validated by port-forward
+# (runbook 02, step 5).
 get {
-  url: {{seedBase}}/api/social/v1/healthz
+  url: {{seedBase}}/api/social/v1/profiles/edge-wiring-check
   body: none
   auth: none
 }
 
 assert {
-  res.status: 200
+  res.status: 401
 }

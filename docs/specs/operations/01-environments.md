@@ -33,7 +33,7 @@ flowchart LR
 - Ingress module: `github.com/jdc-projects/homelab//iac/modules/ingress`, path-based routing, `auth_mode: oidc-api`.
 - Tofu state: `kubernetes` backend with per-env `secret_suffix` (e.g. `xitter-dev`, `xitter-prod`).
 - Kubeconfig convention: `config_path = "../../../cluster.yml"` in each env's provider/backend blocks, resolving to `infra/cluster.yml` (gitignored — copy it from the homelab repo per the deploy runbook).
-- Shared operators: CNPG (Postgres), kafka-operator, opensearch-operator, valkey-operator; workers run on Knative.
+- Shared operators: CNPG (Postgres), Strimzi (kafka-operator), opensearch-operator; workers run on Knative. Valkey is an exception: it deploys from the official Helm chart because the cluster has no Valkey operator/CRDs (the `valkey-operator` namespace exists but is empty) — the chart keeps this disposable dev datastore trivial to redeploy.
 - Observability stack (Grafana at `grafana.jd-chapman.dev`, Prometheus, Tempo, Sentry at `sentry.jd-chapman.dev`) is provisioned via Tofu CRs/providers; xitter dashboards and alert rules are part of dev work, not hand-configured.
 
 ## Config management
