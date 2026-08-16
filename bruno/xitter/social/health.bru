@@ -3,10 +3,11 @@ meta {
   seq: 1
 }
 
-# Health endpoints are prefix-excluded (service root only) and never
-# edge-exposed, so the edge-level check is the oidc-api 401 for an
-# unauthenticated request - proving routing + realm wiring. Service-level
-# health is validated by port-forward (runbook 02, step 5).
+# Dev-environment only: asserts the edge's oidc-api 401 for unauthenticated
+# requests, proving routing + realm wiring. The local edge has no auth
+# middleware, so this request 200s (or 404s pre-seed) under `local` - run it
+# with `bru run --env dev`. Service-level health is validated by port-forward
+# (runbook 02, step 5).
 get {
   url: {{seedBase}}/api/social/v1/profiles/edge-wiring-check
   body: none
