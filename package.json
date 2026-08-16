@@ -26,7 +26,7 @@
     "build:apps": "turbo run build --filter=./apps/*",
     "dev": "turbo run dev",
     "start": "turbo run start",
-    "check": "npm run format:check && npm run build:packages && turbo run lint typecheck test build",
+    "check": "npm run format:check && npm run audit && npm run build:packages && turbo run lint typecheck test build",
     "check:repo": "npm run check && npm run lint:repo",
     "check:mutation": "npm run mutate:affected",
     "check:all": "npm run check:repo && npm run check:mutation && npm run test:web && npm run test:e2e",
@@ -60,7 +60,8 @@
     "predeps:status": "npm run build:packages",
     "gates": "turbo run lint typecheck test build",
     "test:install": "playwright install --with-deps chromium",
-    "docs:diagrams": "tsx packages/scripts/src/diagrams.ts"
+    "docs:diagrams": "tsx packages/scripts/src/diagrams.ts",
+    "audit": "npm audit --audit-level=high"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
@@ -78,5 +79,32 @@
     "tsx": "^4",
     "turbo": "^2",
     "typescript": "^6"
+  },
+  "puppeteer": {
+    "skipDownload": true
+  },
+  "overrides": {
+    "axios": "^1.19",
+    "dompurify": "^3.4.13",
+    "form-data": "^4",
+    "nanoid": "^5",
+    "path-to-regexp": "^8.4.2",
+    "qs": "^6.15.3"
+  },
+  "allowScripts": {
+    "esbuild@0.18.20": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.2": true,
+    "@playwright/browser-chromium@1.62.1": true,
+    "@prisma/engines@7.9.1": true,
+    "cpu-features@0.0.10": true,
+    "prisma@7.9.1": true,
+    "protobufjs@7.6.5": true,
+    "puppeteer@25.7.0": true,
+    "ssh2@1.17.0": true,
+    "unix-dgram@2.0.7": true,
+    "unrs-resolver@1.12.2": true,
+    "fsevents@2.3.3": true,
+    "fsevents@2.3.2": true
   }
 }

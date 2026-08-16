@@ -40,6 +40,17 @@ data "terraform_remote_state" "keycloak" {
   }
 }
 
+# Sentry org-scoped auth token + web domain (homelab iac/sentry outputs).
+data "terraform_remote_state" "sentry" {
+  backend = "kubernetes"
+
+  config = {
+    secret_suffix = "sentry"
+    config_path   = "../../../cluster.yml"
+    namespace     = "tf-state"
+  }
+}
+
 variable "domain" {
   description = "Base domain for this environment's URLs."
   type        = string

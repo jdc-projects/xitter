@@ -90,3 +90,9 @@ turbo lint/typecheck/**Vitest test**/build) matches the CI `gates` job; `npm run
   belongs in the repo (seed content, Tofu, code).
 - The About page is always called the "About page" (it contains an FAQ section,
   but is not a "FAQ page").
+- `npm run check` fails on high/critical audit findings (`npm run audit`). The
+  remaining moderate findings are accepted upstream-unfixed transitive deps
+  (drizzle-kit/esbuild via Payload - build-time only; crypto-js/uuid via the
+  Bruno CLI - dev tooling). Revisit when upstream ships fixes.
+- Dependency install scripts are allowlisted via `npm install-scripts` (pinned).
+  Review new entries when npm warns, then `npm install-scripts approve <pkg>`.

@@ -132,10 +132,7 @@
   "unused_load_data_keys": [],
   "unresolved_imports": [],
   "unlisted_dependencies": [
-    "@asteasolutions/zod-to-openapi",
-    "dotenv",
-    "prom-client",
-    "zod"
+    "dotenv"
   ],
   "duplicate_exports": [],
   "type_only_dependencies": [],

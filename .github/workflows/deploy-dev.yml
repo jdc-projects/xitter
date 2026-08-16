@@ -43,4 +43,19 @@ jobs:
       - run: npm run build --filter=${{ matrix.workspace }}
       # Image build + push step activates with the first deploy ticket.
 
-  # deploy-dev applies infra/iac/environments/dev after images exist.
+  tofu-apply:
+    # Applies infra/iac/environments/dev after images exist.
+    runs-on: ubuntu-latest
+    needs: build-images
+    steps:
+      - uses: actions/checkout@v7
+      - uses: opentofu/setup-opentofu@v2
+      - name: Write kubeconfig
+        run: |
+          mkdir -p infra
+          printf '%s' "${{ secrets.CLUSTER_KUBECONFIG }}" > infra/cluster.yml
+      - name: tofu apply (dev)
+        working-directory: infra/iac/environments/dev
+        run: |
+          tofu init
+          tofu apply -auto-approve -input=false

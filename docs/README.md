@@ -9,11 +9,11 @@ flowchart LR
     README --> runbooks[runbooks<br/>manual procedures]
 ```
 
-| Directory    | Purpose                                                                                       |
-| ------------ | --------------------------------------------------------------------------------------------- |
-| `specs/`     | Living documents describing the **desired end-state** of the system (never current state).    |
-| `decisions/` | Decision records. Immutable once merged to `dev`/`main`; changes supersede via a new record.  |
-| `runbooks/`  | Step-by-step manual procedures (setup, deploy, content promotion). Idempotent where possible. |
+| Directory    | Purpose                                                                                                   |
+| ------------ | --------------------------------------------------------------------------------------------------------- |
+| `specs/`     | Living documents describing the **desired end-state** of the system (never current state).                |
+| `decisions/` | Decision records. Immutable once merged to `dev`/`main`; changes supersede via a new record.              |
+| `runbooks/`  | Step-by-step manual procedures (setup, deploy, CI/secrets, content promotion). Idempotent where possible. |
 
 ## Conventions
 

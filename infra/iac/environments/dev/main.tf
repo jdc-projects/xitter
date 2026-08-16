@@ -47,6 +47,18 @@ data "terraform_remote_state" "keycloak" {
   }
 }
 
+# Sentry org-scoped auth token + web domain (homelab iac/sentry outputs).
+# Consumed by the jianyuan/sentry provider when T11 creates per-app projects.
+data "terraform_remote_state" "sentry" {
+  backend = "kubernetes"
+
+  config = {
+    secret_suffix = "sentry"
+    config_path   = "../../../cluster.yml"
+    namespace     = "tf-state"
+  }
+}
+
 variable "domain" {
   description = "Base domain for this environment's URLs."
   type        = string
@@ -67,7 +79,7 @@ module "namespace" {
 # Demo realm (Keycloak)
 # The xitter-demo realm is created and seeded here; the nightly reset job
 # deletes and recreates it via the shared keycloak script.
-# Landed with the auth feature ticket - see docs/specs/architecture/02-auth.md.
+# Landed with the auth feature ticket - see docs/specs/architecture/07-security.md.
 # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------

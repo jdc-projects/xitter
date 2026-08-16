@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       packages: ${{ steps.filter.outputs.changes }}
+      infra: ${{ steps.filter.outputs.infra }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
@@ -25,6 +26,8 @@ jobs:
               - "package.json"
               - "package-lock.json"
               - "turbo.json"
+            infra:
+              - "infra/iac/**"
 
   format:
     runs-on: ubuntu-latest
@@ -157,3 +160,36 @@ jobs:
       - name: Fetch base ref
         run: git fetch origin dev:refs/remotes/origin/dev
       - run: npm run mutate:affected
+
+  tofu:
+    # Syntax + validate for both environments (no secrets needed).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: opentofu/setup-opentofu@v2
+      - name: fmt
+        run: tofu -chdir=infra/iac/environments/dev fmt -check -recursive && tofu -chdir=infra/iac/environments/prod fmt -check -recursive
+      - name: init (no backend) + validate
+        run: |
+          tofu -chdir=infra/iac/environments/dev init -backend=false
+          tofu -chdir=infra/iac/environments/dev validate
+          tofu -chdir=infra/iac/environments/prod init -backend=false
+          tofu -chdir=infra/iac/environments/prod validate
+
+  tofu-plan:
+    # Full plan against the real backend when infra changes.
+    needs: [changes, tofu]
+    runs-on: ubuntu-latest
+    if: needs.changes.outputs.infra == 'true'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: opentofu/setup-opentofu@v2
+      - name: Write kubeconfig
+        run: |
+          mkdir -p infra
+          printf '%s' "${{ secrets.CLUSTER_KUBECONFIG }}" > infra/cluster.yml
+      - name: tofu plan (dev)
+        working-directory: infra/iac/environments/dev
+        run: |
+          tofu init
+          tofu plan -input=false

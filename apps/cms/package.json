@@ -22,7 +22,8 @@
     "payload": "^3",
     "react": "^19",
     "react-dom": "^19",
-    "sharp": "^0.35"
+    "sharp": "^0.35",
+    "zod": "^4"
   },
   "devDependencies": {
     "@types/node": "^26",

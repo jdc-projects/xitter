@@ -2,12 +2,14 @@ import type { z } from 'zod';
 
 /**
  * Parse and validate process.env against a zod schema.
- * Exits with a readable error listing every problem - fail fast at boot.
+ * Throws with a readable error listing every problem - fail fast at boot.
+ * Generic over Output/Input so schemas using `.default()` (whose input type
+ * differs from output) type-check correctly.
  */
-export function parseEnv<T extends z.ZodType>(
+export function parseEnv<T extends z.ZodType<unknown, unknown>>(
   schema: T,
   source: NodeJS.ProcessEnv = process.env,
-): z.infer<T> {
+): z.output<T> {
   const result = schema.safeParse(source);
   if (!result.success) {
     const issues = result.error.issues
