@@ -1,6 +1,11 @@
 {
-  "extends": "@xitter/tsconfig/worker.json",
+  "extends": "@xitter/tsconfig/base.json",
   "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "strictPropertyInitialization": false,
     "noEmit": true
   },
   "include": ["src", "src"],

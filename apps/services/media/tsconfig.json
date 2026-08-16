@@ -1,6 +1,9 @@
 {
-  "extends": "@xitter/tsconfig/service.json",
+  "extends": "@xitter/tsconfig/base.json",
   "compilerOptions": {
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "strictPropertyInitialization": false,
     "noEmit": true
   },
   "include": ["src", "openapi.gen.mts"],
