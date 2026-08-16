@@ -1,12 +1,16 @@
 meta {
   name: Search posts
-  seq: 5
+  seq: 6
 }
 
 get {
   url: {{seedBase}}/api/search/v1/posts?q=hello
   body: none
-  auth: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
 }
 
 assert {

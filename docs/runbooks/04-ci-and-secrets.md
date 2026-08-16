@@ -46,9 +46,13 @@ same path the env configs resolve locally. Local tofu runs use the same file
    gh secret set XITTER_CAP_SECRET_KEY
    ```
 
-6. For local runs, add the same values to `.env`:
+6. For local runs, add the same values to `.env`. All four `XITTER_CAP_*`
+   vars are required when captcha is enabled (the web app fails fast
+   otherwise); the URL vars ship uncommented in `.env.example`:
 
    ```sh
+   XITTER_CAP_SITE_URL=https://cap.jd-chapman.dev
+   XITTER_CAP_VERIFY_URL=https://cap.jd-chapman.dev
    XITTER_CAP_SITE_KEY=<site key>
    XITTER_CAP_SECRET_KEY=<secret key>
    XITTER_CAP_ENABLED=true

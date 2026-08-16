@@ -1,0 +1,40 @@
+{
+  "name": "@xitter/auth-nest",
+  "version": "0.0.0",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@xitter/auth": "*",
+    "@xitter/config": "*",
+    "@xitter/observability": "*",
+    "ioredis": "^6"
+  },
+  "peerDependencies": {
+    "@nestjs/common": "^11",
+    "@nestjs/core": "^11",
+    "reflect-metadata": "^0.2"
+  },
+  "devDependencies": {
+    "@nestjs/common": "^11",
+    "@nestjs/core": "^11",
+    "@xitter/eslint-config": "*",
+    "@xitter/tsconfig": "*",
+    "reflect-metadata": "^0.2",
+    "vitest": "^4"
+  }
+}

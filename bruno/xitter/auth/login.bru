@@ -1,0 +1,33 @@
+meta {
+  name: Login as demo user
+  seq: 0
+}
+
+headers {
+  content-type: application/x-www-form-urlencoded
+}
+
+post {
+  url: {{keycloak}}/realms/{{realm}}/protocol/openid-connect/token
+  body: formUrlEncoded
+  auth: none
+}
+
+body:form-urlencoded {
+  grant_type: password
+  client_id: web
+  username: demo1
+  password: DemoPass123!
+}
+
+script:post-response {
+  bru.setEnvVar("token", res.body.access_token);
+}
+
+assert {
+  res.status: 200
+}
+
+tests {
+  expect(res.body.access_token).to.be.a("string").and.not.be.empty;
+}

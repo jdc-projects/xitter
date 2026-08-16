@@ -1,7 +1,9 @@
 import { Container, Stack, Text, Title } from '@mantine/core';
+import { requireSession } from '@/lib/auth/session';
 
 export default async function ProfilePage({ params }: { params: Promise<{ username: string }> }) {
   const { username } = await params;
+  await requireSession(`/profile/${username}`);
   return (
     <Container size="sm" py="xl">
       <Stack gap="md">

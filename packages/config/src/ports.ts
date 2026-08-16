@@ -52,6 +52,11 @@ export function localUrl(name: PortName): string {
   return `http://localhost:${localPort(name)}`;
 }
 
+/** Local Valkey URL (redis protocol - not http like localUrl). */
+export function valkeyUrl(): string {
+  return `redis://localhost:${localPort('valkey')}`;
+}
+
 const DB_PASSWORDS = {
   social: 'social-local',
   posts: 'posts-local',

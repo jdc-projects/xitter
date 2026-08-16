@@ -1,8 +1,10 @@
 import { Container, Stack, Text, Title } from '@mantine/core';
+import { requireSession } from '@/lib/auth/session';
 
 export const metadata = { title: 'Feed' };
 
-export default function FeedPage() {
+export default async function FeedPage() {
+  await requireSession('/feed');
   return (
     <Container size="sm" py="xl">
       <Stack gap="md">
