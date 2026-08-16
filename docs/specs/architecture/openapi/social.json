@@ -43,15 +43,10 @@
                 }
               }
             },
-            "required": [
-              "code",
-              "message"
-            ]
+            "required": ["code", "message"]
           }
         },
-        "required": [
-          "error"
-        ]
+        "required": ["error"]
       },
       "CreateProfileRequest": {
         "type": "object",
@@ -117,13 +112,7 @@
                   "format": "date-time"
                 }
               },
-              "required": [
-                "id",
-                "username",
-                "displayName",
-                "bio",
-                "createdAt"
-              ]
+              "required": ["id", "username", "displayName", "bio", "createdAt"]
             }
           },
           "nextCursor": {
@@ -131,10 +120,7 @@
             "nullable": true
           }
         },
-        "required": [
-          "items",
-          "nextCursor"
-        ]
+        "required": ["items", "nextCursor"]
       }
     },
     "parameters": {}
@@ -142,9 +128,7 @@
   "paths": {
     "/profiles/{userId}": {
       "post": {
-        "tags": [
-          "profiles"
-        ],
+        "tags": ["profiles"],
         "security": [
           {
             "bearerAuth": []
@@ -206,13 +190,7 @@
                       "format": "date-time"
                     }
                   },
-                  "required": [
-                    "id",
-                    "username",
-                    "displayName",
-                    "bio",
-                    "createdAt"
-                  ]
+                  "required": ["id", "username", "displayName", "bio", "createdAt"]
                 }
               }
             }
@@ -240,9 +218,7 @@
         }
       },
       "get": {
-        "tags": [
-          "profiles"
-        ],
+        "tags": ["profiles"],
         "security": [
           {
             "bearerAuth": []
@@ -305,20 +281,10 @@
                           "minimum": 0
                         }
                       },
-                      "required": [
-                        "following",
-                        "followers"
-                      ]
+                      "required": ["following", "followers"]
                     }
                   },
-                  "required": [
-                    "id",
-                    "username",
-                    "displayName",
-                    "bio",
-                    "createdAt",
-                    "counts"
-                  ]
+                  "required": ["id", "username", "displayName", "bio", "createdAt", "counts"]
                 }
               }
             }
@@ -336,9 +302,7 @@
         }
       },
       "patch": {
-        "tags": [
-          "profiles"
-        ],
+        "tags": ["profiles"],
         "security": [
           {
             "bearerAuth": []
@@ -400,13 +364,7 @@
                       "format": "date-time"
                     }
                   },
-                  "required": [
-                    "id",
-                    "username",
-                    "displayName",
-                    "bio",
-                    "createdAt"
-                  ]
+                  "required": ["id", "username", "displayName", "bio", "createdAt"]
                 }
               }
             }
@@ -436,9 +394,7 @@
     },
     "/profiles/username/{username}": {
       "get": {
-        "tags": [
-          "profiles"
-        ],
+        "tags": ["profiles"],
         "security": [
           {
             "bearerAuth": []
@@ -491,13 +447,7 @@
                       "format": "date-time"
                     }
                   },
-                  "required": [
-                    "id",
-                    "username",
-                    "displayName",
-                    "bio",
-                    "createdAt"
-                  ]
+                  "required": ["id", "username", "displayName", "bio", "createdAt"]
                 }
               }
             }
@@ -517,9 +467,7 @@
     },
     "/profiles/{userId}/follow": {
       "post": {
-        "tags": [
-          "relationships"
-        ],
+        "tags": ["relationships"],
         "security": [
           {
             "bearerAuth": []
@@ -574,9 +522,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "relationships"
-        ],
+        "tags": ["relationships"],
         "security": [
           {
             "bearerAuth": []
@@ -633,9 +579,7 @@
     },
     "/profiles/{userId}/block": {
       "post": {
-        "tags": [
-          "relationships"
-        ],
+        "tags": ["relationships"],
         "security": [
           {
             "bearerAuth": []
@@ -691,9 +635,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "relationships"
-        ],
+        "tags": ["relationships"],
         "security": [
           {
             "bearerAuth": []
@@ -750,9 +692,7 @@
     },
     "/profiles/{userId}/relationship": {
       "get": {
-        "tags": [
-          "relationships"
-        ],
+        "tags": ["relationships"],
         "security": [
           {
             "bearerAuth": []
@@ -792,12 +732,7 @@
                       "type": "boolean"
                     }
                   },
-                  "required": [
-                    "following",
-                    "followedBy",
-                    "blocking",
-                    "blockedBy"
-                  ]
+                  "required": ["following", "followedBy", "blocking", "blockedBy"]
                 }
               }
             }
@@ -817,9 +752,7 @@
     },
     "/profiles/{userId}/following": {
       "get": {
-        "tags": [
-          "relationships"
-        ],
+        "tags": ["relationships"],
         "security": [
           {
             "bearerAuth": []
@@ -883,9 +816,7 @@
     },
     "/profiles/{userId}/followers": {
       "get": {
-        "tags": [
-          "relationships"
-        ],
+        "tags": ["relationships"],
         "security": [
           {
             "bearerAuth": []
@@ -949,9 +880,7 @@
     },
     "/internal/users/{userId}/followers/ids": {
       "get": {
-        "tags": [
-          "internal"
-        ],
+        "tags": ["internal"],
         "security": [
           {
             "serviceToken": []
@@ -990,9 +919,7 @@
     },
     "/internal/users/{userId}/relationships/{otherId}": {
       "get": {
-        "tags": [
-          "internal"
-        ],
+        "tags": ["internal"],
         "security": [
           {
             "serviceToken": []
@@ -1042,12 +969,7 @@
                       "type": "boolean"
                     }
                   },
-                  "required": [
-                    "following",
-                    "followedBy",
-                    "blocking",
-                    "blockedBy"
-                  ]
+                  "required": ["following", "followedBy", "blocking", "blockedBy"]
                 }
               }
             }
@@ -1057,9 +979,7 @@
     },
     "/internal/users/{userId}/blocked/ids": {
       "get": {
-        "tags": [
-          "internal"
-        ],
+        "tags": ["internal"],
         "security": [
           {
             "serviceToken": []
@@ -1098,9 +1018,7 @@
     },
     "/internal/reseed": {
       "post": {
-        "tags": [
-          "internal"
-        ],
+        "tags": ["internal"],
         "security": [
           {
             "serviceToken": []
@@ -1119,9 +1037,7 @@
                       "type": "boolean"
                     }
                   },
-                  "required": [
-                    "ok"
-                  ]
+                  "required": ["ok"]
                 }
               }
             }

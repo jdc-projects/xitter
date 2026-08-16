@@ -25,7 +25,12 @@ export function EditProfileForm({ userId, username, displayName, bio }: EditProf
 
   return (
     <>
-      <Button size="xs" variant="light" onClick={() => setOpen(true)} data-testid="edit-profile-button">
+      <Button
+        size="xs"
+        variant="light"
+        onClick={() => setOpen(true)}
+        data-testid="edit-profile-button"
+      >
         Edit profile
       </Button>
       <Modal

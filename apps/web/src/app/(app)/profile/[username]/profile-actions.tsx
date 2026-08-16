@@ -18,13 +18,24 @@ export interface ProfileActionsProps {
  * works without JS as a plain form POST and with JS via useActionState
  * (pending + server-side error copy, e.g. a blocked user's follow 403).
  */
-export function ProfileActions({ userId, username, primaryAction, canBlock, blocking }: ProfileActionsProps) {
+export function ProfileActions({
+  userId,
+  username,
+  primaryAction,
+  canBlock,
+  blocking,
+}: ProfileActionsProps) {
   const [state, formAction, pending] = useActionState<ActionResult | undefined, FormData>(
     relationshipAction,
     undefined,
   );
 
-  const intentButton = (intent: string, label: string, variant: 'filled' | 'subtle' | 'outline', testId: string) => (
+  const intentButton = (
+    intent: string,
+    label: string,
+    variant: 'filled' | 'subtle' | 'outline',
+    testId: string,
+  ) => (
     <Button
       type="submit"
       name="intent"

@@ -195,7 +195,8 @@ socialApi.registerPath({
   path: '/internal/users/{userId}/relationships/{otherId}',
   tags: ['internal'],
   security: [{ serviceToken: [] }],
-  description: 'Relationship flags between two users; consumers treat blocking || blockedBy as blocked-either-way (posts #5, workers #8).',
+  description:
+    'Relationship flags between two users; consumers treat blocking || blockedBy as blocked-either-way (posts #5, workers #8).',
   request: { params: z.object({ userId: userIdSchema, otherId: userIdSchema }) },
   responses: { 200: jsonResponse('Relationship', relationshipSchema) },
 });
@@ -215,6 +216,7 @@ socialApi.registerPath({
   path: '/internal/reseed',
   tags: ['internal'],
   security: [{ serviceToken: [] }],
-  description: 'Truncate profiles + graph (reset job); deterministic reseed runs via the seed script.',
+  description:
+    'Truncate profiles + graph (reset job); deterministic reseed runs via the seed script.',
   responses: { 200: jsonResponse('Acknowledged', z.object({ ok: z.boolean() })) },
 });

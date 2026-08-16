@@ -124,9 +124,7 @@ describe.skipIf(!hasGeneratedClient)('social events (testcontainers kafka)', () 
     await service.unfollow(A, B); // no-op: the block already removed the follow
     await new Promise((r) => setTimeout(r, 1_000));
     expect(
-      received.filter(
-        (e) => e.eventType === 'social.follow.deleted' && e.payload.followerId === A,
-      ),
+      received.filter((e) => e.eventType === 'social.follow.deleted' && e.payload.followerId === A),
     ).toHaveLength(1);
   }, 240_000);
 });

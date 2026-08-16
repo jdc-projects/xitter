@@ -93,7 +93,9 @@ export class SocialService {
     return { profile: this.repo.toProfile(profile), created: true };
   }
 
-  async getProfile(userId: string): Promise<{ profile: Profile; counts: { following: number; followers: number } }> {
+  async getProfile(
+    userId: string,
+  ): Promise<{ profile: Profile; counts: { following: number; followers: number } }> {
     const [row, counts] = await Promise.all([
       this.repo.findProfile(userId),
       this.repo.counts(userId),
@@ -239,13 +241,19 @@ export class SocialService {
   async following(targetId: string, page: PageRequest): Promise<ProfilePage> {
     await this.requireTarget(targetId);
     const result = await this.repo.followPage('following', targetId, page.cursor, page.limit);
-    return { items: result.items.map((row) => this.repo.toProfile(row)), nextCursor: result.nextCursor };
+    return {
+      items: result.items.map((row) => this.repo.toProfile(row)),
+      nextCursor: result.nextCursor,
+    };
   }
 
   async followers(targetId: string, page: PageRequest): Promise<ProfilePage> {
     await this.requireTarget(targetId);
     const result = await this.repo.followPage('followers', targetId, page.cursor, page.limit);
-    return { items: result.items.map((row) => this.repo.toProfile(row)), nextCursor: result.nextCursor };
+    return {
+      items: result.items.map((row) => this.repo.toProfile(row)),
+      nextCursor: result.nextCursor,
+    };
   }
 
   /** Internal (fanout worker): follower ids for feed fanout. */

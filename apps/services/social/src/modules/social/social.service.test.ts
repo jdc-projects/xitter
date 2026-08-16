@@ -7,14 +7,22 @@ const USER_A = '00000000-0000-4000-8000-00000000000a';
 const USER_B = '00000000-0000-4000-8000-00000000000b';
 
 function fakeRepo(overrides: Partial<SocialRepository> = {}) {
-  const profiles = new Map<string, { id: string; username: string; displayName: string; bio: string | null }>();
+  const profiles = new Map<
+    string,
+    { id: string; username: string; displayName: string; bio: string | null }
+  >();
   const follows = new Set<string>(); // `${follower}->${followee}`
   const blocks = new Set<string>(); // `${blocker}|>${blocked}`
   const repo = {
     findProfile: (id: string) => Promise.resolve(profiles.get(id) ?? null),
     findProfileByUsername: (username: string) =>
       Promise.resolve([...profiles.values()].find((p) => p.username === username) ?? null),
-    createProfile: (data: { id: string; username: string; displayName: string; bio: string | null }) => {
+    createProfile: (data: {
+      id: string;
+      username: string;
+      displayName: string;
+      bio: string | null;
+    }) => {
       profiles.set(data.id, data);
       return Promise.resolve(data);
     },
@@ -24,7 +32,9 @@ function fakeRepo(overrides: Partial<SocialRepository> = {}) {
       return Promise.resolve(profiles.get(id)!);
     },
     findFollow: (followerId: string, followeeId: string) =>
-      Promise.resolve(follows.has(`${followerId}->${followeeId}`) ? { id: 'f', createdAt: new Date() } : null),
+      Promise.resolve(
+        follows.has(`${followerId}->${followeeId}`) ? { id: 'f', createdAt: new Date() } : null,
+      ),
     createFollow: (followerId: string, followeeId: string) => {
       const key = `${followerId}->${followeeId}`;
       if (follows.has(key)) return Promise.resolve(false);
@@ -34,7 +44,9 @@ function fakeRepo(overrides: Partial<SocialRepository> = {}) {
     deleteFollow: (followerId: string, followeeId: string) =>
       Promise.resolve(follows.delete(`${followerId}->${followeeId}`)),
     findBlock: (blockerId: string, blockedId: string) =>
-      Promise.resolve(blocks.has(`${blockerId}|>${blockedId}`) ? { id: 'b', createdAt: new Date() } : null),
+      Promise.resolve(
+        blocks.has(`${blockerId}|>${blockedId}`) ? { id: 'b', createdAt: new Date() } : null,
+      ),
     createBlock: (blockerId: string, blockedId: string) => {
       const key = `${blockerId}|>${blockedId}`;
       if (blocks.has(key)) return Promise.resolve(false);
@@ -54,7 +66,12 @@ function fakeRepo(overrides: Partial<SocialRepository> = {}) {
     followerIds: () => Promise.resolve([]),
     blockedIds: () => Promise.resolve([]),
     truncate: () => Promise.resolve(),
-    toProfile: (row: { id: string; username: string; displayName: string; bio: string | null }) => ({
+    toProfile: (row: {
+      id: string;
+      username: string;
+      displayName: string;
+      bio: string | null;
+    }) => ({
       id: row.id,
       username: row.username,
       displayName: row.displayName,
@@ -84,10 +101,7 @@ describe('SocialService rules', () => {
     const events = spyEvents();
     const service = new SocialService(repo, events);
 
-    const { profile, created } = await service.ensureProfile(
-      { id: USER_A, username: 'demo1' },
-      {},
-    );
+    const { profile, created } = await service.ensureProfile({ id: USER_A, username: 'demo1' }, {});
     expect(created).toBe(true);
     expect(profile.username).toBe('demo1');
     expect(profile.displayName).toMatch(/\S+ \S+/); // faker first + last name

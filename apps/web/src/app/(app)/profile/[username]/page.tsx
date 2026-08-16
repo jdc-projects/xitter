@@ -17,7 +17,11 @@ const BADGE_COLOR: Record<string, string> = {
   'badge-blocked': 'red',
 };
 
-function ProfileList({ items }: { items: { id: string; username: string; displayName: string }[] }) {
+function ProfileList({
+  items,
+}: {
+  items: { id: string; username: string; displayName: string }[];
+}) {
   if (items.length === 0) {
     return (
       <Text size="sm" c="dimmed" data-testid="profile-list-empty">

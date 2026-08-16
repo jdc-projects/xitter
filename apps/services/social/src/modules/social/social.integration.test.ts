@@ -64,10 +64,7 @@ describe.skipIf(!hasGeneratedClient)('social integration (testcontainers)', () =
   });
 
   async function seedProfile(n: number, username: string, displayName = username) {
-    const { profile } = await service.ensureProfile(
-      { id: uid(n), username },
-      { displayName },
-    );
+    const { profile } = await service.ensureProfile({ id: uid(n), username }, { displayName });
     return profile;
   }
 

@@ -60,11 +60,7 @@ describe('profileViewState', () => {
   });
 
   it('both badges can appear together', () => {
-    const state = profileViewState(
-      ME,
-      { id: OTHER },
-      rel({ followedBy: true, blocking: true }),
-    );
+    const state = profileViewState(ME, { id: OTHER }, rel({ followedBy: true, blocking: true }));
     expect(state.badges.map((b) => b.testId)).toEqual(['badge-follows-you', 'badge-blocked']);
   });
 });

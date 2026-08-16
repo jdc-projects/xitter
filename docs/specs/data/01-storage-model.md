@@ -139,7 +139,7 @@ Field tables above (types/constraints inline in each ER diagram) are normative. 
 
 | Store      | Indexes (beyond PKs/uniques)                                                     | Serves                                       |
 | ---------- | -------------------------------------------------------------------------------- | -------------------------------------------- |
-| social     | `Follow(followeeId)`, `Block(blockedId)`                                           | Followers lists; block checks on write paths |
+| social     | `Follow(followeeId)`, `Block(blockedId)`                                         | Followers lists; block checks on write paths |
 | posts      | `Post(authorId, createdAt desc)`, `Post(replyToId)`, `Interaction(userId, kind)` | Profiles, threads, "my bookmarks/likes"      |
 | media      | `MediaAsset(postId)`, `MediaAsset(status)`                                       | Attachment lookups; pending/failed cleanup   |
 | feed       | `FeedEntry(userId, createdAt desc)`                                              | The feed page itself — the hot path          |

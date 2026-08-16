@@ -77,7 +77,10 @@ export async function startKafka(): Promise<KafkaHandle> {
     // Health probe mirrors the compose stack; log-based waits are unusable on
     // Podman-backed sockets (the log stream never reaches testcontainers).
     .withHealthCheck({
-      test: ['CMD-SHELL', '/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9093 >/dev/null 2>&1'],
+      test: [
+        'CMD-SHELL',
+        '/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9093 >/dev/null 2>&1',
+      ],
       interval: 1_000,
       timeout: 10_000,
       retries: 120,

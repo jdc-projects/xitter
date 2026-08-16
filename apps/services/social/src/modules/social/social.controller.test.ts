@@ -49,11 +49,16 @@ const profileRow = (id: string, username: string) => ({
 });
 
 const repoStub = {
-  findProfile: (id: string) => Promise.resolve(profileRow(id, id === CALLER ? 'democaller' : 'otheruser')),
+  findProfile: (id: string) =>
+    Promise.resolve(profileRow(id, id === CALLER ? 'democaller' : 'otheruser')),
   findProfileByUsername: (username: string) =>
     Promise.resolve(username === 'otheruser' ? profileRow(OTHER, 'otheruser') : null),
-  createProfile: (data: { id: string; username: string; displayName: string; bio: string | null }) =>
-    Promise.resolve({ createdAt: new Date(), ...data }),
+  createProfile: (data: {
+    id: string;
+    username: string;
+    displayName: string;
+    bio: string | null;
+  }) => Promise.resolve({ createdAt: new Date(), ...data }),
   updateProfile: (id: string, data: { displayName?: string; bio?: string | null }) =>
     Promise.resolve({ ...profileRow(id, 'democaller'), ...data }),
   findFollow: () => Promise.resolve(null),
@@ -145,7 +150,10 @@ describe('social HTTP wiring', () => {
   it('rejects invalid params with the error envelope', async () => {
     app = await createApp();
 
-    const badUsername = await app.inject({ method: 'GET', url: '/api/social/v1/profiles/username/Not_Valid!' });
+    const badUsername = await app.inject({
+      method: 'GET',
+      url: '/api/social/v1/profiles/username/Not_Valid!',
+    });
     expect(badUsername.statusCode).toBe(400);
     expect(badUsername.json()).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
 
@@ -190,7 +198,10 @@ describe('social HTTP wiring', () => {
   it('serialises service errors through the error envelope', async () => {
     app = await createApp();
 
-    const missing = await app.inject({ method: 'GET', url: '/api/social/v1/profiles/username/nobody' });
+    const missing = await app.inject({
+      method: 'GET',
+      url: '/api/social/v1/profiles/username/nobody',
+    });
     expect(missing.statusCode).toBe(404);
     expect(missing.json()).toEqual({ error: { code: 'NOT_FOUND', message: 'Profile not found' } });
   });

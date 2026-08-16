@@ -53,7 +53,8 @@ export class SocialController {
   async createProfile(
     @CurrentUser() user: RequestUser,
     @Param('userId', uuidParam) targetId: string,
-    @Body(new ZodValidationPipe(createProfileRequestSchema)) body: {
+    @Body(new ZodValidationPipe(createProfileRequestSchema))
+    body: {
       displayName?: string;
       bio?: string | null;
     },
@@ -77,9 +78,7 @@ export class SocialController {
   }
 
   @Get('profiles/username/:username')
-  async getProfileByUsername(
-    @Param('username', usernameParam) username: string,
-  ): Promise<Profile> {
+  async getProfileByUsername(@Param('username', usernameParam) username: string): Promise<Profile> {
     return this.social.getProfileByUsername(username);
   }
 
@@ -89,7 +88,8 @@ export class SocialController {
   updateProfile(
     @CurrentUser() user: RequestUser,
     @Param('userId', uuidParam) targetId: string,
-    @Body(new ZodValidationPipe(updateProfileRequestSchema)) body: {
+    @Body(new ZodValidationPipe(updateProfileRequestSchema))
+    body: {
       displayName?: string;
       bio?: string | null;
     },

@@ -14,13 +14,16 @@ export interface PageCursor {
 }
 
 export function encodeCursor(row: { createdAt: Date; id: string }): string {
-  return Buffer.from(JSON.stringify({ createdAt: row.createdAt.toISOString(), id: row.id }))
-    .toString('base64url');
+  return Buffer.from(
+    JSON.stringify({ createdAt: row.createdAt.toISOString(), id: row.id }),
+  ).toString('base64url');
 }
 
 export function decodeCursor(raw: string): PageCursor | null {
   try {
-    const parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8')) as Partial<PageCursor>;
+    const parsed = JSON.parse(
+      Buffer.from(raw, 'base64url').toString('utf8'),
+    ) as Partial<PageCursor>;
     if (typeof parsed.createdAt !== 'string' || typeof parsed.id !== 'string') return null;
     return { createdAt: parsed.createdAt, id: parsed.id };
   } catch {
@@ -145,14 +148,27 @@ export class SocialRepository {
           }
         : {}),
     };
-    const orderBy: Prisma.FollowOrderByWithRelationInput[] = [{ createdAt: 'desc' }, { id: 'desc' }];
+    const orderBy: Prisma.FollowOrderByWithRelationInput[] = [
+      { createdAt: 'desc' },
+      { id: 'desc' },
+    ];
 
     // Explicit branches (not a computed include key) so Prisma's generated
     // types resolve the joined profile correctly.
     const follows =
       mode === 'following'
-        ? await this.db.follow.findMany({ where, orderBy, take: limit + 1, include: { followee: true } })
-        : await this.db.follow.findMany({ where, orderBy, take: limit + 1, include: { follower: true } });
+        ? await this.db.follow.findMany({
+            where,
+            orderBy,
+            take: limit + 1,
+            include: { followee: true },
+          })
+        : await this.db.follow.findMany({
+            where,
+            orderBy,
+            take: limit + 1,
+            include: { follower: true },
+          });
 
     const hasMore = follows.length > limit;
     const page = hasMore ? follows.slice(0, limit) : follows;
