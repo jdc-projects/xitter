@@ -16,29 +16,165 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT"
+      },
+      "serviceToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Client-credentials service token (audience = svc-social)."
       }
     },
-    "schemas": {},
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object",
+                "additionalProperties": {
+                  "nullable": true
+                }
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ]
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "CreateProfileRequest": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "bio": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 200
+          }
+        }
+      },
+      "UpdateProfileRequest": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "bio": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 200
+          }
+        }
+      },
+      "ProfilePage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                },
+                "username": {
+                  "type": "string",
+                  "minLength": 3,
+                  "maxLength": 20,
+                  "pattern": "^[a-z0-9_]+$"
+                },
+                "displayName": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 50
+                },
+                "bio": {
+                  "type": "string",
+                  "nullable": true,
+                  "maxLength": 200
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": [
+                "id",
+                "username",
+                "displayName",
+                "bio",
+                "createdAt"
+              ]
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      }
+    },
     "parameters": {}
   },
   "paths": {
     "/profiles/{userId}": {
-      "get": {
-        "tags": ["profiles"],
+      "post": {
+        "tags": [
+          "profiles"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Idempotent upsert of the caller own profile (`userId` = caller).",
         "parameters": [
           {
             "schema": {
               "type": "string",
-              "format": "uuid"
+              "format": "uuid",
+              "example": "b1c2d3e4-0000-4000-8000-000000000001"
             },
             "required": true,
             "name": "userId",
             "in": "path"
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProfileRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
-            "description": "Profile",
+            "description": "Profile (existing returned unchanged on re-POST)",
             "content": {
               "application/json": {
                 "schema": {
@@ -70,24 +206,251 @@
                       "format": "date-time"
                     }
                   },
-                  "required": ["id", "username", "displayName", "bio", "createdAt"]
+                  "required": [
+                    "id",
+                    "username",
+                    "displayName",
+                    "bio",
+                    "createdAt"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "userId is not the caller",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "profiles"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "b1c2d3e4-0000-4000-8000-000000000001"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profile with follow counts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                    },
+                    "username": {
+                      "type": "string",
+                      "minLength": 3,
+                      "maxLength": 20,
+                      "pattern": "^[a-z0-9_]+$"
+                    },
+                    "displayName": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 50
+                    },
+                    "bio": {
+                      "type": "string",
+                      "nullable": true,
+                      "maxLength": 200
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "counts": {
+                      "type": "object",
+                      "properties": {
+                        "following": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "followers": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": [
+                        "following",
+                        "followers"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "username",
+                    "displayName",
+                    "bio",
+                    "createdAt",
+                    "counts"
+                  ]
                 }
               }
             }
           },
           "404": {
-            "description": "Not found"
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "profiles"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Partial update, own profile only.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "b1c2d3e4-0000-4000-8000-000000000001"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProfileRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                    },
+                    "username": {
+                      "type": "string",
+                      "minLength": 3,
+                      "maxLength": 20,
+                      "pattern": "^[a-z0-9_]+$"
+                    },
+                    "displayName": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 50
+                    },
+                    "bio": {
+                      "type": "string",
+                      "nullable": true,
+                      "maxLength": 200
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "username",
+                    "displayName",
+                    "bio",
+                    "createdAt"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not your profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
     },
     "/profiles/username/{username}": {
       "get": {
-        "tags": ["profiles"],
+        "tags": [
+          "profiles"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
           {
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 20,
+              "pattern": "^[a-z0-9_]+$"
             },
             "required": true,
             "name": "username",
@@ -128,20 +491,35 @@
                       "format": "date-time"
                     }
                   },
-                  "required": ["id", "username", "displayName", "bio", "createdAt"]
+                  "required": [
+                    "id",
+                    "username",
+                    "displayName",
+                    "bio",
+                    "createdAt"
+                  ]
                 }
               }
             }
           },
           "404": {
-            "description": "Not found"
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
     },
     "/profiles/{userId}/follow": {
       "post": {
-        "tags": ["relationships"],
+        "tags": [
+          "relationships"
+        ],
         "security": [
           {
             "bearerAuth": []
@@ -151,7 +529,8 @@
           {
             "schema": {
               "type": "string",
-              "format": "uuid"
+              "format": "uuid",
+              "example": "b1c2d3e4-0000-4000-8000-000000000001"
             },
             "required": true,
             "name": "userId",
@@ -160,15 +539,44 @@
         ],
         "responses": {
           "204": {
-            "description": "Following"
+            "description": "Applied (idempotent)"
           },
-          "409": {
-            "description": "Conflict"
+          "400": {
+            "description": "Validation error (self-target)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Blocked either way",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target profile not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       },
       "delete": {
-        "tags": ["relationships"],
+        "tags": [
+          "relationships"
+        ],
         "security": [
           {
             "bearerAuth": []
@@ -178,7 +586,8 @@
           {
             "schema": {
               "type": "string",
-              "format": "uuid"
+              "format": "uuid",
+              "example": "b1c2d3e4-0000-4000-8000-000000000001"
             },
             "required": true,
             "name": "userId",
@@ -187,14 +596,104 @@
         ],
         "responses": {
           "204": {
-            "description": "Unfollowed"
+            "description": "Applied (idempotent)"
+          },
+          "400": {
+            "description": "Validation error (self-target)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Blocked either way",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target profile not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
     },
     "/profiles/{userId}/block": {
       "post": {
-        "tags": ["relationships"],
+        "tags": [
+          "relationships"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Blocks the target and removes existing follows in both directions.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "b1c2d3e4-0000-4000-8000-000000000001"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Applied (idempotent)"
+          },
+          "400": {
+            "description": "Validation error (self-target)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Blocked either way",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target profile not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "relationships"
+        ],
         "security": [
           {
             "bearerAuth": []
@@ -204,7 +703,8 @@
           {
             "schema": {
               "type": "string",
-              "format": "uuid"
+              "format": "uuid",
+              "example": "b1c2d3e4-0000-4000-8000-000000000001"
             },
             "required": true,
             "name": "userId",
@@ -213,19 +713,58 @@
         ],
         "responses": {
           "204": {
-            "description": "Blocked"
+            "description": "Applied (idempotent)"
+          },
+          "400": {
+            "description": "Validation error (self-target)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Blocked either way",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target profile not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
     },
-    "/profiles/{userId}/following": {
+    "/profiles/{userId}/relationship": {
       "get": {
-        "tags": ["relationships"],
+        "tags": [
+          "relationships"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Caller-relative relationship flags.",
         "parameters": [
           {
             "schema": {
               "type": "string",
-              "format": "uuid"
+              "format": "uuid",
+              "example": "b1c2d3e4-0000-4000-8000-000000000001"
             },
             "required": true,
             "name": "userId",
@@ -234,52 +773,107 @@
         ],
         "responses": {
           "200": {
-            "description": "Following page",
+            "description": "Relationship",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "items": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "id": {
-                            "type": "string",
-                            "format": "uuid",
-                            "example": "b1c2d3e4-0000-4000-8000-000000000001"
-                          },
-                          "username": {
-                            "type": "string",
-                            "minLength": 3,
-                            "maxLength": 20,
-                            "pattern": "^[a-z0-9_]+$"
-                          },
-                          "displayName": {
-                            "type": "string",
-                            "minLength": 1,
-                            "maxLength": 50
-                          },
-                          "bio": {
-                            "type": "string",
-                            "nullable": true,
-                            "maxLength": 200
-                          },
-                          "createdAt": {
-                            "type": "string",
-                            "format": "date-time"
-                          }
-                        },
-                        "required": ["id", "username", "displayName", "bio", "createdAt"]
-                      }
+                    "following": {
+                      "type": "boolean"
                     },
-                    "nextCursor": {
-                      "type": "string",
-                      "nullable": true
+                    "followedBy": {
+                      "type": "boolean"
+                    },
+                    "blocking": {
+                      "type": "boolean"
+                    },
+                    "blockedBy": {
+                      "type": "boolean"
                     }
                   },
-                  "required": ["items", "nextCursor"]
+                  "required": [
+                    "following",
+                    "followedBy",
+                    "blocking",
+                    "blockedBy"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/{userId}/following": {
+      "get": {
+        "tags": [
+          "relationships"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "b1c2d3e4-0000-4000-8000-000000000001"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": false,
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Following page (newest follows first)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfilePage"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -289,12 +883,87 @@
     },
     "/profiles/{userId}/followers": {
       "get": {
-        "tags": ["relationships"],
+        "tags": [
+          "relationships"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
           {
             "schema": {
               "type": "string",
-              "format": "uuid"
+              "format": "uuid",
+              "example": "b1c2d3e4-0000-4000-8000-000000000001"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": false,
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Followers page (newest followers first)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfilePage"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/users/{userId}/followers/ids": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "Follower id list for feed fanout (fanout worker).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "b1c2d3e4-0000-4000-8000-000000000001"
             },
             "required": true,
             "name": "userId",
@@ -303,52 +972,156 @@
         ],
         "responses": {
           "200": {
-            "description": "Followers page",
+            "description": "Follower ids",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/users/{userId}/relationships/{otherId}": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "Relationship flags between two users; consumers treat blocking || blockedBy as blocked-either-way (posts #5, workers #8).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "b1c2d3e4-0000-4000-8000-000000000001"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "b1c2d3e4-0000-4000-8000-000000000001"
+            },
+            "required": true,
+            "name": "otherId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Relationship",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "items": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "id": {
-                            "type": "string",
-                            "format": "uuid",
-                            "example": "b1c2d3e4-0000-4000-8000-000000000001"
-                          },
-                          "username": {
-                            "type": "string",
-                            "minLength": 3,
-                            "maxLength": 20,
-                            "pattern": "^[a-z0-9_]+$"
-                          },
-                          "displayName": {
-                            "type": "string",
-                            "minLength": 1,
-                            "maxLength": 50
-                          },
-                          "bio": {
-                            "type": "string",
-                            "nullable": true,
-                            "maxLength": 200
-                          },
-                          "createdAt": {
-                            "type": "string",
-                            "format": "date-time"
-                          }
-                        },
-                        "required": ["id", "username", "displayName", "bio", "createdAt"]
-                      }
+                    "following": {
+                      "type": "boolean"
                     },
-                    "nextCursor": {
-                      "type": "string",
-                      "nullable": true
+                    "followedBy": {
+                      "type": "boolean"
+                    },
+                    "blocking": {
+                      "type": "boolean"
+                    },
+                    "blockedBy": {
+                      "type": "boolean"
                     }
                   },
-                  "required": ["items", "nextCursor"]
+                  "required": [
+                    "following",
+                    "followedBy",
+                    "blocking",
+                    "blockedBy"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/users/{userId}/blocked/ids": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "Ids this user has blocked (feed #7, search #9 filtering).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "b1c2d3e4-0000-4000-8000-000000000001"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Blocked ids",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/reseed": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "Truncate profiles + graph (reset job); deterministic reseed runs via the seed script.",
+        "responses": {
+          "200": {
+            "description": "Acknowledged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ok"
+                  ]
                 }
               }
             }
