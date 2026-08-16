@@ -192,6 +192,10 @@ jobs:
       - uses: opentofu/setup-opentofu@v2
       - name: Write kubeconfig
         run: |
+          if [ -z "${{ secrets.CLUSTER_KUBECONFIG }}" ]; then
+            echo '::error::CLUSTER_KUBECONFIG secret is not set - see docs/runbooks/04-ci-and-secrets.md'
+            exit 1
+          fi
           mkdir -p infra
           printf '%s' "${{ secrets.CLUSTER_KUBECONFIG }}" > infra/cluster.yml
       - name: tofu plan (dev)
