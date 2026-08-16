@@ -30,7 +30,9 @@ async function bootstrap(): Promise<void> {
     new FastifyAdapter({ trustProxy: true }),
   );
 
-  app.setGlobalPrefix('api/social/v1');
+  // Health probes are infrastructure-facing, not public API - they sit at the
+  // root, outside the versioned prefix.
+  app.setGlobalPrefix('api/social/v1', { exclude: ['healthz', 'readyz'] });
   app.enableShutdownHooks();
 
   await app.listen(env.PORT, '0.0.0.0');

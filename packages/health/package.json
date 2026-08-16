@@ -1,0 +1,34 @@
+{
+  "name": "@xitter/health",
+  "version": "0.0.0",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11",
+    "@nestjs/terminus": "^11",
+    "reflect-metadata": "^0.2",
+    "rxjs": "^7"
+  },
+  "devDependencies": {
+    "@nestjs/platform-fastify": "^11",
+    "@nestjs/testing": "^11",
+    "@xitter/eslint-config": "*",
+    "@xitter/tsconfig": "*",
+    "vitest": "^4"
+  }
+}

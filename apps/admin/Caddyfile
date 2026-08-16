@@ -1,0 +1,28 @@
+{
+	admin off
+	auto_https off
+}
+
+:8080 {
+	root * /srv
+	encode zstd gzip
+
+	# Liveness/readiness for direct container probes (kubelet, docker) -
+	# static content has no dependencies, so answering is itself health.
+	respond /healthz 200
+	respond /readyz 200
+
+	# Parity with the Vite dev server: /admin without the trailing slash
+	# redirects instead of falling through to the 404.
+	redir /admin /admin/ 308
+
+	# The SPA is built with base '/admin/': strip the prefix, serve built
+	# assets, and fall back to the shell for client-side routes.
+	handle_path /admin/* {
+		try_files {path} /index.html
+		file_server
+	}
+
+	redir / /admin/ 308
+	respond 404
+}
