@@ -31,7 +31,7 @@ The dev environment deploys, in one root module:
    ```
    If the backend block ever loses its inline config, initialise with
    `tofu init -backend-config=secret_suffix=xitter-dev -backend-config=config_path=../../../cluster.yml -backend-config=namespace=tf-state` (see `infra/iac/REMOTE-STATE.md`). The same namespace holds the homelab remote states (`keycloak-config`, `sentry`) that provide the Keycloak provider credentials.
-3. **Iterate**: `tofu -chdir=infra/iac/environments/dev validate`, `tofu fmt -recursive infra/iac` (CI enforces both), then `tofu plan -input=false` and review.
+3. **Iterate**: `tofu -chdir=infra/iac/environments/dev validate`, `tofu -chdir=infra/iac fmt -recursive` (CI enforces both — one recursive fmt check from `infra/iac` plus per-env validate), then `tofu plan -input=false` and review.
 4. **Apply**: `tofu -chdir=infra/iac/environments/dev apply`. The CNPG cluster has a `wait` condition (`Cluster in healthy state`), so the apply blocks until Postgres is up; Helm releases (Valkey, RustFS) wait for their pods; the `db-init` and `rustfs-provision` jobs run to completion (`wait_for_completion`), so a green apply means databases, bucket, and realms exist.
 5. **CI path** (default): merge to `dev` → images build → `tofu-apply` job runs `tofu init && tofu apply -auto-approve` against `infra/iac/environments/dev`.
 6. PRs touching `infra/iac/**` additionally run `tofu fmt/validate` on every PR and `tofu plan` (real backend) as a check — review the plan before merging.

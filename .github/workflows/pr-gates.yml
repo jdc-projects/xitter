@@ -171,7 +171,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: opentofu/setup-opentofu@v2
       - name: fmt
-        run: tofu -chdir=infra/iac/environments/dev fmt -check -recursive && tofu -chdir=infra/iac/environments/prod fmt -check -recursive
+        run: tofu -chdir=infra/iac fmt -check -recursive
       - name: validate (dev)
         working-directory: infra/iac/environments/dev
         run: |

@@ -40,9 +40,8 @@ apps/**/openapi.json
 # Cluster kubeconfig (homelab credentials) - placed per the deploy runbook
 infra/cluster.yml
 
-# OpenTofu working directories (providers, module caches, lockfiles per env)
+# OpenTofu working directories (providers, module caches)
 .terraform/
-.terraform.lock.hcl
 
 # Local state
 .DS_Store
