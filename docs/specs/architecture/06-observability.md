@@ -20,12 +20,12 @@ Observability is part of development work, not an afterthought: dashboards and a
 
 ## Health probes
 
-| Aspect | Rule                                                                                                                                                                                    |
-| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Paths  | `GET /healthz` (liveness) and `GET /readyz` (readiness) at the root — outside the `api/{service}/v1` prefix, because they serve infrastructure probes, not the public API               |
-| Shape  | Nest Terminus via the shared `@xitter/health` module; workers answer `GET /healthz` on their metrics server (the listener being up means the process is alive)                          |
-| Checks | Liveness checks nothing (a slow dependency must not get a healthy pod killed). Readiness pings the service's Prisma database (`SELECT 1`, 2s timeout) and answers 503 until it responds |
-| Static | admin is static files behind Caddy; `/healthz` and `/admin/healthz` answer 200 there                                                                                                    |
+| Aspect | Rule                                                                                                                                                                                                                                                                                                                                                   |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Paths  | `GET /healthz` (liveness) and `GET /readyz` (readiness) at the root — outside the `api/{service}/v1` prefix, because they serve infrastructure probes, not the public API. web serves the same pair from root-level Next route handlers; cms serves them under its `/cms` basePath (`/cms/healthz`, `/cms/readyz`)                                     |
+| Shape  | Nest Terminus via the shared `@xitter/health` module; workers answer `GET /healthz` on their metrics server (the listener being up means the process is alive)                                                                                                                                                                                         |
+| Checks | Liveness checks nothing (a slow dependency must not get a healthy pod killed). Readiness pings the service's Prisma database (`SELECT 1`, 2s timeout) and answers 503 until it responds. web and cms readiness intentionally check nothing downstream: SSR fetches fail soft per the product resilience rules, and probe depth belongs to the services |
+| Static | admin is static files behind Caddy; `/healthz` + `/readyz` answer 200 there (likewise under `/admin/`, via the SPA fallback for the shell)                                                                                                                                                                                                             |
 
 ## Logs
 
