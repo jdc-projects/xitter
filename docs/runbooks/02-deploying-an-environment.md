@@ -2,26 +2,63 @@
 
 ## Context
 
-Apply OpenTofu to the homelab Kubernetes cluster for the `dev` or `prod` xitter environment. Environments live in `infra/iac/environments/{dev,prod}` on top of shared modules (`namespace`, `xitter-service`); the cluster itself is managed by the homelab repo. Workload modules land incrementally with feature tickets — this runbook covers the environment skeleton and grows over time.
+Apply OpenTofu to the homelab Kubernetes cluster for the `dev` or `prod` xitter environment. Environments live in `infra/iac/environments/{dev,prod}` on top of shared modules (`namespace`, `xitter-service`); the cluster itself is managed by the homelab repo.
+
+The dev environment deploys, in one root module:
+
+| Piece          | What                                                                                                                                       |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Namespace      | `xitter-dev` (namespace module) + Velero exclusion label                                                                                    |
+| Deps           | CNPG Postgres `xitter-postgres` (1 instance in dev), Strimzi Kafka + `xitter.{posts,social,media}.v1` topics, Valkey (Helm), OpenSearch (operator CR), RustFS (Helm) + public-read `xitter-media` bucket |
+| Databases      | `db-init` Job creates per-service roles/DBs (`social`, `posts`, `media`, `feed`, `search`, `cms`); per-service `DATABASE_URL` Secrets        |
+| Keycloak       | `xitter-demo` realm, `web` client, `svc-*` / `svc-worker-*` / `svc-reset` clients with per-audience mappers; creds into K8s Secrets         |
+| Workloads      | 11 `xitter-service` instances: 5 API services (+HPA), 3 Knative workers, web, cms, admin                                                    |
+| Edge           | Homelab ingress module routes for `/`, `/api/{service}`, `/media`, `/cms`, `/admin`                                                          |
+| NetworkPolicies | Default deny + explicit allows (edge, Prometheus, same-namespace, per-dependency egress)                                                    |
 
 **Deploys are CI-driven**: merge to `dev` runs `tofu-apply` in Actions (see `.github/workflows/deploy-dev.yml`). This runbook covers the one-time setup and the manual/local path — use it when iterating on IaC or deploying `prod` (T13 wires prod deploys).
 
 ## Execution steps
 
-1. **Prerequisites**: the `CLUSTER_KUBECONFIG` secret in Actions (one-time — see [04-ci-and-secrets.md](04-ci-and-secrets.md)); for local runs, `tofu` CLI plus the homelab kubeconfig copied/linked to `infra/cluster.yml` (gitignored) — the path the env configs resolve via `config_path = "../../../cluster.yml"`.
-2. **CI path** (default): merge to `dev` → images build → `tofu-apply` job runs `tofu init && tofu apply -auto-approve` against `infra/iac/environments/dev`.
-3. **Local path** (iterating on IaC): `cd infra/iac/environments/dev` (or `prod`), then `tofu init` (state is in the cluster's `tf-state` namespace; the backend block already carries `secret_suffix`/`config_path`), `tofu plan`, review, `tofu apply`. Idempotent: re-running converges to the declared state.
-4. PRs touching `infra/iac/**` additionally run `tofu fmt/validate` on every PR and `tofu plan` (real backend) as a check — review the plan before merging.
+1. **Prerequisites**:
+   - `tofu` CLI (OpenTofu ≥ 1.9).
+   - Homelab kubeconfig copied/linked to `infra/cluster.yml` (gitignored) — the path every provider/backend block resolves via `config_path = "../../../cluster.yml"`.
+   - The `CLUSTER_KUBECONFIG` secret in Actions for the CI path (one-time — see [04-ci-and-secrets.md](04-ci-and-secrets.md)).
+   - Images published to GHCR at `ghcr.io/jdc-projects/xitter-*:dev` (CI from merge; until then workloads sit in `ImagePullBackOff`, which is expected — see validation below).
+2. **Backend bootstrap (first init only)**: the state lives in the cluster's `tf-state` namespace as secret `tfstate-default-xitter-dev`. The backend block in `environments/dev/main.tf` already carries `secret_suffix`/`config_path`/`namespace`, so a plain init works:
+   ```sh
+   tofu -chdir=infra/iac/environments/dev init
+   ```
+   If the backend block ever loses its inline config, initialise with
+   `tofu init -backend-config=secret_suffix=xitter-dev -backend-config=config_path=../../../cluster.yml -backend-config=namespace=tf-state` (see `infra/iac/REMOTE-STATE.md`). The same namespace holds the homelab remote states (`keycloak-config`, `sentry`) that provide the Keycloak provider credentials.
+3. **Iterate**: `tofu -chdir=infra/iac/environments/dev validate`, `tofu fmt -recursive infra/iac` (CI enforces both), then `tofu plan -input=false` and review.
+4. **Apply**: `tofu -chdir=infra/iac/environments/dev apply`. The CNPG cluster has a `wait` condition (`Cluster in healthy state`), so the apply blocks until Postgres is up; Helm releases (Valkey, RustFS) wait for their pods; the `db-init` and `rustfs-provision` jobs run to completion (`wait_for_completion`), so a green apply means databases, bucket, and realms exist.
+5. **CI path** (default): merge to `dev` → images build → `tofu-apply` job runs `tofu init && tofu apply -auto-approve` against `infra/iac/environments/dev`.
+6. PRs touching `infra/iac/**` additionally run `tofu fmt/validate` on every PR and `tofu plan` (real backend) as a check — review the plan before merging.
 
 ## Validation steps
 
-1. The Actions run's `tofu-apply` job is green (or locally: `tofu output` shows expected outputs).
-2. `kubectl -n xitter-dev get pods` — workloads running.
-3. `curl https://xitter-dev.jd-chapman.dev/healthz` — edge health responds (real health endpoints land with their feature tickets; until then, any 2xx/308 from the ingress confirms routing).
+1. `tofu -chdir=infra/iac/environments/dev output` — namespace, base URL, and dependency endpoints.
+2. Dependencies healthy:
+   ```sh
+   kubectl -n xitter-dev get cluster xitter-postgres          # phase: Cluster in healthy state
+   kubectl -n xitter-dev get kafka,kafkatopics                 # kafka Ready; 3 xitter.* topics Ready
+   kubectl -n xitter-dev get pods                              # valkey-*, rustfs-*, opensearch-* Running
+   kubectl -n xitter-dev get job db-init rustfs-provision      # Complete
+   ```
+   Bucket check: `kubectl -n xitter-dev logs job/rustfs-provision` ends with the `mc cors set` for `xitter-media`.
+3. Keycloak: `https://idp.jd-chapman.dev/admin/master/#/xitter-demo/clients` lists `web`, `svc-social`…`svc-search`, `svc-worker-*`, `svc-reset` (and the edge-created `xitter-dev-*-api`/`-cms`/`-admin` clients).
+4. Workloads: `kubectl -n xitter-dev get deploy,ksvc,hpa` — all present. Until part A's images are on GHCR (`:dev` tag) the API/web/cms/admin pods sit in `ImagePullBackOff`; that is expected and not an apply failure.
+5. Edge routing: `kubectl -n xitter-dev get ingressroute,middleware` lists one route per public workload. `curl https://xitter-dev.jd-chapman.dev/api/social/v1/healthz` (or the `bruno/xitter` collection, environment `dev`, request `social/health.bru`) returns 200 once images are live; before that, unauthenticated API calls should still be rejected at the edge (401 from the oidc-api middleware), which proves routing + realm wiring.
+6. `curl -I https://xitter-dev.jd-chapman.dev/` — any 2xx/3xx from the web route confirms the edge (web itself may 502 while images are pending).
+
+## Manual follow-ups / notes
+
+- DNS for `xitter-dev.jd-chapman.dev` is a wildcard on the homelab domain (`*.jd-chapman.dev`) — no per-host record needed; if a route 404s at the edge, check the IngressRoute exists for that host first.
+- Velero: the `xitter-dev` namespace carries `velero.io/exclude-from-backup=true` (verified against the homelab's exclusion mechanism — the label, applied the same way the velero namespace itself is excluded). Nothing from the environment is backed up, matching the nightly-reset data policy.
+- The reset job (T6) recreates demo users in the realm nightly; tofu owns the realm/client skeleton. If the reset ever deletes the whole realm, re-run `tofu apply` to converge it back.
 
 ## Related
 
 - Remote-state consumption table: `infra/iac/REMOTE-STATE.md`
 - Secrets setup: [04-ci-and-secrets.md](04-ci-and-secrets.md)
-
-4. Ingress is provided by the homelab module (`github.com/jdc-projects/homelab//iac/modules/ingress`); API routes use `auth_mode=oidc-api` (edge JWT validation + identity header injection), so unauthenticated API calls should be rejected at the edge.
