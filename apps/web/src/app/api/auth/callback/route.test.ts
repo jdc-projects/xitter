@@ -6,6 +6,38 @@ const harness = vi.hoisted(() => ({
   sessionId: 'session-1',
 }));
 
+// Profile bootstrap boundary: fake SocialClient recording calls (the HTTP
+// client itself is covered by api-client tests; happy-dom's fetch can't be
+// stubbed transparently for workspace CJS builds).
+const social = vi.hoisted(() => ({
+  calls: [] as string[],
+  profileExists: false,
+  unreachable: false,
+}));
+
+vi.mock('@xitter/api-client', async (importOriginal) => {
+  const actual = await importOriginal<
+    typeof import('@xitter/api-client')
+  >();
+  return {
+    ...actual,
+    SocialClient: class {
+      async getProfile() {
+        social.calls.push('GET');
+        if (social.unreachable) throw new Error('social down');
+        if (!social.profileExists) {
+          throw new actual.ApiError(404, 'NOT_FOUND', 'Profile not found');
+        }
+        return {};
+      }
+      async createProfile() {
+        social.calls.push('POST');
+        return {};
+      }
+    },
+  };
+});
+
 // OIDC grant and the Valkey stores are the boundaries under test - mock them;
 // the real discovery/code-exchange path is covered by the e2e flow.
 vi.mock('@/lib/auth/oidc', () => ({
@@ -72,6 +104,8 @@ afterEach(() => {
   harness.failTake = false;
   authorizationCodeGrantMock.mockReset();
   vi.unstubAllGlobals();
+  social.calls = [];
+  social.profileExists = false;
 });
 
 describe('GET /api/auth/callback', () => {
@@ -143,5 +177,36 @@ describe('GET /api/auth/callback', () => {
     const response = await GET(callbackRequest('error=access_denied'));
     expect(response.status).toBe(303);
     expect(response.headers.get('location')).toBe('http://localhost:8280/login?error=oidc');
+  });
+
+  it('bootstraps the profile on first login (404 -> create, idempotent)', async () => {
+    setBaseUrl('http://localhost:8280');
+    harness.login = { codeVerifier: 'v', nonce: 'n', next: '/feed' };
+    authorizationCodeGrantMock.mockResolvedValue(tokenResponse() as never);
+
+    const response = await GET(callbackRequest());
+    expect(response.status).toBe(303);
+    expect(social.calls).toEqual(['GET', 'POST']);
+  });
+
+  it('skips profile creation when the profile already exists', async () => {
+    setBaseUrl('http://localhost:8280');
+    harness.login = { codeVerifier: 'v', nonce: 'n', next: '/feed' };
+    authorizationCodeGrantMock.mockResolvedValue(tokenResponse() as never);
+    social.profileExists = true;
+
+    await GET(callbackRequest());
+    expect(social.calls).toEqual(['GET']);
+  });
+
+  it('still logs in when social is unreachable (profile bootstrap is best-effort)', async () => {
+    setBaseUrl('http://localhost:8280');
+    harness.login = { codeVerifier: 'v', nonce: 'n', next: '/feed' };
+    authorizationCodeGrantMock.mockResolvedValue(tokenResponse() as never);
+    social.unreachable = true;
+
+    const response = await GET(callbackRequest());
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe('http://localhost:8280/feed');
   });
 });
