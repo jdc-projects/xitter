@@ -1,5 +1,6 @@
 import { CanActivate, ExecutionContext, HttpException, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { HEALTH_ROUTES } from '@xitter/config';
 import { INTERNAL_CLIENTS, type TokenVerifier } from '@xitter/auth';
 import {
   AUTH_OPTIONS,
@@ -12,7 +13,7 @@ import {
 } from './auth.tokens.js';
 import { authorizedParty, bearerToken, edgeIdentity, unauthenticated } from './http.js';
 
-type RequestWithUser = { headers: Record<string, unknown>; user?: RequestUser };
+type RequestWithUser = { headers: Record<string, unknown>; url?: string; user?: RequestUser };
 
 /**
  * Global request guard, applied once per service. Route kind decides the
@@ -53,6 +54,16 @@ export class AuthGuard implements CanActivate {
     ]);
 
     const request = context.switchToHttp().getRequest<RequestWithUser>();
+
+    // Infrastructure probes: the shared health routes sit at the service
+    // root, outside the versioned prefix, and are never edge-exposed
+    // (spec 03) - only the kubelet reaches them in-cluster. They must answer
+    // regardless of auth or every restart becomes a crash loop.
+    const path = (request.url ?? '').split('?')[0];
+    if (HEALTH_ROUTES.some((route) => `/${route}` === path)) {
+      return true;
+    }
+
     const token = bearerToken(request.headers);
 
     if (!token) {

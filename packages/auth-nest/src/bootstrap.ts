@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import type { Type } from '@nestjs/common';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
+import { HEALTH_ROUTES } from '@xitter/config';
 import { createLogger } from '@xitter/observability';
 import { AuthGuard } from './auth.guard.js';
 import { ErrorEnvelopeFilter } from './error.filter.js';
@@ -30,7 +31,7 @@ export async function bootstrapApiService(options: ApiServiceOptions): Promise<v
 
   // Health probes are infrastructure-facing, not public API - they sit at
   // the root, outside the versioned prefix.
-  app.setGlobalPrefix(options.prefix, { exclude: ['healthz', 'readyz'] });
+  app.setGlobalPrefix(options.prefix, { exclude: [...HEALTH_ROUTES] });
   app.useGlobalGuards(app.get(AuthGuard));
   app.useGlobalFilters(new ErrorEnvelopeFilter());
   app.enableShutdownHooks();
