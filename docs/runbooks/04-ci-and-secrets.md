@@ -36,8 +36,9 @@ same path the env configs resolve locally. Local tofu runs use the same file
 3. Create a site named `xitter`.
 4. On the site's **Configuration** tab, set CORS origins to the exact origins
    (Cap matches strings literally - no wildcards):
-   - `http://localhost:8080` (local edge)
-   - `https://xitter-dev.jd-chapman.dev` (dev environment; add prod later)
+   - `http://localhost:8080` (local edge, default port)
+   - `https://xitter-dev.jd-chapman.dev` (dev)
+   - `https://xitter.jd-chapman.dev` (prod)
 5. Copy the site's **site key** and **secret key**, then:
 
    ```sh
@@ -52,6 +53,10 @@ same path the env configs resolve locally. Local tofu runs use the same file
    XITTER_CAP_SECRET_KEY=<secret key>
    XITTER_CAP_ENABLED=true
    ```
+
+   Captcha-enabled local runs assume the default edge port (8080) - the local
+   origin in the site's CORS list. For an offset copy, either keep captcha
+   disabled or add that copy's origin to the site first.
 
 ## Validation steps
 
