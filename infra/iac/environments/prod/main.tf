@@ -63,7 +63,7 @@ variable "environment" {
 }
 
 module "namespace" {
-  source      = "../modules/namespace"
+  source      = "../../modules/namespace"
   environment = var.environment
 }
 

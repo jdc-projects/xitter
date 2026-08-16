@@ -4,9 +4,9 @@ terraform {
 
 locals {
   labels = {
-    app.kubernetes.io/part-of  = "xitter"
-    app.kubernetes.io/instance = var.environment
-    environment                = var.environment
+    "app.kubernetes.io/part-of"  = "xitter"
+    "app.kubernetes.io/instance" = var.environment
+    environment                  = var.environment
   }
 }
 

@@ -163,18 +163,24 @@ jobs:
 
   tofu:
     # Syntax + validate for both environments (no secrets needed).
+    # Uses working-directory, not -chdir: tofu resolves relative module
+    # symlinks from the process cwd, so -chdir breaks "../modules/*".
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: opentofu/setup-opentofu@v2
       - name: fmt
         run: tofu -chdir=infra/iac/environments/dev fmt -check -recursive && tofu -chdir=infra/iac/environments/prod fmt -check -recursive
-      - name: init (no backend) + validate
+      - name: validate (dev)
+        working-directory: infra/iac/environments/dev
         run: |
-          tofu -chdir=infra/iac/environments/dev init -backend=false
-          tofu -chdir=infra/iac/environments/dev validate
-          tofu -chdir=infra/iac/environments/prod init -backend=false
-          tofu -chdir=infra/iac/environments/prod validate
+          tofu init -backend=false
+          tofu validate
+      - name: validate (prod)
+        working-directory: infra/iac/environments/prod
+        run: |
+          tofu init -backend=false
+          tofu validate
 
   tofu-plan:
     # Full plan against the real backend when infra changes.
