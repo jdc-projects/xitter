@@ -157,6 +157,10 @@ module "cms" {
   port     = 3000
   replicas = 2
 
+  # Next.js basePath: health routes live under /cms/healthz + /cms/readyz.
+  liveness_probe_path  = "/cms/healthz"
+  readiness_probe_path = "/cms/readyz"
+
   env = concat(local.common_env, [
     { name = "PORT", value = "3000" },
     { name = "WEB_URL", value = "https://${var.domain}" },

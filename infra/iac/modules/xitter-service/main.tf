@@ -68,6 +68,21 @@ variable "do_expose" {
   default     = true
 }
 
+# Optional probe-path overrides (additive to the frozen interface; defaults
+# preserve it). Needed for apps that serve under a base path, e.g. cms
+# (Next.js basePath /cms).
+variable "liveness_probe_path" {
+  description = "HTTP path for the liveness probe."
+  type        = string
+  default     = "/healthz"
+}
+
+variable "readiness_probe_path" {
+  description = "HTTP path for the readiness probe."
+  type        = string
+  default     = "/readyz"
+}
+
 locals {
   labels = {
     "app.kubernetes.io/name"     = var.name
@@ -210,7 +225,7 @@ resource "kubernetes_deployment" "this" {
 
           readiness_probe {
             http_get {
-              path = "/readyz"
+              path = var.readiness_probe_path
               port = var.port
             }
             initial_delay_seconds = 5
@@ -219,7 +234,7 @@ resource "kubernetes_deployment" "this" {
 
           liveness_probe {
             http_get {
-              path = "/healthz"
+              path = var.liveness_probe_path
               port = var.port
             }
             initial_delay_seconds = 10

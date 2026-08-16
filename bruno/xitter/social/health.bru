@@ -1,14 +1,18 @@
 meta {
-  name: Health
+  name: Edge wiring (unauth)
   seq: 1
 }
 
+# Health endpoints are prefix-excluded (service root only) and never
+# edge-exposed, so the edge-level check is the oidc-api 401 for an
+# unauthenticated request - proving routing + realm wiring. Service-level
+# health is validated by port-forward (runbook 02, step 5).
 get {
-  url: {{seedBase}}/api/social/v1/healthz
+  url: {{seedBase}}/api/social/v1/profiles/edge-wiring-check
   body: none
   auth: none
 }
 
 assert {
-  res.status: 200
+  res.status: 401
 }
