@@ -239,6 +239,9 @@ resource "kubernetes_manifest" "kafka_topics" {
     }
 
     spec = {
+      # Spec 04 sizes these at 6 partitions; dev runs 1 (single-node Kafka,
+      # no consumers to parallelise) - partitions can be grown later without
+      # recreation.
       partitions = 1
       replicas   = 1
       topicName  = each.key
@@ -440,6 +443,22 @@ resource "helm_release" "rustfs" {
   ]
 }
 
+# Provisioner credentials as a Secret (mirrors db-init: nothing sensitive
+# lands in the Job spec). Same random_password values the Helm release gets
+# via set_sensitive, so job and server always agree.
+resource "kubernetes_secret" "rustfs_provision" {
+  metadata {
+    name      = "rustfs-provision"
+    namespace = local.ns
+    labels    = module.namespace.labels
+  }
+
+  data = {
+    RUSTFS_ACCESS_KEY = random_password.rustfs_root_username.result
+    RUSTFS_SECRET_KEY = random_password.rustfs_root_password.result
+  }
+}
+
 # One-shot bucket provisioning: creates the public-read `xitter-media` bucket
 # and sets CORS so browsers can presigned-PUT media from the web origin
 # (outline/posthog pattern). Idempotent: alias set overwrites, mb uses
@@ -486,13 +505,23 @@ resource "kubernetes_job" "rustfs_provision" {
           ]
 
           env {
-            name  = "RUSTFS_ACCESS_KEY"
-            value = random_password.rustfs_root_username.result
+            name = "RUSTFS_ACCESS_KEY"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.rustfs_provision.metadata[0].name
+                key  = "RUSTFS_ACCESS_KEY"
+              }
+            }
           }
 
           env {
-            name  = "RUSTFS_SECRET_KEY"
-            value = random_password.rustfs_root_password.result
+            name = "RUSTFS_SECRET_KEY"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.rustfs_provision.metadata[0].name
+                key  = "RUSTFS_SECRET_KEY"
+              }
+            }
           }
         }
       }
@@ -509,5 +538,5 @@ resource "kubernetes_job" "rustfs_provision" {
     update = "5m"
   }
 
-  depends_on = [helm_release.rustfs]
+  depends_on = [helm_release.rustfs, kubernetes_secret.rustfs_provision]
 }

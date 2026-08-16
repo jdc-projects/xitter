@@ -18,7 +18,7 @@ locals {
   machine_clients = merge(
     { for c in local.service_audiences : c => local.service_audiences },
     {
-      "svc-worker-fanout"        = ["svc-social", "svc-feed"],
+      "svc-worker-fanout"        = ["svc-social", "svc-posts", "svc-feed"],
       "svc-worker-media-process" = ["svc-media"],
       "svc-worker-search-index"  = ["svc-search"],
       "svc-reset"                = local.service_audiences,
