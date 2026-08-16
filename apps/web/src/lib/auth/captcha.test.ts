@@ -3,6 +3,7 @@ import { verifyCaptcha } from './captcha.js';
 
 function mockCapEnv() {
   process.env.XITTER_CAP_ENABLED = 'true';
+  process.env.XITTER_CAP_SITE_URL = 'https://cap.example';
   process.env.XITTER_CAP_VERIFY_URL = 'https://cap.example';
   process.env.XITTER_CAP_SITE_KEY = 'site-key';
   process.env.XITTER_CAP_SECRET_KEY = 'secret-key';
@@ -53,14 +54,16 @@ describe('verifyCaptcha', () => {
     await expect(verifyCaptcha('any-token')).resolves.toBe(false);
   });
 
-  it('rejects empty tokens or missing keys without calling the API', async () => {
+  it('rejects empty tokens without calling the API; missing keys fail fast', async () => {
     mockCapEnv();
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     await expect(verifyCaptcha('')).resolves.toBe(false);
-
-    delete process.env.XITTER_CAP_SECRET_KEY;
-    await expect(verifyCaptcha('some-token')).resolves.toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
+
+    // Half-configured captcha is a config error now (webEnv throws), not a
+    // silent verification failure - covered for real in server-env.test.ts.
+    delete process.env.XITTER_CAP_SECRET_KEY;
+    await expect(verifyCaptcha('some-token')).rejects.toThrow(/XITTER_CAP_ENABLED=true requires/);
   });
 });
