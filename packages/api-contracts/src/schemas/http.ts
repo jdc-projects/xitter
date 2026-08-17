@@ -38,20 +38,20 @@ export const createPostRequestSchema = z
   })
   .openapi('CreatePostRequest');
 
+const profileFields = {
+  displayName: z.string().min(1).max(50).optional(),
+  bio: z.string().max(200).nullable().optional(),
+};
+
+// strict: username is immutable - sending it must 4xx, not silently strip.
 export const updateProfileRequestSchema = z
-  .object({
-    displayName: z.string().min(1).max(50).optional(),
-    bio: z.string().max(200).nullable().optional(),
-  })
-  // strict: username is immutable - sending it must 4xx, not silently strip.
+  .object(profileFields)
   .strict()
   .openapi('UpdateProfileRequest');
 
 export const createProfileRequestSchema = z
   .object({
-    /** Omitted -> server generates a faker display name (organic == seeded look). */
-    displayName: z.string().min(1).max(50).optional(),
-    bio: z.string().max(200).nullable().optional(),
+    ...profileFields,
   })
   .strict()
   .openapi('CreateProfileRequest');

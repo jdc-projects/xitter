@@ -1,12 +1,10 @@
 import { Anchor, Badge, Container, Divider, Group, Stack, Text, Title } from '@mantine/core';
-import { SocialClient, localServiceUrls, ApiError } from '@xitter/api-client';
 import { UserAvatar } from '@xitter/ui';
-import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { requireSession } from '@/lib/auth/session';
-import { profileViewState } from '@/lib/social/view-model';
 import { EditProfileForm } from './edit-profile-form';
 import { ProfileActions } from './profile-actions';
+import { loadProfileView, type ProfileTab } from './load-profile';
 
 export const metadata: Metadata = { title: 'Profile' };
 
@@ -100,32 +98,12 @@ export default async function ProfilePage({
   const session = await requireSession(`/profile/${username}`);
   const { tab = 'posts', cursor } = await searchParams;
 
-  // Server-side fetch with the session token (ADR 0002).
-  const social = new SocialClient({
-    baseUrl: localServiceUrls().social,
-    token: session.accessToken,
-  });
-
-  let profile;
-  try {
-    profile = await social.getProfileByUsername(username);
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 404) notFound();
-    throw error;
-  }
-
-  const [withCounts, relationship] = await Promise.all([
-    social.getProfile(profile.id),
-    social.getRelationship(profile.id),
-  ]);
-  const view = profileViewState(session.subject, withCounts, relationship);
-
-  const listTab = tab === 'following' || tab === 'followers' ? tab : null;
-  const list = listTab
-    ? listTab === 'following'
-      ? await social.getFollowing(profile.id, cursor)
-      : await social.getFollowers(profile.id, cursor)
-    : null;
+  const { view, profile, counts, listTab, list } = await loadProfileView(
+    session,
+    username,
+    tab as ProfileTab,
+    cursor,
+  );
 
   return (
     <Container size="sm" py="xl">
@@ -133,13 +111,13 @@ export default async function ProfilePage({
         <Group gap="md" wrap="nowrap">
           <UserAvatar
             username={profile.username}
-            displayName={withCounts.displayName}
+            displayName={profile.displayName}
             size="lg"
             data-testid="profile-avatar"
           />
           <Stack gap={4}>
             <Title order={1} size="h2" data-testid="profile-display-name">
-              {withCounts.displayName}
+              {profile.displayName}
             </Title>
             <Text size="sm" c="dimmed" data-testid="profile-username">
               @{profile.username}
@@ -150,8 +128,8 @@ export default async function ProfilePage({
           <EditProfileForm
             userId={profile.id}
             username={profile.username}
-            displayName={withCounts.displayName}
-            bio={withCounts.bio}
+            displayName={profile.displayName}
+            bio={profile.bio}
           />
         ) : (
           <ProfileActions
@@ -178,12 +156,12 @@ export default async function ProfilePage({
       </Group>
 
       <Text mt="sm" data-testid="profile-bio">
-        {withCounts.bio ?? 'No bio yet.'}
+        {profile.bio ?? 'No bio yet.'}
       </Text>
 
       <Divider my="md" />
 
-      <ProfileTabs active={tab} profile={profile} counts={withCounts.counts} />
+      <ProfileTabs active={tab} profile={profile} counts={counts} />
 
       {tab === 'posts' ? (
         // Posts land with the posts feature ticket; the profile owns the shell.

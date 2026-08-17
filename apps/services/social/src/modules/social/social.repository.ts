@@ -8,12 +8,12 @@ export const SOCIAL_PRISMA = 'SOCIAL_PRISMA';
 export type SocialPrismaClient = PrismaClient & { $disconnect(): Promise<void> };
 
 /** Opaque cursor = (follow.createdAt, follow.id) keyset position. */
-export interface PageCursor {
+interface PageCursor {
   createdAt: string;
   id: string;
 }
 
-export function encodeCursor(row: { createdAt: Date; id: string }): string {
+function encodeCursor(row: { createdAt: Date; id: string }): string {
   return Buffer.from(
     JSON.stringify({ createdAt: row.createdAt.toISOString(), id: row.id }),
   ).toString('base64url');
