@@ -2,6 +2,7 @@ import { Anchor, Badge, Container, Divider, Group, Stack, Text, Title } from '@m
 import { UserAvatar } from '@xitter/ui';
 import type { Metadata } from 'next';
 import { requireSession } from '@/lib/auth/session';
+import { PostListItem } from '@/components/post-list-item';
 import { EditProfileForm } from './edit-profile-form';
 import { ProfileActions } from './profile-actions';
 import { loadProfileView, type ProfileTab } from './load-profile';
@@ -98,7 +99,7 @@ export default async function ProfilePage({
   const session = await requireSession(`/profile/${username}`);
   const { tab = 'posts', cursor } = await searchParams;
 
-  const { view, profile, counts, listTab, list } = await loadProfileView(
+  const { view, profile, counts, listTab, list, posts } = await loadProfileView(
     session,
     username,
     tab as ProfileTab,
@@ -164,10 +165,40 @@ export default async function ProfilePage({
       <ProfileTabs active={tab} profile={profile} counts={counts} />
 
       {tab === 'posts' ? (
-        // Posts land with the posts feature ticket; the profile owns the shell.
-        <Text size="sm" c="dimmed" data-testid="profile-posts-placeholder">
-          Posts appear here once the posts feature lands.
-        </Text>
+        posts === null || posts.items.length === 0 ? (
+          <Text size="sm" c="dimmed" data-testid="profile-posts-empty">
+            No posts yet.
+          </Text>
+        ) : (
+          <>
+            <Stack gap="md" data-testid="profile-posts">
+              {posts.items.map((post) => (
+                <PostListItem
+                  key={post.id}
+                  post={post}
+                  author={{
+                    id: profile.id,
+                    username: profile.username,
+                    displayName: profile.displayName,
+                  }}
+                  canDelete={view.isOwnProfile}
+                  username={profile.username}
+                />
+              ))}
+            </Stack>
+            {posts.nextCursor ? (
+              <Anchor
+                href={`/profile/${profile.username}?tab=posts&cursor=${posts.nextCursor}`}
+                size="sm"
+                mt="md"
+                display="block"
+                data-testid="load-more"
+              >
+                Load more
+              </Anchor>
+            ) : null}
+          </>
+        )
       ) : null}
 
       {listTab && list ? (

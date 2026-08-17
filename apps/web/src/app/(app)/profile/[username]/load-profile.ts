@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
-import { ApiError, SocialClient, localServiceUrls } from '@xitter/api-client';
+import { ApiError, PostsClient, SocialClient, localServiceUrls } from '@xitter/api-client';
+import type { Post } from '@xitter/api-contracts';
 import { profileViewState } from '@/lib/social/view-model';
 import type { Session } from '@/lib/auth/session';
 
@@ -14,12 +15,14 @@ export interface ProfileViewData {
     items: Awaited<ReturnType<SocialClient['getFollowing']>>['items'];
     nextCursor: string | null;
   } | null;
+  /** Posts tab: the author's posts page (own-profile delete affordance). */
+  posts: { items: Post[]; nextCursor: string | null } | null;
 }
 
 /**
  * All profile-page data fetching in one place so the page component is
  * layout-only: profile lookup (404 -> notFound), counts + relationship in
- * parallel, and the follow-list for the active tab.
+ * parallel, and the follow-list or posts page for the active tab.
  */
 export async function loadProfileView(
   session: Session,
@@ -52,6 +55,14 @@ export async function loadProfileView(
       ? await social.getFollowing(profile.id, cursor)
       : await social.getFollowers(profile.id, cursor);
 
+  // Posts tab: author timelines live in the posts service (spec 03); the
+  // author for every card is the profile being viewed.
+  const postsClient = new PostsClient({
+    baseUrl: localServiceUrls().posts,
+    token: session.accessToken,
+  });
+  const posts = tab === 'posts' ? await postsClient.getUserPosts(profile.id, cursor) : null;
+
   return {
     view: profileViewState(session.subject, withCounts, relationship),
     profile: {
@@ -63,5 +74,6 @@ export async function loadProfileView(
     counts: withCounts.counts,
     listTab,
     list,
+    posts,
   };
 }

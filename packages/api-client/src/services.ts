@@ -130,7 +130,7 @@ export class SocialClient extends ServiceClient {
 }
 
 export class PostsClient extends ServiceClient {
-  createPost(body: z.infer<typeof createPostRequestSchema>): Promise<Post> {
+  createPost(body: z.input<typeof createPostRequestSchema>): Promise<Post> {
     return this.post(`${V1}/posts/v1/posts`, body).then(postSchema.parse);
   }
 
@@ -145,18 +145,18 @@ export class PostsClient extends ServiceClient {
   getUserPosts(
     userId: string,
     cursor?: string,
-  ): Promise<{ items: { post: Post; author: Profile }[]; nextCursor: string | null }> {
+  ): Promise<{ items: Post[]; nextCursor: string | null }> {
     return this.get(`${V1}/posts/v1/users/${userId}/posts`, cursor ? { cursor } : undefined).then(
-      (r) => paginated(z.object({ post: postSchema, author: profileSchema })).parse(r),
+      (r) => paginated(postSchema).parse(r),
     );
   }
 
   getReplies(
     postId: string,
     cursor?: string,
-  ): Promise<{ items: { post: Post; author: Profile }[]; nextCursor: string | null }> {
+  ): Promise<{ items: Post[]; nextCursor: string | null }> {
     return this.get(`${V1}/posts/v1/posts/${postId}/replies`, cursor ? { cursor } : undefined).then(
-      (r) => paginated(z.object({ post: postSchema, author: profileSchema })).parse(r),
+      (r) => paginated(postSchema).parse(r),
     );
   }
 
@@ -173,9 +173,9 @@ export class PostsClient extends ServiceClient {
 
   getBookmarks(
     cursor?: string,
-  ): Promise<{ items: { post: Post; author: Profile }[]; nextCursor: string | null }> {
+  ): Promise<{ items: Post[]; nextCursor: string | null }> {
     return this.get(`${V1}/posts/v1/bookmarks`, cursor ? { cursor } : undefined).then((r) =>
-      paginated(z.object({ post: postSchema, author: profileSchema })).parse(r),
+      paginated(postSchema).parse(r),
     );
   }
 }

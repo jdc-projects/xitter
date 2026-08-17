@@ -9,6 +9,7 @@ import {
   interactionKindSchema,
   mediaIdSchema,
   postIdSchema,
+  postSchema,
   profileSchema,
   userIdSchema,
   usernameSchema,
@@ -77,9 +78,7 @@ export const createMediaUploadRequestSchema = z
   })
   .openapi('CreateMediaUploadRequest');
 
-export const postPageSchema = cursorPagination(
-  z.object({ post: z.unknown(), author: z.unknown() }),
-).openapi('PostPage');
+export const postPageSchema = cursorPagination(postSchema).openapi('PostPage');
 
 export const profilePageSchema = cursorPagination(profileSchema).openapi('ProfilePage');
 
