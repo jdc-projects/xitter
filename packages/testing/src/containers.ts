@@ -1,3 +1,6 @@
+import { mkdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 
@@ -40,6 +43,91 @@ export async function startPostgres(
 
 export interface KafkaHandle extends Disposable {
   bootstrapServers: string;
+  /** Releases the fixed-port lock; also stops the container. */
+  stop(): Promise<unknown>;
+}
+
+/**
+ * Serialise fixed-port usage across concurrent vitest runs (CI runs service
+ * suites in parallel and docker fails the whole start on a port clash).
+ * A lock directory per port: exists = busy, removed on release.
+ */
+/**
+ * Orphaned containers from interrupted/killed runs keep their host-port
+ * publishing alive in the podman socket; every later publish to the same
+ * port then fails with "proxy already running" (a podman API quirk - no
+ * actual proxy process is involved). Only containers WE created (labelled
+ * below) and that publish our port are ever swept - a live suite's
+ * container cannot match: the port lock serialises suites machine-wide, so
+ * while we hold it, any labelled container on this port is a leftover from
+ * a crashed run. Unrelated containers are never touched.
+ */
+const KAFKA_TEST_LABEL = 'xitter.test.kafka';
+
+async function sweepOrphansOnPort(port: number): Promise<void> {
+  const socketPath = process.env.DOCKER_HOST?.replace(/^unix:\/\//, '') ?? '/var/run/docker.sock';
+  const fetch = (await import('node:http')).request;
+  const list = await new Promise<unknown[]>((resolve, reject) => {
+    const req = fetch(
+      {
+        socketPath,
+        path: `/containers/json?all=1&filters=${encodeURIComponent(
+          JSON.stringify({ label: [KAFKA_TEST_LABEL] }),
+        )}`,
+        method: 'GET',
+      },
+      (res) => {
+        let body = '';
+        res.on('data', (c) => (body += c));
+        res.on('end', () => resolve(JSON.parse(body)));
+      },
+    );
+    req.on('error', reject);
+    req.end();
+  });
+  const orphans = (list as { Id: string; Ports: { PublicPort?: number }[] }[]).filter((c) =>
+    c.Ports?.some((p) => p.PublicPort === port),
+  );
+  await Promise.all(
+    orphans.map(
+      (c) =>
+        new Promise<void>((resolve) => {
+          const req = fetch(
+            { socketPath, path: `/containers/${c.Id}?force=true`, method: 'DELETE' },
+            () => resolve(),
+          );
+          req.on('error', () => resolve());
+          req.end();
+        }),
+    ),
+  );
+}
+
+/**
+ * Serialise fixed-port usage across concurrent vitest runs (CI runs service
+ * suites in parallel and docker fails the whole start on a port clash).
+ * A lock directory per port: exists = busy. The lock spans the container's
+ * ENTIRE lifetime (acquired in startKafka, released by handle.stop()) - if
+ * it only covered the start, another suite could acquire it and sweep what
+ * it wrongly considers an orphan while the container is still in use.
+ */
+async function acquireFixedPortLock(port: number): Promise<() => Promise<void>> {
+  const lockDir = join(tmpdir(), `xitter-test-port-${port}.lock`);
+  const maxWaitMs = 240_000;
+  const deadline = Date.now() + maxWaitMs;
+  for (;;) {
+    try {
+      await mkdir(lockDir);
+      break;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+      if (Date.now() > deadline) {
+        throw new Error(`Timed out waiting for test port lock ${port} (stale lock?)`);
+      }
+      await new Promise((r) => setTimeout(r, 2_000));
+    }
+  }
+  return () => rm(lockDir, { recursive: true });
 }
 
 /**
@@ -56,40 +144,84 @@ export interface KafkaHandle extends Disposable {
  */
 export async function startKafka(): Promise<KafkaHandle> {
   const hostPort = Number(process.env.XITTER_TEST_KAFKA_PORT ?? 9093);
-  const container: StartedTestContainer = await new GenericContainer('apache/kafka:4.3.1')
-    .withEnvironment({
-      CLUSTER_ID: '5L6g3nShT-eMCtK--X86sw',
-      KAFKA_NODE_ID: '1',
-      KAFKA_PROCESS_ROLES: 'broker,controller',
-      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@localhost:29093',
-      KAFKA_LISTENERS: 'PLAINTEXT://:29092,CONTROLLER://:29093,EXTERNAL://:9093',
-      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://localhost:29092,EXTERNAL://localhost:9093',
-      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER',
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP:
-        'PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT',
-      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT',
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: '1',
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: '1',
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: '1',
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: '0',
-    })
-    .withExposedPorts({ container: 9093, host: hostPort })
-    // Health probe mirrors the compose stack; log-based waits are unusable on
-    // Podman-backed sockets (the log stream never reaches testcontainers).
-    .withHealthCheck({
-      test: [
-        'CMD-SHELL',
-        '/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9093 >/dev/null 2>&1',
-      ],
-      interval: 1_000,
-      timeout: 10_000,
-      retries: 120,
-      startPeriod: 10_000,
-    })
-    .withWaitStrategy(Wait.forAll([Wait.forHealthCheck(), Wait.forListeningPorts()]))
-    .start();
+  const releaseLock = await acquireFixedPortLock(hostPort);
+  // Inside the lock the port is provably unowned by any live suite: sweep
+  // leftovers from crashed/killed runs, then start. Podman-backed sockets
+  // also intermittently 500 the port-publish request ("proxy already
+  // running" - no actual proxy involved); retrying with a fresh container
+  // and another sweep is reliable.
+  const maxAttempts = 3;
+  let container: StartedTestContainer;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await sweepOrphansOnPort(hostPort);
+      container = await startKafkaContainer(hostPort);
+      break;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const transient =
+        message.includes('proxy already running') || message.includes('port is already allocated');
+      if (!transient || attempt >= maxAttempts) {
+        await releaseLock();
+        if (transient) {
+          // Label-filtered sweep found nothing to clean, so the port is held
+          // by something we do not own (another project, a manual container).
+          throw new Error(
+            `Host port ${hostPort} is in use by a non-test container. Free it or set XITTER_TEST_KAFKA_PORT. (Original error: ${message.slice(0, 120)})`,
+          );
+        }
+        throw err;
+      }
+      await new Promise((r) => setTimeout(r, 1_000 * attempt));
+    }
+  }
   return {
     bootstrapServers: `${container.getHost()}:${hostPort}`,
-    stop: () => container.stop(),
+    stop: async () => {
+      try {
+        await container.stop();
+      } finally {
+        await releaseLock();
+      }
+    },
   };
+}
+
+async function startKafkaContainer(hostPort: number): Promise<StartedTestContainer> {
+  return (
+    new GenericContainer('apache/kafka:4.3.1')
+      // Owns this container for orphan-sweep purposes (see sweepOrphansOnPort).
+      .withLabels({ [KAFKA_TEST_LABEL]: 'true' })
+      .withEnvironment({
+        CLUSTER_ID: '5L6g3nShT-eMCtK--X86sw',
+        KAFKA_NODE_ID: '1',
+        KAFKA_PROCESS_ROLES: 'broker,controller',
+        KAFKA_CONTROLLER_QUORUM_VOTERS: '1@localhost:29093',
+        KAFKA_LISTENERS: 'PLAINTEXT://:29092,CONTROLLER://:29093,EXTERNAL://:9093',
+        KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://localhost:29092,EXTERNAL://localhost:9093',
+        KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER',
+        KAFKA_LISTENER_SECURITY_PROTOCOL_MAP:
+          'PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT',
+        KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT',
+        KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: '1',
+        KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: '1',
+        KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: '1',
+        KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: '0',
+      })
+      .withExposedPorts({ container: 9093, host: hostPort })
+      // Health probe mirrors the compose stack; log-based waits are unusable on
+      // Podman-backed sockets (the log stream never reaches testcontainers).
+      .withHealthCheck({
+        test: [
+          'CMD-SHELL',
+          '/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9093 >/dev/null 2>&1',
+        ],
+        interval: 1_000,
+        timeout: 10_000,
+        retries: 120,
+        startPeriod: 10_000,
+      })
+      .withWaitStrategy(Wait.forAll([Wait.forHealthCheck(), Wait.forListeningPorts()]))
+      .start()
+  );
 }
