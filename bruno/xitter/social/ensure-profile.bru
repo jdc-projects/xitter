@@ -3,9 +3,11 @@ meta {
   seq: 2
 }
 
-# Profiles are created lazily on first web login; API-only callers (like this
-# collection) must bootstrap them explicitly. Idempotent upsert: POSTing your
-# own profile twice returns the same profile (200, not 201).
+docs {
+  Profiles are created lazily on first web login; API-only callers (like this
+  collection) must bootstrap them explicitly. Idempotent upsert: POSTing your
+  own profile twice returns the same profile (200, not 201).
+}
 
 script:pre-request {
   const form =
@@ -35,8 +37,8 @@ script:pre-request {
 }
 
 post {
-  url: {{seedBase}}/api/social/v1/profiles/:callerId
-  body: none
+  url: {{seedBase}}/api/social/v1/profiles/{{callerId}}
+  body: json
   auth: bearer
 }
 
@@ -44,11 +46,15 @@ auth:bearer {
   token: {{token}}
 }
 
+body:json {
+  {}
+}
+
 assert {
   res.status: 200
 }
 
 tests {
-  expect(res.body.id).to.equal(bu.vars.callerId);
+  expect(res.body.id).to.equal(bru.getVar("callerId"));
   expect(res.body.username).to.be.a("string").and.not.be.empty;
 }
