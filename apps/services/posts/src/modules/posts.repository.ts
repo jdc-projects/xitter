@@ -34,7 +34,7 @@ export type PostRow = Prisma.PostGetPayload<Record<string, never>>;
 
 export type PostsDb = Pick<PrismaClient, 'post' | 'interaction' | '$transaction'>;
 
-export type PostPageOrder = 'newest-first' | 'oldest-first';
+type PostPageOrder = 'newest-first' | 'oldest-first';
 
 /**
  * Prisma data access for posts and interactions. Business rules (validation,
