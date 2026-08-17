@@ -16,7 +16,9 @@ process.once('SIGTERM', () => void tracing.shutdown());
 
 bootstrapApiService({
   service: 'posts',
-  prefix: 'api/posts/v1',
+  // Service-level prefix: public controllers add their `v1` segment, internal
+  // routes sit at /api/posts/internal/... without a version (spec 03).
+  prefix: 'api/posts',
   port: env.PORT,
   module: AppModule,
 }).catch((err: unknown) => {
