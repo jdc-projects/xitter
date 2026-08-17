@@ -34,3 +34,40 @@ test('/profile/[username] (own, authenticated) has no serious axe violations', a
   );
   expect(serious, JSON.stringify(serious, null, 2)).toEqual([]);
 });
+
+test('/feed with composer has no serious axe violations', async ({ page }) => {
+  await loginViaKeycloak(page, 'demo1', 'DemoPass123!');
+  await page.waitForURL(/\/feed$/);
+
+  const results = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+    .analyze();
+  const serious = results.violations.filter((v) =>
+    ['serious', 'critical'].includes(v.impact ?? ''),
+  );
+  expect(serious, JSON.stringify(serious, null, 2)).toEqual([]);
+});
+
+test('/post/[postId] (detail with reply composer) has no serious axe violations', async ({
+  page,
+}) => {
+  await loginViaKeycloak(page, 'demo1', 'DemoPass123!');
+  await page.waitForURL(/\/feed$/);
+
+  // Create a post through the real composer, then scan its detail page.
+  const text = `a11y detail page ${crypto.randomUUID()}`;
+  await page.getByTestId('composer-textarea').fill(text);
+  await page.getByTestId('composer-submit').click();
+  const item = page.locator('[data-testid^="post-item-"]', { hasText: text }).first();
+  await expect(item).toBeVisible();
+  const postId = (await item.getAttribute('data-testid'))!.replace('post-item-', '');
+  await page.goto(`/post/${postId}`);
+
+  const results = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+    .analyze();
+  const serious = results.violations.filter((v) =>
+    ['serious', 'critical'].includes(v.impact ?? ''),
+  );
+  expect(serious, JSON.stringify(serious, null, 2)).toEqual([]);
+});
