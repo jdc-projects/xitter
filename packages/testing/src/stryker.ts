@@ -19,7 +19,14 @@ export function createStrykerConfig(
     packageManager: 'npm',
     testRunner: 'vitest',
     vitest: options.excludeIntegrationTests
-      ? { config: { test: { exclude: ['**/*.integration.test.ts'] } } }
+      ? {
+          // Related mode (--related) resolves tests from the module graph of
+          // mutated files and ignores the mutation config's excludes -
+          // integration suites leak back into the sandbox. Plain mode runs
+          // exactly what vitest.mutation.config.ts selects.
+          related: false,
+          configFile: './vitest.mutation.config.ts',
+        }
       : undefined,
     reporters: ['html', 'clear-text', 'progress'],
     htmlReporter: {
