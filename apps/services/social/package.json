@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@fastify/helmet": "^13",
+    "@faker-js/faker": "^10",
     "@nestjs/common": "^11",
     "@nestjs/config": "^4",
     "@nestjs/core": "^11",
@@ -45,6 +46,7 @@
     "@stryker-mutator/core": "^10",
     "@stryker-mutator/vitest-runner": "^10",
     "@testcontainers/postgresql": "^12",
+    "kafkajs": "^2",
     "@types/node": "^26",
     "@xitter/eslint-config": "*",
     "@xitter/testing": "*",

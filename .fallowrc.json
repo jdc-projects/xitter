@@ -5,7 +5,7 @@
     "**/importMap.js",
     "../importMap",
     "./admin/importMap.js",
-    "./generated/prisma/client.js"
+    "**/generated/prisma/client.js"
   ],
   "ignorePatterns": [
     "**/src/generated/**",

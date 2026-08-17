@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { loginViaKeycloak } from './helpers';
 
 test.describe('unauthenticated access', () => {
   test('landing and about are public', async ({ page }) => {
@@ -24,16 +25,6 @@ test.describe('unauthenticated access', () => {
     await expect(page.getByTestId('profile-placeholder')).toHaveCount(0);
   });
 });
-
-/** Drive the real Keycloak login form (local docker stack, Cap disabled). */
-async function loginViaKeycloak(page: Page, username: string, password: string) {
-  await page.goto('/login');
-  await page.getByTestId('login-submit').click();
-  await page.waitForURL(/\/realms\/xitter-demo\//);
-  await page.locator('#username').fill(username);
-  await page.locator('#password').fill(password);
-  await page.locator('#kc-login').click();
-}
 
 test.describe('login flow', () => {
   test('demo1 can log in and lands on the feed', async ({ page }) => {

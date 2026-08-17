@@ -5,11 +5,14 @@ import {
   feedPageSchema,
   postSchema,
   profileSchema,
+  profileWithCountsSchema,
   relationshipSchema,
+  type createProfileRequestSchema,
   type updateProfileRequestSchema,
   type InteractionKind,
   type Post,
   type Profile,
+  type ProfileWithCounts,
   type Relationship,
 } from '@xitter/api-contracts';
 import { z } from 'zod';
@@ -36,64 +39,93 @@ export class SocialClient extends ServiceClient {
     super({ ...options, baseUrl: options.baseUrl });
   }
 
-  getProfile(userId: string): Promise<Profile> {
-    return this.get(`${V1}/social/v1/profiles/${userId}`).then(profileSchema.parse);
+  /** Idempotent upsert of the caller's own profile (`:id` = caller). */
+  // fallow-ignore-next-line unused-class-member -- consumed by the web login callback (apps/web/src/app/api/auth/callback/route.ts)
+  createProfile(
+    userId: string,
+    body: z.infer<typeof createProfileRequestSchema> = {},
+  ): Promise<Profile> {
+    return this.post(`${V1}/social/v1/profiles/${userId}`, body).then(profileSchema.parse);
+  }
+
+  getProfile(userId: string): Promise<ProfileWithCounts> {
+    return this.get(`${V1}/social/v1/profiles/${userId}`).then(profileWithCountsSchema.parse);
   }
 
   getProfileByUsername(username: string): Promise<Profile> {
     return this.get(`${V1}/social/v1/profiles/username/${username}`).then(profileSchema.parse);
   }
 
+  /** Update the caller's own profile (partial); other ids are rejected server-side. */
   updateProfile(
     userId: string,
     body: z.infer<typeof updateProfileRequestSchema>,
   ): Promise<Profile> {
-    return this.post(`${V1}/social/v1/profiles/${userId}`, body).then(profileSchema.parse);
+    return this.patch(`${V1}/social/v1/profiles/${userId}`, body).then(profileSchema.parse);
   }
 
   follow(userId: string): Promise<void> {
-    return this.post(`${V1}/social/v1/users/${userId}/follow`);
+    return this.post(`${V1}/social/v1/profiles/${userId}/follow`);
   }
 
   unfollow(userId: string): Promise<void> {
-    return this.delete(`${V1}/social/v1/users/${userId}/follow`);
+    return this.delete(`${V1}/social/v1/profiles/${userId}/follow`);
   }
 
   block(userId: string): Promise<void> {
-    return this.post(`${V1}/social/v1/users/${userId}/block`);
+    return this.post(`${V1}/social/v1/profiles/${userId}/block`);
   }
 
   unblock(userId: string): Promise<void> {
-    return this.delete(`${V1}/social/v1/users/${userId}/block`);
+    return this.delete(`${V1}/social/v1/profiles/${userId}/block`);
   }
 
   getRelationship(userId: string): Promise<Relationship> {
-    return this.get(`${V1}/social/v1/users/${userId}/relationship`).then(relationshipSchema.parse);
+    return this.get(`${V1}/social/v1/profiles/${userId}/relationship`).then(
+      relationshipSchema.parse,
+    );
   }
 
   getFollowing(
     userId: string,
     cursor?: string,
   ): Promise<{ items: Profile[]; nextCursor: string | null }> {
-    return this.get(
-      `${V1}/social/v1/users/${userId}/following`,
-      cursor ? { cursor } : undefined,
-    ).then((r) => paginated(profileSchema).parse(r));
+    return this.followList(`${V1}/social/v1/profiles/${userId}/following`, cursor);
   }
 
   getFollowers(
     userId: string,
     cursor?: string,
   ): Promise<{ items: Profile[]; nextCursor: string | null }> {
-    return this.get(
-      `${V1}/social/v1/users/${userId}/followers`,
-      cursor ? { cursor } : undefined,
-    ).then((r) => paginated(profileSchema).parse(r));
+    return this.followList(`${V1}/social/v1/profiles/${userId}/followers`, cursor);
+  }
+
+  private followList(
+    path: string,
+    cursor?: string,
+  ): Promise<{ items: Profile[]; nextCursor: string | null }> {
+    return this.get(path, cursor ? { cursor } : undefined).then((r) =>
+      paginated(profileSchema).parse(r),
+    );
   }
 
   /** Internal (service-to-service): follower ids for feed fanout. */
   internalFollowerIds(userId: string): Promise<string[]> {
-    return this.get(`${V1}/social/v1/internal/users/${userId}/followers/ids`);
+    return this.get(`${V1}/social/internal/users/${userId}/followers/ids`);
+  }
+
+  /** Internal: full relationship flags between two users (block enforcement). */
+  // fallow-ignore-next-line unused-class-member -- consumed by posts (#5) + feed/search (#7/#9) block enforcement
+  internalRelationship(userId: string, otherId: string): Promise<Relationship> {
+    return this.get(`${V1}/social/internal/users/${userId}/relationships/${otherId}`).then(
+      relationshipSchema.parse,
+    );
+  }
+
+  /** Internal: ids the user has blocked (feed/search filtering). */
+  // fallow-ignore-next-line unused-class-member -- consumed by feed/search filtering (#7/#9)
+  internalBlockedIds(userId: string): Promise<string[]> {
+    return this.get(`${V1}/social/internal/users/${userId}/blocked/ids`);
   }
 }
 

@@ -1,0 +1,54 @@
+meta {
+  name: Ensure own profile
+  seq: 2
+}
+
+# Profiles are created lazily on first web login; API-only callers (like this
+# collection) must bootstrap them explicitly. Idempotent upsert: POSTing your
+# own profile twice returns the same profile (200, not 201).
+
+script:pre-request {
+  const form =
+    "grant_type=password&client_id=web" +
+    "&username=" +
+    encodeURIComponent(bru.getEnvVar("username") || "demo1") +
+    "&password=" +
+    encodeURIComponent(bru.getEnvVar("password") || "DemoPass123!");
+  const res = await bru.sendRequest({
+    method: "POST",
+    url: `${bru.getEnvVar("keycloak")}/realms/${bru.getEnvVar("realm")}/protocol/openid-connect/token`,
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    data: form,
+  });
+  const raw =
+    typeof res.data === "string"
+      ? res.data
+      : res.data && typeof res.data === "object" && "byteLength" in res.data
+        ? new TextDecoder().decode(res.data)
+        : typeof res.data === "object" && res.data !== null
+          ? JSON.stringify(res.data)
+          : String(res.data ?? "");
+  const json = JSON.parse(raw);
+  bru.setEnvVar("token", json.access_token);
+  const payload = JSON.parse(Buffer.from(json.access_token.split(".")[1], "base64").toString());
+  bru.setVar("callerId", payload.sub);
+}
+
+post {
+  url: {{seedBase}}/api/social/v1/profiles/:callerId
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+assert {
+  res.status: 200
+}
+
+tests {
+  expect(res.body.id).to.equal(bu.vars.callerId);
+  expect(res.body.username).to.be.a("string").and.not.be.empty;
+}

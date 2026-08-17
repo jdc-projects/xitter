@@ -20,8 +20,6 @@ model Profile {
   followers   Follow[] @relation("followee")
   blockedBy   Block[]  @relation("blocker")
   blocking    Block[]  @relation("blocked")
-
-  @@index([username])
 }
 
 model Follow {

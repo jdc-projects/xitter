@@ -10,7 +10,11 @@ import { ErrorEnvelopeFilter } from './error.filter.js';
 export interface ApiServiceOptions {
   /** Service name for logging/tracing identity. */
   service: string;
-  /** Versioned public prefix, e.g. `api/social/v1`. */
+  /**
+   * Public API prefix, e.g. `api/social`. Controllers own their version
+   * segment (`v1`, per spec 03) so internal routes can sit at
+   * `/api/{service}/internal/...` without a version.
+   */
   prefix: string;
   port: number;
   module: Type<unknown>;
@@ -18,7 +22,7 @@ export interface ApiServiceOptions {
 
 /**
  * Shared API-service bootstrap: one well-tested startup path for every
- * service (fastify adapter, versioned prefix with root-level health probes,
+ * service (fastify adapter, public prefix with root-level health probes,
  * global auth guard + error envelope, graceful shutdown).
  */
 export async function bootstrapApiService(options: ApiServiceOptions): Promise<void> {
@@ -30,7 +34,7 @@ export async function bootstrapApiService(options: ApiServiceOptions): Promise<v
   );
 
   // Health probes are infrastructure-facing, not public API - they sit at
-  // the root, outside the versioned prefix.
+  // the root, outside the public prefix.
   app.setGlobalPrefix(options.prefix, { exclude: [...HEALTH_ROUTES] });
   app.useGlobalGuards(app.get(AuthGuard));
   app.useGlobalFilters(new ErrorEnvelopeFilter());

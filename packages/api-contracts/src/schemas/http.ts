@@ -9,6 +9,7 @@ import {
   interactionKindSchema,
   mediaIdSchema,
   postIdSchema,
+  profileSchema,
   userIdSchema,
   usernameSchema,
 } from './domain.js';
@@ -37,12 +38,26 @@ export const createPostRequestSchema = z
   })
   .openapi('CreatePostRequest');
 
+const profileFields = {
+  displayName: z.string().min(1).max(50).optional(),
+  bio: z.string().max(200).nullable().optional(),
+};
+
+// strict: username is immutable - sending it must 4xx, not silently strip.
 export const updateProfileRequestSchema = z
-  .object({
-    displayName: z.string().min(1).max(50).optional(),
-    bio: z.string().max(200).nullable().optional(),
-  })
+  .object(profileFields)
+  .strict()
   .openapi('UpdateProfileRequest');
+
+export const createProfileRequestSchema = z
+  .object({
+    ...profileFields,
+  })
+  .strict()
+  .openapi('CreateProfileRequest');
+
+export type CreateProfileRequest = z.infer<typeof createProfileRequestSchema>;
+export type UpdateProfileRequest = z.infer<typeof updateProfileRequestSchema>;
 
 export const createInteractionRequestSchema = z
   .object({
@@ -61,7 +76,7 @@ export const postPageSchema = cursorPagination(
   z.object({ post: z.unknown(), author: z.unknown() }),
 ).openapi('PostPage');
 
-export const profilePageSchema = cursorPagination(z.unknown()).openapi('ProfilePage');
+export const profilePageSchema = cursorPagination(profileSchema).openapi('ProfilePage');
 
 export const feedPageSchema = cursorPagination(z.unknown()).openapi('FeedPage');
 

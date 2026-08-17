@@ -21,19 +21,19 @@ Standard error codes: `VALIDATION_ERROR` (400), `UNAUTHENTICATED` (401), `FORBID
 
 Owns prefix `/api/social`. Profile `id` equals the Keycloak user id.
 
-| Method | Path                              | Auth | Description                                                  | Key fields                              |
-| ------ | --------------------------------- | ---- | ------------------------------------------------------------ | --------------------------------------- |
-| POST   | `/v1/profiles/:id`                | user | Create own profile (`:id` = caller)                          | req `displayName`, `bio?` → res profile |
-| GET    | `/v1/profiles/:id`                | user | Fetch profile by id                                          | res profile + counts                    |
-| GET    | `/v1/profiles/username/:username` | user | Resolve profile by username                                  | res profile                             |
-| PATCH  | `/v1/profiles/:id`                | user | Update own profile (partial)                                 | req partial profile                     |
-| POST   | `/v1/profiles/:id/follow`         | user | Follow target; rejected if blocked either way                | res relationship                        |
-| DELETE | `/v1/profiles/:id/follow`         | user | Unfollow target                                              | res relationship                        |
-| POST   | `/v1/profiles/:id/block`          | user | Block target                                                 | res relationship                        |
-| DELETE | `/v1/profiles/:id/block`          | user | Unblock target                                               | res relationship                        |
-| GET    | `/v1/profiles/:id/relationship`   | user | Caller↔target relationship (following, followed-by, blocked) | res relationship flags                  |
-| GET    | `/v1/profiles/:id/following`      | user | Cursor list of profiles the target follows                   | paginated profiles                      |
-| GET    | `/v1/profiles/:id/followers`      | user | Cursor list of the target's followers                        | paginated profiles                      |
+| Method | Path                              | Auth | Description                                                   | Key fields                                     |
+| ------ | --------------------------------- | ---- | ------------------------------------------------------------- | ---------------------------------------------- |
+| POST   | `/v1/profiles/:id`                | user | Upsert own profile (`:id` = caller; idempotent)               | req `displayName?`, `bio?` → res `200` profile |
+| GET    | `/v1/profiles/:id`                | user | Fetch profile by id                                           | res profile + counts                           |
+| GET    | `/v1/profiles/username/:username` | user | Resolve profile by username                                   | res profile                                    |
+| PATCH  | `/v1/profiles/:id`                | user | Update own profile (partial; `:id` = caller)                  | req partial profile → res profile              |
+| POST   | `/v1/profiles/:id/follow`         | user | Follow target; rejected if blocked either way                 | res `204`                                      |
+| DELETE | `/v1/profiles/:id/follow`         | user | Unfollow target (idempotent)                                  | res `204`                                      |
+| POST   | `/v1/profiles/:id/block`          | user | Block target (cascades away any follow, both directions)      | res `204`                                      |
+| DELETE | `/v1/profiles/:id/block`          | user | Unblock target (idempotent; does not restore removed follows) | res `204`                                      |
+| GET    | `/v1/profiles/:id/relationship`   | user | Caller↔target relationship (following, followed-by, blocked)  | res relationship flags                         |
+| GET    | `/v1/profiles/:id/following`      | user | Cursor list of profiles the target follows                    | paginated profiles                             |
+| GET    | `/v1/profiles/:id/followers`      | user | Cursor list of the target's followers                         | paginated profiles                             |
 
 ## posts — posts, replies, interactions
 
@@ -92,18 +92,20 @@ Owns prefix `/api/search`.
 
 Service-token only (audience = receiving service client id; callers are the `svc-*` services, the `svc-worker-*` worker clients, and `svc-reset`). Never edge-exposed beyond the namespace; see [07-security.md](07-security.md).
 
-| Path                                               | Caller               | Purpose                                                |
-| -------------------------------------------------- | -------------------- | ------------------------------------------------------ |
-| `GET /api/social/internal/users/:id/followers/ids` | fanout worker        | Follower id list for feed fanout                       |
-| `POST /api/posts/internal/reseed`                  | reset job            | Truncate + optional deterministic reseed of posts data |
-| `POST /api/media/internal/media/:id/variants`      | media-process worker | Record processed variants for a media object           |
-| `POST /api/media/internal/reseed`                  | reset job            | Truncate media metadata + trigger bucket wipe support  |
-| `POST /api/feed/internal/feed/entries`             | fanout worker        | Bulk insert feed entries (idempotent upsert)           |
-| `DELETE /api/feed/internal/feed/users/:id`         | reset job / fanout   | Delete all feed entries for a user                     |
-| `POST /api/feed/internal/reseed`                   | reset job            | Truncate feed entries                                  |
-| `POST /api/search/internal/search/index`           | search-index worker  | Bulk upsert of post documents                          |
-| `DELETE /api/search/internal/search/index`         | reset job            | Clear the posts index                                  |
-| `POST /api/search/internal/reseed`                 | reset job            | Truncate search service state                          |
-| `POST /api/social/internal/reseed`                 | reset job            | Truncate + optional reseed of profiles/graph           |
+| Path                                                        | Caller               | Purpose                                                |
+| ----------------------------------------------------------- | -------------------- | ------------------------------------------------------ |
+| `GET /api/social/internal/users/:id/followers/ids`          | fanout worker        | Follower id list for feed fanout                       |
+| `GET /api/social/internal/users/:id/relationships/:otherId` | posts, workers       | Blocked-either-way check for write-path enforcement    |
+| `GET /api/social/internal/users/:id/blocked/ids`            | feed, search         | Blocked-id list for timeline/index filtering           |
+| `POST /api/posts/internal/reseed`                           | reset job            | Truncate + optional deterministic reseed of posts data |
+| `POST /api/media/internal/media/:id/variants`               | media-process worker | Record processed variants for a media object           |
+| `POST /api/media/internal/reseed`                           | reset job            | Truncate media metadata + trigger bucket wipe support  |
+| `POST /api/feed/internal/feed/entries`                      | fanout worker        | Bulk insert feed entries (idempotent upsert)           |
+| `DELETE /api/feed/internal/feed/users/:id`                  | reset job / fanout   | Delete all feed entries for a user                     |
+| `POST /api/feed/internal/reseed`                            | reset job            | Truncate feed entries                                  |
+| `POST /api/search/internal/search/index`                    | search-index worker  | Bulk upsert of post documents                          |
+| `DELETE /api/search/internal/search/index`                  | reset job            | Clear the posts index                                  |
+| `POST /api/search/internal/reseed`                          | reset job            | Truncate search service state                          |
+| `POST /api/social/internal/reseed`                          | reset job            | Truncate + optional reseed of profiles/graph           |
 
 Reset semantics (what "reseed" means, ordering, determinism) are specified in [05-data-platform.md](05-data-platform.md); the runbook lives in the [operations specs](../operations/).

@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
+import { createLogger } from '@xitter/observability';
+import { SocialClient, localServiceUrls, ApiError } from '@xitter/api-client';
 import { oidc, oidcConfig } from '@/lib/auth/oidc';
-import { recordFromTokens } from '@/lib/auth/session';
+import { recordFromTokens, type Session } from '@/lib/auth/session';
 import { valkeyStores, type LoginState } from '@/lib/auth/session-store';
 import { SESSION_COOKIE, SESSION_TTL_SECONDS, webEnv } from '@/lib/server-env';
 
 export const runtime = 'nodejs';
+
+const logger = createLogger({ service: 'web' });
 
 function loginRedirect(base: string, reason: string, next?: string): NextResponse {
   const target = new URL('/login', base);
@@ -12,6 +16,28 @@ function loginRedirect(base: string, reason: string, next?: string): NextRespons
   // Keep the destination across error redirects so a retry returns there.
   if (next) target.searchParams.set('next', next);
   return NextResponse.redirect(target, 303);
+}
+
+/**
+ * Idempotent profile bootstrap: social owns profiles, Keycloak does not. On
+ * first login the profile is missing (404) and gets created; later logins are
+ * a no-op read. Best-effort by design - a social outage must not block login.
+ */
+async function ensureProfile(session: Omit<Session, 'id'>): Promise<void> {
+  const social = new SocialClient({
+    baseUrl: localServiceUrls().social,
+    token: session.accessToken,
+    timeoutMs: 3_000,
+  });
+  try {
+    await social.getProfile(session.subject);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      await social.createProfile(session.subject, {}).catch(() => undefined);
+    } else {
+      logger.warn({ err: error }, 'profile bootstrap skipped');
+    }
+  }
 }
 
 /**
@@ -48,7 +74,13 @@ export async function GET(request: Request) {
       expectedNonce: login.nonce,
     });
 
-    const sessionId = await valkeyStores().sessions.create(recordFromTokens(tokens));
+    const record = recordFromTokens(tokens);
+    const sessionId = await valkeyStores().sessions.create(record);
+    await ensureProfile({
+      subject: record.subject,
+      username: record.username,
+      accessToken: record.accessToken,
+    });
     const response = NextResponse.redirect(new URL(login.next, base), 303);
     response.cookies.set(SESSION_COOKIE, sessionId, {
       httpOnly: true,

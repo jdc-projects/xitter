@@ -22,7 +22,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </Group>
         {session ? (
           <Group gap="sm">
-            <Text size="sm" c="dimmed" data-testid="nav-username">
+            <Text
+              size="sm"
+              c="dimmed"
+              inherit
+              component="a"
+              href={`/profile/${session.username}`}
+              data-testid="nav-username"
+            >
               @{session.username}
             </Text>
             <form action="/api/auth/logout" method="post">

@@ -21,6 +21,13 @@ export interface ServiceClientOptions {
   token?: string;
   /** Machine-to-machine credentials (internal endpoints). */
   internal?: { tokenUrl: string; clientId: string; clientSecret: string };
+  /** Per-request timeout; hung upstreams must not hang callers (default 5s). */
+  timeoutMs?: number;
+  /**
+   * Note: covers the service request only. Internal clients' first request
+   * also awaits a client-credentials token from Keycloak, which is currently
+   * unbounded (follow-up when a hung issuer matters).
+   */
   fetchImpl?: typeof fetch;
 }
 
@@ -59,6 +66,7 @@ export class ServiceClient {
         ...(token ? { authorization: `Bearer ${token}` } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(this.options.timeoutMs ?? 5_000),
     });
 
     if (!res.ok) {
@@ -86,6 +94,10 @@ export class ServiceClient {
 
   protected post<T>(path: string, body?: unknown): Promise<T> {
     return this.request<T>('POST', path, body);
+  }
+
+  protected patch<T>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>('PATCH', path, body);
   }
 
   protected delete<T>(path: string): Promise<T> {
