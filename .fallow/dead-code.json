@@ -8,6 +8,8 @@
     "completeness": "complete"
   },
   "unused_files": [
+    "apps/services/posts/vitest.mutation.config.ts",
+    "apps/services/social/vitest.mutation.config.ts",
     "bruno/xitter/scripts/login.js"
   ],
   "unused_exports": [
