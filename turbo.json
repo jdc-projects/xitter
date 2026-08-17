@@ -2,7 +2,7 @@
   "$schema": "https://turborepo.com/schema.json",
   "ui": "stream",
   "concurrency": "16",
-  "globalEnv": ["NODE_ENV", "XITTER_ENV", "XITTER_PORT_OFFSET", "CI"],
+  "globalEnv": ["NODE_ENV", "XITTER_ENV", "XITTER_PORT_OFFSET", "PAYLOAD_SECRET", "CI"],
   "tasks": {
     "build": {
       "dependsOn": ["^build", "generate"],

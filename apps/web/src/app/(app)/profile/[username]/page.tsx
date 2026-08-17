@@ -1,4 +1,4 @@
-import { Anchor, Badge, Container, Divider, Group, Stack, Tabs, Text, Title } from '@mantine/core';
+import { Anchor, Badge, Container, Divider, Group, Stack, Text, Title } from '@mantine/core';
 import { SocialClient, localServiceUrls, ApiError } from '@xitter/api-client';
 import { UserAvatar } from '@xitter/ui';
 import { notFound } from 'next/navigation';
@@ -40,6 +40,52 @@ function ProfileList({
         </Group>
       ))}
     </Stack>
+  );
+}
+
+function ProfileTabs({
+  active,
+  profile,
+  counts,
+}: {
+  active: string;
+  profile: { username: string };
+  counts: { following: number; followers: number };
+}) {
+  const tabs = [
+    { value: 'posts', label: 'Posts', href: `/profile/${profile.username}` },
+    {
+      value: 'following',
+      label: `Following ${counts.following}`,
+      href: `/profile/${profile.username}?tab=following`,
+    },
+    {
+      value: 'followers',
+      label: `Followers ${counts.followers}`,
+      href: `/profile/${profile.username}?tab=followers`,
+    },
+  ];
+  return (
+    <Group gap={0} mb="md" data-testid="profile-tabs">
+      {tabs.map((t) => (
+        <Anchor
+          key={t.value}
+          href={t.href}
+          unstyled
+          px="sm"
+          py="xs"
+          data-testid={`tab-${t.value}`}
+          style={{
+            fontWeight: t.value === active ? 600 : 400,
+            textDecoration: t.value === active ? 'underline' : 'none',
+            textUnderlineOffset: 6,
+          }}
+          aria-current={t.value === active ? 'page' : undefined}
+        >
+          {t.label}
+        </Anchor>
+      ))}
+    </Group>
   );
 }
 
@@ -137,79 +183,31 @@ export default async function ProfilePage({
 
       <Divider my="md" />
 
-      <Tabs value={tab} data-testid="profile-tabs">
-        <Tabs.List>
-          <Tabs.Tab
-            value="posts"
-            renderRoot={(props) => <a {...props} href={`/profile/${profile.username}`} />}
-          >
-            Posts
-          </Tabs.Tab>
-          <Tabs.Tab
-            value="following"
-            renderRoot={(props) => (
-              <a {...props} href={`/profile/${profile.username}?tab=following`} />
-            )}
-            data-testid="tab-following"
-          >
-            Following {withCounts.counts.following}
-          </Tabs.Tab>
-          <Tabs.Tab
-            value="followers"
-            renderRoot={(props) => (
-              <a {...props} href={`/profile/${profile.username}?tab=followers`} />
-            )}
-            data-testid="tab-followers"
-          >
-            Followers {withCounts.counts.followers}
-          </Tabs.Tab>
-        </Tabs.List>
+      <ProfileTabs active={tab} profile={profile} counts={withCounts.counts} />
 
-        <Tabs.Panel value="posts" pt="md">
-          {/* Posts land with the posts feature ticket; the profile owns the shell. */}
-          <Text size="sm" c="dimmed" data-testid="profile-posts-placeholder">
-            Posts appear here once the posts feature lands.
-          </Text>
-        </Tabs.Panel>
+      {tab === 'posts' ? (
+        // Posts land with the posts feature ticket; the profile owns the shell.
+        <Text size="sm" c="dimmed" data-testid="profile-posts-placeholder">
+          Posts appear here once the posts feature lands.
+        </Text>
+      ) : null}
 
-        <Tabs.Panel value="following" pt="md">
-          {listTab === 'following' && list ? (
-            <>
-              <ProfileList items={list.items} />
-              {list.nextCursor ? (
-                <Anchor
-                  href={`/profile/${profile.username}?tab=following&cursor=${list.nextCursor}`}
-                  size="sm"
-                  mt="md"
-                  display="block"
-                  data-testid="load-more"
-                >
-                  Load more
-                </Anchor>
-              ) : null}
-            </>
+      {listTab && list ? (
+        <>
+          <ProfileList items={list.items} />
+          {list.nextCursor ? (
+            <Anchor
+              href={`/profile/${profile.username}?tab=${listTab}&cursor=${list.nextCursor}`}
+              size="sm"
+              mt="md"
+              display="block"
+              data-testid="load-more"
+            >
+              Load more
+            </Anchor>
           ) : null}
-        </Tabs.Panel>
-
-        <Tabs.Panel value="followers" pt="md">
-          {listTab === 'followers' && list ? (
-            <>
-              <ProfileList items={list.items} />
-              {list.nextCursor ? (
-                <Anchor
-                  href={`/profile/${profile.username}?tab=followers&cursor=${list.nextCursor}`}
-                  size="sm"
-                  mt="md"
-                  display="block"
-                  data-testid="load-more"
-                >
-                  Load more
-                </Anchor>
-              ) : null}
-            </>
-          ) : null}
-        </Tabs.Panel>
-      </Tabs>
+        </>
+      ) : null}
     </Container>
   );
 }

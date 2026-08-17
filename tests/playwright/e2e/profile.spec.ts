@@ -69,8 +69,11 @@ test('follow then unfollow updates both sides of the graph', async ({ page, brow
 });
 
 test('block stops the blocked user from following and shows badges', async ({ page, browser }) => {
-  // demo3 blocks demo4; demo4 then cannot follow demo3.
+  // demo3 blocks demo4; demo4 then cannot follow demo3. Both log in first so
+  // both profiles exist.
+  const demo4 = await loggedInPage(browser, 'demo4');
   const demo3 = await loggedInPage(browser, 'demo3');
+  await demo4.close();
   await demo3.goto('/profile/demo4');
   await demo3.getByTestId('block-button').click();
   await expect(demo3.getByTestId('badge-blocked')).toBeVisible();
