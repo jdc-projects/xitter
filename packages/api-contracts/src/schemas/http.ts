@@ -43,6 +43,8 @@ export const updateProfileRequestSchema = z
     displayName: z.string().min(1).max(50).optional(),
     bio: z.string().max(200).nullable().optional(),
   })
+  // strict: username is immutable - sending it must 4xx, not silently strip.
+  .strict()
   .openapi('UpdateProfileRequest');
 
 export const createProfileRequestSchema = z
@@ -51,6 +53,7 @@ export const createProfileRequestSchema = z
     displayName: z.string().min(1).max(50).optional(),
     bio: z.string().max(200).nullable().optional(),
   })
+  .strict()
   .openapi('CreateProfileRequest');
 
 export type CreateProfileRequest = z.infer<typeof createProfileRequestSchema>;

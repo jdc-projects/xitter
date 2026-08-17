@@ -162,6 +162,33 @@ describe('social HTTP wiring', () => {
       url: `/api/social/v1/profiles/${OTHER}/following?limit=999`,
     });
     expect(badLimit.statusCode).toBe(400);
+
+    // Username is immutable: sending it must 400 (strict schema), not strip.
+    const usernameAttempt = await app.inject({
+      method: 'PATCH',
+      url: `/api/social/v1/profiles/${CALLER}`,
+      payload: { username: 'hijack', displayName: 'x' },
+    });
+    expect(usernameAttempt.statusCode).toBe(400);
+    expect(usernameAttempt.json()).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
+
+    // Undecodable and malformed-but-decodable cursors must 400, not restart
+    // at page 1 or 500 in Prisma.
+    const garbageCursor = await app.inject({
+      method: 'GET',
+      url: `/api/social/v1/profiles/${OTHER}/following?cursor=${encodeURIComponent('%00zz-not-base64')}`,
+    });
+    expect(garbageCursor.statusCode).toBe(400);
+
+    const forgedCursor = Buffer.from(
+      JSON.stringify({ createdAt: 'banana', id: 'x' }),
+      'utf8',
+    ).toString('base64url');
+    const badDateCursor = await app.inject({
+      method: 'GET',
+      url: `/api/social/v1/profiles/${OTHER}/following?cursor=${forgedCursor}`,
+    });
+    expect(badDateCursor.statusCode).toBe(400);
   });
 
   it('serves internal endpoints outside the versioned prefix', async () => {

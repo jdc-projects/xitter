@@ -23,8 +23,9 @@ function fakeRepo(overrides: Partial<SocialRepository> = {}) {
       displayName: string;
       bio: string | null;
     }) => {
-      profiles.set(data.id, data);
-      return Promise.resolve(data);
+      const row = { ...data, createdAt: new Date() };
+      profiles.set(data.id, row);
+      return Promise.resolve(row);
     },
     updateProfile: (id: string, data: { displayName?: string; bio?: string | null }) => {
       const current = profiles.get(id)!;
@@ -188,6 +189,44 @@ describe('SocialService rules', () => {
     const deleted = events.calls.filter(([type]) => type === 'social.follow.deleted');
     expect(deleted).toHaveLength(2);
     expect(events.calls.some(([type]) => type === 'social.block.created')).toBe(true);
+  });
+
+  it('emits follow.deleted events only after the follows are actually deleted', async () => {
+    const { repo } = fakeRepo();
+    const order: string[] = [];
+    const events = spyEvents();
+    events.emit = (type) => {
+      order.push(`emit:${type}`);
+      return Promise.resolve();
+    };
+    repo.deleteFollowsBetween = () => {
+      order.push('delete-follows');
+      return Promise.resolve(0);
+    };
+    const service = new SocialService(repo, events);
+    await service.ensureProfile({ id: USER_A, username: 'demo1' }, {});
+    await service.ensureProfile({ id: USER_B, username: 'demo2' }, {});
+    await service.follow(USER_A, USER_B);
+
+    await service.block(USER_A, USER_B);
+
+    expect(order.indexOf('delete-follows')).toBeLessThan(
+      order.indexOf('emit:social.follow.deleted'),
+    );
+  });
+
+  it('emits profile.updated on profile creation, not just on edits', async () => {
+    const { repo } = fakeRepo();
+    const events = spyEvents();
+    const service = new SocialService(repo, events);
+
+    const { created } = await service.ensureProfile({ id: USER_A, username: 'demo1' }, {});
+    expect(created).toBe(true);
+    expect(events.calls.some(([type]) => type === 'social.profile.updated')).toBe(true);
+
+    events.calls.length = 0;
+    await service.ensureProfile({ id: USER_A, username: 'demo1' }, {});
+    expect(events.calls).toHaveLength(0);
   });
 
   it('emits profile.updated on PATCH with the new snapshot', async () => {

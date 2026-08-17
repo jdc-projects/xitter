@@ -13,7 +13,7 @@ import {
 } from '@xitter/api-contracts';
 import { createLogger } from '@xitter/observability';
 import { SOCIAL_EVENTS, type SocialEvents } from './social-events.js';
-import { SocialRepository } from './social.repository.js';
+import { SocialRepository, decodeCursor } from './social.repository.js';
 
 const logger = createLogger({ service: 'social' });
 
@@ -89,6 +89,13 @@ export class SocialService {
       username: username.data,
       displayName: input.displayName ?? (await generatedDisplayName()),
       bio: input.bio ?? null,
+    });
+    await this.emitSafe('social.profile.updated', {
+      profileId: caller.id,
+      username: username.data,
+      displayName: profile.displayName,
+      bio: profile.bio,
+      updatedAt: profile.createdAt.toISOString(),
     });
     return { profile: this.repo.toProfile(profile), created: true };
   }
@@ -173,13 +180,16 @@ export class SocialService {
     this.rejectSelf(viewerId, targetId, 'block');
     await this.requireTarget(targetId);
 
-    // Follows die in both directions; emit their deletions first so consumers
-    // see why the feed entries vanish (spec 04: blocks are not feed-rewritten
-    // by the block event itself - the follow deletions carry it).
     const [mine, theirs] = await Promise.all([
       this.repo.findFollow(viewerId, targetId),
       this.repo.findFollow(targetId, viewerId),
     ]);
+    await this.repo.deleteFollowsBetween(viewerId, targetId);
+
+    // Emit after the deletes (like every other transition) so consumers
+    // never see follow.deleted for a follow that still exists. The follow
+    // deletions carry the feed-removal semantics (spec 04: blocks are not
+    // feed-rewritten by the block event itself).
     if (mine) {
       await this.emitSafe('social.follow.deleted', {
         followerId: viewerId,
@@ -194,7 +204,6 @@ export class SocialService {
         deletedAt: new Date().toISOString(),
       });
     }
-    await this.repo.deleteFollowsBetween(viewerId, targetId);
 
     const created = await this.repo.createBlock(viewerId, targetId);
     if (created) {
@@ -240,6 +249,7 @@ export class SocialService {
 
   async following(targetId: string, page: PageRequest): Promise<ProfilePage> {
     await this.requireTarget(targetId);
+    this.requireValidCursor(page.cursor);
     const result = await this.repo.followPage('following', targetId, page.cursor, page.limit);
     return {
       items: result.items.map((row) => this.repo.toProfile(row)),
@@ -249,11 +259,26 @@ export class SocialService {
 
   async followers(targetId: string, page: PageRequest): Promise<ProfilePage> {
     await this.requireTarget(targetId);
+    this.requireValidCursor(page.cursor);
     const result = await this.repo.followPage('followers', targetId, page.cursor, page.limit);
     return {
       items: result.items.map((row) => this.repo.toProfile(row)),
       nextCursor: result.nextCursor,
     };
+  }
+
+  /**
+   * A cursor that doesn't decode to a valid keyset position must 400, not
+   * silently restart at page 1 (clients would re-walk forever) or blow up
+   * as a 500 in Prisma (non-date createdAt).
+   */
+  private requireValidCursor(cursor: string | undefined): void {
+    if (!cursor) return;
+    const parsed = decodeCursor(cursor);
+    const createdAt = parsed ? new Date(parsed.createdAt).getTime() : Number.NaN;
+    if (parsed === null || Number.isNaN(createdAt) || !parsed.id) {
+      throw badRequest('Invalid pagination cursor');
+    }
   }
 
   /** Internal (fanout worker): follower ids for feed fanout. */

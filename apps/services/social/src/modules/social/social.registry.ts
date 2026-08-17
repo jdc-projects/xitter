@@ -147,11 +147,11 @@ socialApi.registerPath({
   path: '/profiles/{userId}/relationship',
   tags: ['relationships'],
   security: [{ bearerAuth: [] }],
-  description: 'Caller-relative relationship flags.',
+  description:
+    'Caller-relative relationship flags. Unknown targets return all-false flags rather than 404.',
   request: { params: idParams },
   responses: {
     200: jsonResponse('Relationship', relationshipSchema),
-    404: jsonResponse('Not found', errorSchema),
   },
 });
 

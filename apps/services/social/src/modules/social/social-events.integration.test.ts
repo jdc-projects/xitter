@@ -105,8 +105,20 @@ describe.skipIf(!hasGeneratedClient)('social events (testcontainers kafka)', () 
     expect(event.payload).toMatchObject({ followerId: A, followeeId: B });
 
     await service.updateProfile(A, A, { bio: 'events test' });
-    await waitFor(() => received.some((e) => e.eventType === 'social.profile.updated'));
-    event = received.find((e) => e.eventType === 'social.profile.updated')!;
+    await waitFor(() =>
+      received.some(
+        (e) =>
+          e.eventType === 'social.profile.updated' &&
+          e.payload.profileId === A &&
+          e.payload.bio === 'events test',
+      ),
+    );
+    event = received.find(
+      (e) =>
+        e.eventType === 'social.profile.updated' &&
+        e.payload.profileId === A &&
+        e.payload.bio === 'events test',
+    )!;
     expect(event.payload).toMatchObject({
       profileId: A,
       username: 'eventa',

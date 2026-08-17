@@ -21,6 +21,8 @@ export interface ServiceClientOptions {
   token?: string;
   /** Machine-to-machine credentials (internal endpoints). */
   internal?: { tokenUrl: string; clientId: string; clientSecret: string };
+  /** Per-request timeout; hung upstreams must not hang callers (default 5s). */
+  timeoutMs?: number;
   fetchImpl?: typeof fetch;
 }
 
@@ -59,6 +61,7 @@ export class ServiceClient {
         ...(token ? { authorization: `Bearer ${token}` } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(this.options.timeoutMs ?? 5_000),
     });
 
     if (!res.ok) {

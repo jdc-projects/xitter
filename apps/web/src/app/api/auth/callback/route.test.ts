@@ -107,6 +107,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   social.calls = [];
   social.profileExists = false;
+  social.unreachable = false;
 });
 
 describe('GET /api/auth/callback', () => {

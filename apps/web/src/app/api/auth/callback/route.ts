@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { createLogger } from '@xitter/observability';
 import { SocialClient, localServiceUrls, ApiError } from '@xitter/api-client';
 import { oidc, oidcConfig } from '@/lib/auth/oidc';
 import { recordFromTokens, type Session } from '@/lib/auth/session';
@@ -6,6 +7,8 @@ import { valkeyStores, type LoginState } from '@/lib/auth/session-store';
 import { SESSION_COOKIE, SESSION_TTL_SECONDS, webEnv } from '@/lib/server-env';
 
 export const runtime = 'nodejs';
+
+const logger = createLogger({ service: 'web' });
 
 function loginRedirect(base: string, reason: string, next?: string): NextResponse {
   const target = new URL('/login', base);
@@ -24,12 +27,15 @@ async function ensureProfile(session: Omit<Session, 'id'>): Promise<void> {
   const social = new SocialClient({
     baseUrl: localServiceUrls().social,
     token: session.accessToken,
+    timeoutMs: 3_000,
   });
   try {
     await social.getProfile(session.subject);
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) {
       await social.createProfile(session.subject, {}).catch(() => undefined);
+    } else {
+      logger.warn({ err: String(error) }, 'profile bootstrap skipped');
     }
   }
 }

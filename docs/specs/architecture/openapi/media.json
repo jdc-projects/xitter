@@ -24,7 +24,12 @@
         "properties": {
           "mimeType": {
             "type": "string",
-            "enum": ["image/png", "image/jpeg", "image/webp", "image/gif"]
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/webp",
+              "image/gif"
+            ]
           },
           "bytes": {
             "type": "integer",
@@ -32,7 +37,10 @@
             "exclusiveMinimum": true
           }
         },
-        "required": ["mimeType", "bytes"]
+        "required": [
+          "mimeType",
+          "bytes"
+        ]
       }
     },
     "parameters": {}
@@ -40,7 +48,9 @@
   "paths": {
     "/uploads": {
       "post": {
-        "tags": ["media"],
+        "tags": [
+          "media"
+        ],
         "security": [
           {
             "bearerAuth": []
@@ -72,7 +82,10 @@
                       "format": "uri"
                     }
                   },
-                  "required": ["mediaId", "uploadUrl"]
+                  "required": [
+                    "mediaId",
+                    "uploadUrl"
+                  ]
                 }
               }
             }
