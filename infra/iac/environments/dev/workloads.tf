@@ -20,6 +20,13 @@ locals {
     "media-process" = 9102
     "search-index"  = 9103
   }
+
+  # Cross-service dependencies (namespace-internal, never via the edge).
+  # posts calls social's internal relationship endpoint for reply block
+  # enforcement (#5); authn is M2M via KEYCLOAK_CLIENT_ID/SECRET below.
+  service_extra_env = {
+    posts = [{ name = "XITTER_SOCIAL_URL", value = local.svc_base.social }]
+  }
 }
 
 # ---------------------------------------------------------------------------
@@ -43,7 +50,7 @@ module "api_service" {
     { name = "DEMO_REALM", value = local.demo_realm },
     { name = "KAFKA_BROKERS", value = local.kafka_bootstrap },
     { name = "KEYCLOAK_CLIENT_ID", value = "svc-${each.key}" },
-  ])
+  ], lookup(local.service_extra_env, each.key, []))
 
   secret_env = [
     {

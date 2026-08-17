@@ -3,6 +3,48 @@ meta {
   seq: 4
 }
 
+# Posts need an author profile first: profiles are created lazily on first
+# web login, so API-only callers bootstrap one explicitly (idempotent upsert,
+# same pattern as social/ensure-profile) before creating the post.
+
+script:pre-request {
+  const form =
+    "grant_type=password&client_id=web" +
+    "&username=" +
+    encodeURIComponent(bru.getEnvVar("username") || "demo1") +
+    "&password=" +
+    encodeURIComponent(bru.getEnvVar("password") || "DemoPass123!");
+  const tokenUrl = `${bru.getEnvVar("keycloak")}/realms/${bru.getEnvVar("realm")}/protocol/openid-connect/token`;
+  const res = await bru.sendRequest({
+    method: "POST",
+    url: tokenUrl,
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    data: form,
+  });
+  const raw =
+    typeof res.data === "string"
+      ? res.data
+      : res.data && typeof res.data === "object" && "byteLength" in res.data
+        ? new TextDecoder().decode(res.data)
+        : typeof res.data === "object" && res.data !== null
+          ? JSON.stringify(res.data)
+          : String(res.data ?? "");
+  const json = JSON.parse(raw);
+  bru.setEnvVar("token", json.access_token);
+  const payload = JSON.parse(Buffer.from(json.access_token.split(".")[1], "base64").toString());
+  bru.setVar("callerId", payload.sub);
+
+  // Ensure the author profile exists (idempotent; 200 either way).
+  await bru.sendRequest({
+    method: "POST",
+    url: `${bru.getEnvVar("seedBase")}/api/social/v1/profiles/${payload.sub}`,
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${json.access_token}`,
+    },
+  });
+}
+
 post {
   url: {{seedBase}}/api/posts/v1/posts
   body: json
@@ -21,4 +63,13 @@ body:json {
 
 assert {
   res.status: 201
+}
+
+tests {
+  expect(res.body.id).to.be.a("string").and.not.be.empty;
+  expect(res.body.authorId).to.equal(bu.vars.callerId);
+  expect(res.body.text).to.equal("Hello from Bruno");
+  expect(res.body.counts).to.deep.equal({ replies: 0, likes: 0, reposts: 0 });
+  expect(res.body.replyToId).to.be.null;
+  expect(res.body.deletedAt).to.be.null;
 }

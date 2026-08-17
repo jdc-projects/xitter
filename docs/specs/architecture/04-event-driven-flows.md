@@ -47,7 +47,7 @@ Every message is JSON with a single envelope; consumers validate it at the bound
 
 | eventType                   | Topic              | Payload fields                                                        | Emitted when                                               |
 | --------------------------- | ------------------ | --------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `posts.post.created`        | `xitter.posts.v1`  | `postId`, `authorId`, `text`, `mediaIds[]`, `replyToId?`, `createdAt` | Post created (top-level or reply)                          |
+| `posts.post.created`        | `xitter.posts.v1`  | `postId`, `authorId`, `text`, `mediaIds[]`, `replyToId?`, `repostOfId?`, `createdAt` | Post created (top-level or reply)                          |
 | `posts.post.deleted`        | `xitter.posts.v1`  | `postId`, `authorId`, `deletedAt`                                     | Post deleted by author                                     |
 | `posts.interaction.created` | `xitter.posts.v1`  | `interactionId`, `postId`, `userId`, `kind`, `createdAt`              | like/bookmark/repost added                                 |
 | `posts.interaction.deleted` | `xitter.posts.v1`  | `postId`, `userId`, `kind`, `deletedAt`                               | Interaction removed                                        |

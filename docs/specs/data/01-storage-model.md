@@ -58,21 +58,25 @@ erDiagram
         string id PK
         string authorId FK "Profile via social"
         string text "1-512 chars"
+        string[] mediaIds "uuid refs into media (validated shape-only until #6)"
         string replyToId FK "nullable"
-        boolean deleted "soft delete"
+        string repostOfId FK "nullable"
         datetime createdAt
-        datetime deletedAt "nullable"
+        datetime deletedAt "nullable - soft delete"
+        int replyCount "read-model, 0 at create"
+        int likeCount "read-model, 0 at create - maintained by #8"
+        int repostCount "read-model, 0 at create - maintained by #8"
     }
     Interaction {
         string id PK
-        string kind "reply|like|bookmark|repost"
+        string kind "like|bookmark|repost"
         string postId FK
         string userId
         datetime createdAt
     }
 ```
 
-Unique: `Interaction(kind, postId, userId)` — one of each kind per user per post. Replies are posts (self-relation) _and_ may carry an `Interaction(kind=reply)` for uniform fan-out; whichever representation is chosen, the unique constraint above must hold.
+Unique: `Interaction(kind, postId, userId)` — one of each kind per user per post. Replies are posts (self-relation); the counts read-model lives on the post row — replies maintain `replyCount` transactionally in the posts service, likes/reposts are maintained by #8's interaction flows. Deleting is soft (`deletedAt` set); deleted posts are excluded from every read path (timelines, threads, lookups) but rows persist for interaction accounting.
 
 ### media
 
@@ -133,6 +137,7 @@ Field tables above (types/constraints inline in each ER diagram) are normative. 
 - All ids are string (ULID/UUID) primary keys.
 - All `createdAt` are set by the owning service; no client-supplied timestamps.
 - `Post.text` is 1–512 chars, enforced at the API boundary and in the schema.
+- `Post.mediaIds` reference media assets by uuid; existence/status checks land with the media ticket (#6).
 - `MediaAsset.sizeBytes` ≤ 5 MB, enforced at upload; `postId` nullable because upload precedes post creation.
 
 ## Index strategy
