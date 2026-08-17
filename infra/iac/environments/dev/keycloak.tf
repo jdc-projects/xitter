@@ -47,6 +47,27 @@ resource "keycloak_realm" "demo" {
   realm   = local.demo_realm
   enabled = true
 
+  # Login defence (T14): the realm is globally reachable (edge geo-open),
+  # so brute-force protection replaces the geo restriction as the login
+  # defence. The provider enables bruteForceProtected by rendering this
+  # brute_force_detection block (there is no top-level flag in 5.9);
+  # temporary lockout only (permanent_lockout = false) is friendlier for a
+  # demo - all timings below are Keycloak's own defaults, spelled out so
+  # the posture is explicit: after 30 failures (or 1 too-fast attempt) the
+  # account locks for 60s, ramping to a 15m max, and the counter resets
+  # after 12h. The nightly reset would clear permanent locks anyway.
+  security_defenses {
+    brute_force_detection {
+      permanent_lockout                = false
+      max_login_failures               = 30
+      wait_increment_seconds           = 60
+      quick_login_check_milli_seconds  = 1000
+      minimum_quick_login_wait_seconds = 60
+      max_failure_wait_seconds         = 900
+      failure_reset_time_seconds       = 43200
+    }
+  }
+
   # Demo system: users cannot change their own credentials (mirrors keycloak.ts).
   edit_username_allowed    = false
   reset_password_allowed   = false

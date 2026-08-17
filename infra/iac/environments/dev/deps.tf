@@ -304,8 +304,18 @@ resource "helm_release" "valkey" {
 }
 
 # ---------------------------------------------------------------------------
-# OpenSearch (operator CR, single node, security disabled - dev pattern)
+# OpenSearch (operator CR, 2-node, security disabled - dev pattern)
 # ---------------------------------------------------------------------------
+# Two replicas, not one, on purpose: the operator (3.0.0-alpha) rolls nodes
+# one at a time and its restart guard refuses to delete a cluster_manager
+# when readyMasters <= (totalMasters + 1) / 2 - with a single node that is
+# always true, so ANY config-hash drift (e.g. after an operator restart)
+# deadlocks the cluster on a stuck sts revision (2026-08-17 incident: 7h
+# alert, recovered via tofu taint + apply). With 2, the guard passes and the
+# operator can roll one node at a time. Tradeoff: 2 cluster_managers means
+# quorum of 2 with zero failure tolerance - losing one node pauses writes
+# until it returns. Acceptable for dev (disposable data, nightly reset) and
+# still rollable; prod should size its manager pool for real quorum.
 resource "kubernetes_manifest" "opensearch" {
   manifest = {
     apiVersion = "opensearch.org/v1"
@@ -324,14 +334,22 @@ resource "kubernetes_manifest" "opensearch" {
 
         additionalConfig = {
           "plugins.security.disabled" = "true"
-          "node.name"                 = "opensearch-bootstrap-0"
+          # node.name is deliberately NOT pinned here. The operator renders
+          # additionalConfig into every pod's opensearch.yml, so the
+          # single-node workaround inherited from the homelab reference
+          # envs ("opensearch-bootstrap-0", matching the
+          # cluster.initial_master_nodes env) would give both replicas the
+          # SAME node identity. Unset, each pod defaults to its hostname
+          # (opensearch-nodes-{0,1}); the existing node keeps its persisted
+          # node id (data dir) through the rename, and fresh clusters use
+          # the operator's own bootstrap pod flow.
         }
       }
 
       nodePools = [
         {
           component = "nodes"
-          replicas  = 1
+          replicas  = 2
           diskSize  = "10Gi"
 
           persistence = {

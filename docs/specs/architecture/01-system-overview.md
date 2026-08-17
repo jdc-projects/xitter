@@ -96,6 +96,13 @@ The edge performs no path rewriting for APIs: each service owns its **full path 
 
 In-cluster, the edge validates Keycloak access tokens (`auth_mode=oidc-api`) and injects identity headers (`X-User-Id`, …); see [07-security.md](07-security.md).
 
+**Geo posture (T14):** all `xitter-dev` host routes and exactly three paths on `idp.jd-chapman.dev` — `realms/xitter-demo` (realm endpoints), `resources` and `js` (login theme assets) — disable the homelab edge geoblock, so the demo is reachable globally; cloudflare + crowdsec middlewares stay on. Everything else on the idp host (`realms/primary`, Keycloak `/admin`) remains UK-only via the homelab's host-level route (xitter's path routes win on explicit priority 200). Login defence for the now-globally-reachable demo realm is Keycloak brute-force protection (temporary lockout), not geo.
+
+| idp host path            | Target              | Notes                                                            |
+| ------------------------ | ------------------- | ---------------------------------------------------------------- |
+| `/realms/xitter-demo`    | keycloak (existing) | Demo realm endpoints; geo-open, priority 200, xitter Tofu-owned  |
+| `/resources`, `/js`      | keycloak (existing) | Realm-agnostic login theme assets; geo-open, priority 200        |
+
 ## Environment model
 
 Namespace-per-environment, deployed via Tofu environments using the homelab ingress module; all supporting infrastructure (CNPG, Kafka, OpenSearch, RustFS, Valkey, Keycloak, observability stack) is declared as CRs/providers, not hand-configured.

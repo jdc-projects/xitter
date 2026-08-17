@@ -12,9 +12,22 @@
 #     xitter-dev-admin); role gating (app-admin / system-admin) lands with
 #     #10/#11.
 #   - `/` and `/media` are unauthenticated.
+#
+# Geo posture (T14): the demo is globally reachable, so every xitter host
+# route sets do_enable_geoblock = false (cloudflare + crowdsec middlewares
+# stay on). `/cms` + `/admin` rely on their oidc-interactive auth, not geo.
+# The flags are explicit rather than relying on module defaults we don't
+# control, so the prod env copies this posture deliberately when its edge
+# config lands (#14). The idp host is geo-opened per-path in the Keycloak
+# section below - not host-wide.
 
 locals {
   kubeconfig = "../../../cluster.yml"
+
+  # Keycloak's public host (idp.jd-chapman.dev) from the homelab keycloak
+  # remote state - same canonical instance the keycloak provider targets.
+  # Drives the demo realm's path routes below.
+  idp_domain = data.terraform_remote_state.keycloak.outputs.keycloak_domain
 }
 
 # API services: one route per service, all identical except path/audience.
@@ -36,6 +49,8 @@ module "ingress_api" {
   auth_oidc_api_audience          = "svc-${each.key}"
   auth_oidc_api_pass_access_token = false
 
+  do_enable_geoblock = false
+
   # xitter-demo is a literal realm this environment creates (verified above);
   # the module's known-realms list only covers primary/master aliases.
   silenced_checks = ["keycloak_auth_realm_known"]
@@ -56,6 +71,8 @@ module "ingress_web" {
   target_port = 3000
   selector    = { "app.kubernetes.io/name" = "web" }
 
+  do_enable_geoblock = false
+
   kubeconfig_path = local.kubeconfig
 }
 
@@ -74,6 +91,8 @@ module "ingress_cms" {
   auth_mode           = "oidc-interactive"
   keycloak_auth_realm = "primary"
 
+  do_enable_geoblock = false
+
   kubeconfig_path = local.kubeconfig
 }
 
@@ -91,6 +110,8 @@ module "ingress_admin" {
 
   auth_mode           = "oidc-interactive"
   keycloak_auth_realm = "primary"
+
+  do_enable_geoblock = false
 
   kubeconfig_path = local.kubeconfig
 }
@@ -139,7 +160,84 @@ module "ingress_media" {
     namespace = local.ns
   }]
 
+  do_enable_geoblock = false
+
   kubeconfig_path = local.kubeconfig
 
   depends_on = [helm_release.rustfs]
+}
+
+# Keycloak demo-realm path routes on the idp host (T14). The homelab edge
+# geo-blocks non-UK traffic host-wide on *.jd-chapman.dev, but the demo is
+# global, so exactly three paths are opened here - owned by this
+# environment's Tofu, no homelab route changes:
+#   - realms/xitter-demo: the demo realm's endpoints (well-known, token,
+#     login flows);
+#   - resources + js: theme assets the login page loads from realm-agnostic
+#     paths - missing these breaks the login page for non-UK visitors.
+# The routes pin priority = 200 to beat homelab's host-level keycloak route
+# (priority 0 - Traefik: explicit priority beats the length-derived default)
+# and keep the module's default cloudflare + crowdsec middlewares. auth_mode
+# is none: Keycloak serves its own flows. Everything else on the host -
+# realms/primary, /admin - stays UK-only via homelab's route; do NOT widen
+# these paths. Crowdsec's token-endpoint exception lives in the homelab.
+# Resource names are derived from `name` (see the /api/media collision note
+# above), hence the -demo/-assets/-js suffixes.
+module "ingress_keycloak_demo" {
+  source = "github.com/jdc-projects/homelab//iac/modules/ingress"
+
+  name      = "xitter-${var.environment}-keycloak-demo"
+  namespace = local.ns
+  domain    = local.idp_domain
+  path      = "realms/xitter-demo"
+  priority  = 200
+
+  existing_service_name      = "keycloak-keycloakx-http"
+  existing_service_namespace = "keycloak"
+  target_port                = 80
+
+  auth_mode          = "none"
+  do_enable_geoblock = false
+
+  kubeconfig_path = local.kubeconfig
+
+  depends_on = [keycloak_realm.demo]
+}
+
+module "ingress_keycloak_assets" {
+  source = "github.com/jdc-projects/homelab//iac/modules/ingress"
+
+  name      = "xitter-${var.environment}-keycloak-assets"
+  namespace = local.ns
+  domain    = local.idp_domain
+  path      = "resources"
+  priority  = 200
+
+  existing_service_name      = "keycloak-keycloakx-http"
+  existing_service_namespace = "keycloak"
+  target_port                = 80
+
+  auth_mode          = "none"
+  do_enable_geoblock = false
+
+  kubeconfig_path = local.kubeconfig
+}
+
+module "ingress_keycloak_js" {
+  source = "github.com/jdc-projects/homelab//iac/modules/ingress"
+
+  name      = "xitter-${var.environment}-keycloak-js"
+  namespace = local.ns
+  domain    = local.idp_domain
+  path      = "js"
+  priority  = 200
+
+  existing_service_name      = "keycloak-keycloakx-http"
+  existing_service_namespace = "keycloak"
+  target_port                = 80
+
+  auth_mode          = "none"
+  do_enable_geoblock = false
+
+  kubeconfig_path = local.kubeconfig
 }

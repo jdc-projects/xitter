@@ -13,7 +13,7 @@ The dev environment deploys, in one root module:
 | Databases       | `db-init` Job creates per-service roles/DBs (`social`, `posts`, `media`, `feed`, `search`, `cms`); per-service `DATABASE_URL` Secrets                                                                    |
 | Keycloak        | `xitter-demo` realm, `web` client, `svc-*` / `svc-worker-*` / `svc-reset` clients with per-audience mappers; creds into K8s Secrets                                                                      |
 | Workloads       | 11 `xitter-service` instances: 5 API services (+HPA), 3 Knative workers, web, cms, admin                                                                                                                 |
-| Edge            | Homelab ingress module routes for `/`, `/api/{service}`, `/media`, `/cms`, `/admin`                                                                                                                      |
+| Edge            | Homelab ingress module routes for `/`, `/api/{service}`, `/media`, `/cms`, `/admin`; geo-open (no geoblock middleware), plus `realms/xitter-demo`, `resources`, `js` path routes on `idp.jd-chapman.dev` (demo login reachable globally; primary realm + `/admin` stay UK-only) |
 | NetworkPolicies | Default deny + explicit allows (edge, Prometheus, same-namespace, per-dependency egress)                                                                                                                 |
 
 **Deploys are CI-driven**: merge to `dev` runs `tofu-apply` in Actions (see `.github/workflows/deploy-dev.yml`). This runbook covers the one-time setup and the manual/local path — use it when iterating on IaC or deploying `prod` (T13 wires prod deploys).
@@ -51,6 +51,12 @@ The dev environment deploys, in one root module:
 4. Workloads: `kubectl -n xitter-dev get deploy,ksvc,hpa` — all present. Until part A's images are on GHCR (`:dev` tag) the API/web/cms/admin pods sit in `ImagePullBackOff`; that is expected and not an apply failure.
 5. Edge routing: `kubectl -n xitter-dev get ingressroute,middleware` lists one route per public workload. Health endpoints are deliberately excluded from the services' `api/{service}/v1` global prefix (they sit at each service's root and are not edge-exposed), so validate them by port-forward: `kubectl -n xitter-dev port-forward deploy/social 8080:8080` then `curl localhost:8080/healthz` → 200 (`/readyz` additionally checks the DB). Through the edge, run the `bruno/xitter` collection (environment `dev`, request `social/health.bru`) — it asserts the unauthenticated 401 from the oidc-api middleware, which proves routing + realm wiring pre- and post-images alike.
 6. `curl -I https://xitter-dev.jd-chapman.dev/` — any 2xx/3xx from the web route confirms the edge (web itself may 502 while images are pending).
+7. **Non-UK reachability (manual — T14 geo-open)**: the demo is globally reachable, so from a non-UK egress (VPN or hotspot; cannot be automated from CI, which runs from UK egress) check:
+   - `curl -sI https://idp.jd-chapman.dev/realms/xitter-demo/.well-known/openid-configuration` → 200 (the realm is geo-open via xitter-owned path routes; anything else on the idp host — `/realms/primary`, `/admin` — should still be geo-blocked → non-200 there).
+   - The demo login page renders fully from non-UK egress: open `https://idp.jd-chapman.dev/realms/xitter-demo/protocol/openid-connect/auth?...` (or just log in via the web app) — the `resources`/`js` theme-asset paths must load without the geoblock 403, otherwise the page renders broken.
+   - `curl -sI https://xitter-dev.jd-chapman.dev/` → 2xx/3xx (host is geo-open).
+
+   If any of these return 403/451 from a non-UK egress, the geoblock exception regressed — check the IngressRoutes in `xitter-dev` still carry no `geoblock` middleware.
 
 ## Manual follow-ups / notes
 
