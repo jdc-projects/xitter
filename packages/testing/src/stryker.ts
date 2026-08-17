@@ -1,13 +1,26 @@
 /**
  * Shared Stryker mutation-testing defaults. Scope runs to the current workspace;
  * incremental mode + cached reports are configured per workspace via this factory.
+ *
+ * `excludeIntegrationTests`: testcontainers-based suites (*.integration.test.ts)
+ * are excluded from the mutation run. They must never execute in the sandbox:
+ * every mutant would pay full container startup, and the Kafka fixture's
+ * machine-wide port lock serialises packages into an hours-long crawl (or an
+ * apparent stall). Integration correctness is asserted by those suites in
+ * `turbo test`; mutation testing targets pure logic.
  */
-export function createStrykerConfig(projectName: string) {
+export function createStrykerConfig(
+  projectName: string,
+  options: { excludeIntegrationTests?: boolean } = {},
+) {
   return {
     $schema:
       'https://raw.githubusercontent.com/stryker-mutator/stryker-js/master/packages/api/schema/stryker-schema.json',
     packageManager: 'npm',
     testRunner: 'vitest',
+    vitest: options.excludeIntegrationTests
+      ? { config: { test: { exclude: ['**/*.integration.test.ts'] } } }
+      : undefined,
     reporters: ['html', 'clear-text', 'progress'],
     htmlReporter: {
       fileName: `reports/mutation/${projectName}.html`,

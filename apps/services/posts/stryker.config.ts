@@ -5,4 +5,11 @@
 import type { StrykerOptions } from '@stryker-mutator/core';
 import { createStrykerConfig } from '@xitter/testing';
 
-export default createStrykerConfig('service-posts') satisfies StrykerOptions;
+export default createStrykerConfig('service-posts', {
+  // Testcontainers suites (Postgres/Kafka) must not run inside the mutation
+  // sandbox: each mutant pays full container startup, and the fixed-port
+  // lock serialises them across packages - hours, not minutes. Mutation
+  // testing targets pure logic; integration correctness is covered by the
+  // integration suites themselves (turbo test) and e2e.
+  excludeIntegrationTests: true,
+}) satisfies StrykerOptions;
