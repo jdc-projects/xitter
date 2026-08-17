@@ -45,19 +45,19 @@ Every message is JSON with a single envelope; consumers validate it at the bound
 
 ## Event catalogue
 
-| eventType                   | Topic              | Payload fields                                                        | Emitted when                                               |
-| --------------------------- | ------------------ | --------------------------------------------------------------------- | ---------------------------------------------------------- |
+| eventType                   | Topic              | Payload fields                                                                       | Emitted when                                               |
+| --------------------------- | ------------------ | ------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
 | `posts.post.created`        | `xitter.posts.v1`  | `postId`, `authorId`, `text`, `mediaIds[]`, `replyToId?`, `repostOfId?`, `createdAt` | Post created (top-level or reply)                          |
-| `posts.post.deleted`        | `xitter.posts.v1`  | `postId`, `authorId`, `deletedAt`                                     | Post deleted by author                                     |
-| `posts.interaction.created` | `xitter.posts.v1`  | `interactionId`, `postId`, `userId`, `kind`, `createdAt`              | like/bookmark/repost added                                 |
-| `posts.interaction.deleted` | `xitter.posts.v1`  | `postId`, `userId`, `kind`, `deletedAt`                               | Interaction removed                                        |
-| `social.follow.created`     | `xitter.social.v1` | `followerId`, `followeeId`, `createdAt`                               | Follow established                                         |
-| `social.follow.deleted`     | `xitter.social.v1` | `followerId`, `followeeId`, `deletedAt`                               | Unfollowed                                                 |
-| `social.block.created`      | `xitter.social.v1` | `blockerId`, `blockedId`, `createdAt`                                 | Block established                                          |
-| `social.block.deleted`      | `xitter.social.v1` | `blockerId`, `blockedId`, `deletedAt`                                 | Block removed                                              |
-| `social.profile.updated`    | `xitter.social.v1` | `profileId`, `username`, `displayName`, `bio`, `updatedAt`            | Own profile created (login bootstrap) or edited (name/bio) |
-| `media.media.uploaded`      | `xitter.media.v1`  | `mediaId`, `userId`, `mimeType`, `bytes`, `createdAt`                 | Upload slot fulfilled — object confirmed present in RustFS |
-| `media.media.processed`     | `xitter.media.v1`  | `mediaId`, `variants[] {kind, key}`, `processedAt`                    | Variants (`original`, `thumb`) written and recorded        |
+| `posts.post.deleted`        | `xitter.posts.v1`  | `postId`, `authorId`, `deletedAt`                                                    | Post deleted by author                                     |
+| `posts.interaction.created` | `xitter.posts.v1`  | `interactionId`, `postId`, `userId`, `kind`, `createdAt`                             | like/bookmark/repost added                                 |
+| `posts.interaction.deleted` | `xitter.posts.v1`  | `postId`, `userId`, `kind`, `deletedAt`                                              | Interaction removed                                        |
+| `social.follow.created`     | `xitter.social.v1` | `followerId`, `followeeId`, `createdAt`                                              | Follow established                                         |
+| `social.follow.deleted`     | `xitter.social.v1` | `followerId`, `followeeId`, `deletedAt`                                              | Unfollowed                                                 |
+| `social.block.created`      | `xitter.social.v1` | `blockerId`, `blockedId`, `createdAt`                                                | Block established                                          |
+| `social.block.deleted`      | `xitter.social.v1` | `blockerId`, `blockedId`, `deletedAt`                                                | Block removed                                              |
+| `social.profile.updated`    | `xitter.social.v1` | `profileId`, `username`, `displayName`, `bio`, `updatedAt`                           | Own profile created (login bootstrap) or edited (name/bio) |
+| `media.media.uploaded`      | `xitter.media.v1`  | `mediaId`, `userId`, `mimeType`, `bytes`, `createdAt`                                | Upload slot fulfilled — object confirmed present in RustFS |
+| `media.media.processed`     | `xitter.media.v1`  | `mediaId`, `variants[] {kind, key}`, `processedAt`                                   | Variants (`original`, `thumb`) written and recorded        |
 
 ## Flows
 

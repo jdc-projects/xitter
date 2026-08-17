@@ -75,7 +75,11 @@ describe.skipIf(!hasGeneratedClient)('posts integration (testcontainers)', () =>
 
   it('creates posts with zero-initialised counts', async () => {
     const service = makeService();
-    const post = await service.create(uid('a1'), { text: 'top level', mediaIds: [], replyToId: null });
+    const post = await service.create(uid('a1'), {
+      text: 'top level',
+      mediaIds: [],
+      replyToId: null,
+    });
     expect(post.counts).toEqual({ replies: 0, likes: 0, reposts: 0 });
     expect(post.createdAt).toBeTruthy();
   });
@@ -83,18 +87,34 @@ describe.skipIf(!hasGeneratedClient)('posts integration (testcontainers)', () =>
   it(`rejects ${POST_TEXT_MAX + 1}-character text at the contract boundary`, async () => {
     const service = makeService();
     await expect(
-      service.create(uid('a2'), { text: 'x'.repeat(POST_TEXT_MAX + 1), mediaIds: [], replyToId: null }),
+      service.create(uid('a2'), {
+        text: 'x'.repeat(POST_TEXT_MAX + 1),
+        mediaIds: [],
+        replyToId: null,
+      }),
     ).rejects.toMatchObject({ response: { error: { code: 'VALIDATION_ERROR' } } });
   });
 
   it('reply flow: parents gain reply counts, threads list chronologically', async () => {
     const service = makeService();
-    const parent = await service.create(uid('a3'), { text: 'ask me anything', mediaIds: [], replyToId: null });
+    const parent = await service.create(uid('a3'), {
+      text: 'ask me anything',
+      mediaIds: [],
+      replyToId: null,
+    });
 
-    const r1 = await service.create(uid('a4'), { text: 'first!', mediaIds: [], replyToId: parent.id });
+    const r1 = await service.create(uid('a4'), {
+      text: 'first!',
+      mediaIds: [],
+      replyToId: parent.id,
+    });
     // A gap guarantees the chronological ordering is from createdAt, not luck.
     await new Promise((r) => setTimeout(r, 20));
-    const r2 = await service.create(uid('a5'), { text: 'second', mediaIds: [], replyToId: parent.id });
+    const r2 = await service.create(uid('a5'), {
+      text: 'second',
+      mediaIds: [],
+      replyToId: parent.id,
+    });
 
     expect((await service.getPost(parent.id)).counts).toMatchObject({ replies: 2 });
     const thread = await service.postReplies(parent.id, { limit: 10 });
@@ -104,7 +124,11 @@ describe.skipIf(!hasGeneratedClient)('posts integration (testcontainers)', () =>
   it('blocks replies when a block exists in either direction', async () => {
     const blocks = new Set<string>();
     const service = makeService(blocks);
-    const parent = await service.create(uid('a6'), { text: 'protected', mediaIds: [], replyToId: null });
+    const parent = await service.create(uid('a6'), {
+      text: 'protected',
+      mediaIds: [],
+      replyToId: null,
+    });
 
     blocks.add(`${uid('a7')}|${uid('a6')}`);
     await expect(
@@ -119,8 +143,16 @@ describe.skipIf(!hasGeneratedClient)('posts integration (testcontainers)', () =>
 
   it('soft delete hides the post everywhere and decrements parent reply counts', async () => {
     const service = makeService();
-    const parent = await service.create(uid('a8'), { text: 'parent', mediaIds: [], replyToId: null });
-    const reply = await service.create(uid('a9'), { text: 'reply', mediaIds: [], replyToId: parent.id });
+    const parent = await service.create(uid('a8'), {
+      text: 'parent',
+      mediaIds: [],
+      replyToId: null,
+    });
+    const reply = await service.create(uid('a9'), {
+      text: 'reply',
+      mediaIds: [],
+      replyToId: parent.id,
+    });
     expect((await service.getPost(parent.id)).counts.replies).toBe(1);
 
     await service.remove(uid('a9'), reply.id);
@@ -197,7 +229,11 @@ describe.skipIf(!hasGeneratedClient)('posts integration (testcontainers)', () =>
 
   it('reseed truncates posts and interactions', async () => {
     const service = makeService();
-    const post = await service.create(uid('f1'), { text: 'transient', mediaIds: [], replyToId: null });
+    const post = await service.create(uid('f1'), {
+      text: 'transient',
+      mediaIds: [],
+      replyToId: null,
+    });
     await db.interaction.create({
       data: { kind: 'like', postId: post.id, userId: uid('f2') },
     });

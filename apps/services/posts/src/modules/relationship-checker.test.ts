@@ -27,7 +27,12 @@ describe('SocialRelationshipChecker', () => {
       }
       relationshipCalls.push(url);
       expect(init?.headers).toMatchObject({ authorization: 'Bearer m2m-token' });
-      return AUTHED_RESPONSE({ following: false, followedBy: false, blocking: true, blockedBy: false });
+      return AUTHED_RESPONSE({
+        following: false,
+        followedBy: false,
+        blocking: true,
+        blockedBy: false,
+      });
     };
 
     const checker = new SocialRelationshipChecker({ ...CHECKER_OPTS, fetchImpl });
@@ -46,7 +51,12 @@ describe('SocialRelationshipChecker', () => {
       if (String(input).endsWith('/token')) {
         return AUTHED_RESPONSE({ access_token: 't', expires_in: 300 });
       }
-      return AUTHED_RESPONSE({ following: true, followedBy: true, blocking: false, blockedBy: false });
+      return AUTHED_RESPONSE({
+        following: true,
+        followedBy: true,
+        blocking: false,
+        blockedBy: false,
+      });
     };
     const checker = new SocialRelationshipChecker({ ...CHECKER_OPTS, fetchImpl });
     await expect(checker.blockedEitherWay('a', 'b')).resolves.toBe(false);

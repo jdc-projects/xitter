@@ -46,9 +46,7 @@ export default async function PostDetailPage({
 
   // Parent context ("Replying to @x") for replies opened directly; fetched
   // before author hydration so its author joins the same profile batch.
-  const parentPost = post.replyToId
-    ? await posts.getPost(post.replyToId).catch(() => null)
-    : null;
+  const parentPost = post.replyToId ? await posts.getPost(post.replyToId).catch(() => null) : null;
 
   const replies = await posts
     .getReplies(postId, cursor)
@@ -71,11 +69,7 @@ export default async function PostDetailPage({
         {parentPost ? (
           <Text size="sm" c="dimmed">
             Reply to{' '}
-            <Anchor
-              href={`/post/${parentPost.id}`}
-              size="sm"
-              data-testid="parent-post-link"
-            >
+            <Anchor href={`/post/${parentPost.id}`} size="sm" data-testid="parent-post-link">
               @{cardAuthor(authors.get(parentPost.authorId), parentPost.authorId).username}
             </Anchor>
           </Text>

@@ -24,9 +24,7 @@
   "paths": {
     "/posts": {
       "get": {
-        "tags": [
-          "search"
-        ],
+        "tags": ["search"],
         "parameters": [
           {
             "schema": {
@@ -93,11 +91,7 @@
                                     },
                                     "status": {
                                       "type": "string",
-                                      "enum": [
-                                        "pending",
-                                        "ready",
-                                        "failed"
-                                      ]
+                                      "enum": ["pending", "ready", "failed"]
                                     },
                                     "variants": {
                                       "type": "array",
@@ -106,10 +100,7 @@
                                         "properties": {
                                           "kind": {
                                             "type": "string",
-                                            "enum": [
-                                              "original",
-                                              "thumb"
-                                            ]
+                                            "enum": ["original", "thumb"]
                                           },
                                           "objectKey": {
                                             "type": "string",
@@ -152,13 +143,7 @@
                                       "format": "date-time"
                                     }
                                   },
-                                  "required": [
-                                    "id",
-                                    "ownerId",
-                                    "status",
-                                    "variants",
-                                    "createdAt"
-                                  ]
+                                  "required": ["id", "ownerId", "status", "variants", "createdAt"]
                                 }
                               },
                               "replyToId": {
@@ -189,11 +174,7 @@
                                     "minimum": 0
                                   }
                                 },
-                                "required": [
-                                  "replies",
-                                  "likes",
-                                  "reposts"
-                                ]
+                                "required": ["replies", "likes", "reposts"]
                               },
                               "createdAt": {
                                 "type": "string",
@@ -246,19 +227,10 @@
                                 "format": "date-time"
                               }
                             },
-                            "required": [
-                              "id",
-                              "username",
-                              "displayName",
-                              "bio",
-                              "createdAt"
-                            ]
+                            "required": ["id", "username", "displayName", "bio", "createdAt"]
                           }
                         },
-                        "required": [
-                          "post",
-                          "author"
-                        ]
+                        "required": ["post", "author"]
                       }
                     },
                     "nextCursor": {
@@ -266,10 +238,7 @@
                       "nullable": true
                     }
                   },
-                  "required": [
-                    "items",
-                    "nextCursor"
-                  ]
+                  "required": ["items", "nextCursor"]
                 }
               }
             }

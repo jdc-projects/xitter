@@ -53,11 +53,7 @@ describe.skipIf(!hasGeneratedClient)('posts events (testcontainers kafka)', () =
       createEventProducer({ clientId: 'posts-test', brokers }),
       'posts',
     );
-    service = new PostsService(
-      new PostsRepository(db),
-      emitter,
-      new NullRelationshipChecker(),
-    );
+    service = new PostsService(new PostsRepository(db), emitter, new NullRelationshipChecker());
 
     consumer = new Kafka({ clientId: 'posts-events-test', brokers }).consumer({
       groupId: `posts-events-test-${crypto.randomUUID()}`,
@@ -130,7 +126,9 @@ describe.skipIf(!hasGeneratedClient)('posts events (testcontainers kafka)', () =
     });
     await waitFor(() =>
       received.some(
-        (e) => e.eventType === 'posts.post.created' && (e.payload as { replyToId?: string }).replyToId === post.id,
+        (e) =>
+          e.eventType === 'posts.post.created' &&
+          (e.payload as { replyToId?: string }).replyToId === post.id,
       ),
     );
     expect(() =>

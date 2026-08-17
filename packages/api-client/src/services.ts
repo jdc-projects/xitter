@@ -171,9 +171,7 @@ export class PostsClient extends ServiceClient {
     return this.delete(`${V1}/posts/v1/posts/${postId}/interactions/${kind}`);
   }
 
-  getBookmarks(
-    cursor?: string,
-  ): Promise<{ items: Post[]; nextCursor: string | null }> {
+  getBookmarks(cursor?: string): Promise<{ items: Post[]; nextCursor: string | null }> {
     return this.get(`${V1}/posts/v1/bookmarks`, cursor ? { cursor } : undefined).then((r) =>
       paginated(postSchema).parse(r),
     );

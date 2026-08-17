@@ -54,7 +54,11 @@ function fakeRepo(overrides: Partial<PostsRepository> = {}) {
       posts.clear();
       return Promise.resolve();
     },
-    toCounts: (r: PostRow) => ({ replies: r.replyCount, likes: r.likeCount, reposts: r.repostCount }),
+    toCounts: (r: PostRow) => ({
+      replies: r.replyCount,
+      likes: r.likeCount,
+      reposts: r.repostCount,
+    }),
     ...overrides,
   } as unknown as PostsRepository;
   return { repo, posts };
@@ -84,9 +88,9 @@ describe('createPostRequestSchema (contract)', () => {
   });
 
   it(`rejects ${POST_TEXT_MAX + 1}-character text`, () => {
-    expect(
-      createPostRequestSchema.safeParse({ text: 'x'.repeat(POST_TEXT_MAX + 1) }).success,
-    ).toBe(false);
+    expect(createPostRequestSchema.safeParse({ text: 'x'.repeat(POST_TEXT_MAX + 1) }).success).toBe(
+      false,
+    );
   });
 
   it('rejects empty text', () => {
@@ -96,16 +100,20 @@ describe('createPostRequestSchema (contract)', () => {
   it(`rejects more than ${POST_MEDIA_MAX} media ids and non-uuid shapes`, () => {
     const uuid = '00000000-0000-4000-8000-00000000000m';
     expect(
-      createPostRequestSchema.safeParse({ text: 'x', mediaIds: Array(POST_MEDIA_MAX + 1).fill(uuid) })
-        .success,
+      createPostRequestSchema.safeParse({
+        text: 'x',
+        mediaIds: Array(POST_MEDIA_MAX + 1).fill(uuid),
+      }).success,
     ).toBe(false);
-    expect(
-      createPostRequestSchema.safeParse({ text: 'x', mediaIds: ['not-a-uuid'] }).success,
-    ).toBe(false);
+    expect(createPostRequestSchema.safeParse({ text: 'x', mediaIds: ['not-a-uuid'] }).success).toBe(
+      false,
+    );
   });
 
   it('is strict: unknown keys are rejected, not stripped', () => {
-    expect(createPostRequestSchema.safeParse({ text: 'x', username: 'hijack' }).success).toBe(false);
+    expect(createPostRequestSchema.safeParse({ text: 'x', username: 'hijack' }).success).toBe(
+      false,
+    );
   });
 });
 
@@ -159,9 +167,9 @@ describe('PostsService rules', () => {
     const { repo, posts } = fakeRepo();
     const service = new PostsService(repo, spyEvents(), allowAll);
 
-    await expect(service.create(AUTHOR, { text: 'x', mediaIds: [], replyToId: OTHER })).rejects.toMatchObject(
-      { response: { error: { code: 'NOT_FOUND' } } },
-    );
+    await expect(
+      service.create(AUTHOR, { text: 'x', mediaIds: [], replyToId: OTHER }),
+    ).rejects.toMatchObject({ response: { error: { code: 'NOT_FOUND' } } });
 
     const deleted = row({ id: '00000000-0000-4000-8000-000000000a12', deletedAt: new Date() });
     posts.set(deleted.id, deleted);

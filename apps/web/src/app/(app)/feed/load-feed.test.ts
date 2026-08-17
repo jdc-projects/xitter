@@ -34,7 +34,12 @@ describe('mergeFeedEntries', () => {
 
     const merged = mergeFeedEntries(
       [
-        { items: [post('p1', me.id, '2026-08-17T10:00:00Z'), post('p2', me.id, '2026-08-17T12:00:00Z')] },
+        {
+          items: [
+            post('p1', me.id, '2026-08-17T10:00:00Z'),
+            post('p2', me.id, '2026-08-17T12:00:00Z'),
+          ],
+        },
         { items: [post('p3', followed.id, '2026-08-17T11:00:00Z')] },
       ],
       authors,
@@ -49,7 +54,11 @@ describe('mergeFeedEntries', () => {
     const me = profile('00000000-0000-4000-8000-0000000000a1', 'me');
     const authors = new Map([[me.id, me]]);
     const items = Array.from({ length: 25 }, (_, n) =>
-      post(`p${n}`, n % 5 === 0 ? 'unknown-author' : me.id, `2026-08-17T${String(n).padStart(2, '0')}:00:00Z`),
+      post(
+        `p${n}`,
+        n % 5 === 0 ? 'unknown-author' : me.id,
+        `2026-08-17T${String(n).padStart(2, '0')}:00:00Z`,
+      ),
     );
 
     const merged = mergeFeedEntries([{ items }], authors);
