@@ -35,7 +35,7 @@ async function ensureProfile(session: Omit<Session, 'id'>): Promise<void> {
     if (error instanceof ApiError && error.status === 404) {
       await social.createProfile(session.subject, {}).catch(() => undefined);
     } else {
-      logger.warn({ err: String(error) }, 'profile bootstrap skipped');
+      logger.warn({ err: error }, 'profile bootstrap skipped');
     }
   }
 }

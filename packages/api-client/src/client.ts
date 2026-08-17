@@ -23,6 +23,11 @@ export interface ServiceClientOptions {
   internal?: { tokenUrl: string; clientId: string; clientSecret: string };
   /** Per-request timeout; hung upstreams must not hang callers (default 5s). */
   timeoutMs?: number;
+  /**
+   * Note: covers the service request only. Internal clients' first request
+   * also awaits a client-credentials token from Keycloak, which is currently
+   * unbounded (follow-up when a hung issuer matters).
+   */
   fetchImpl?: typeof fetch;
 }
 
