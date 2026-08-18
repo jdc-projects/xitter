@@ -44,7 +44,9 @@ test('about page renders the CMS-managed FAQ', async ({ page }) => {
   await page.goto('/about');
 
   await expect(page.getByRole('heading', { name: 'FAQ' })).toBeVisible();
-  await expect(page.getByText('What is this?')).toBeVisible();
+  // Scoped to the FAQ section: the page's own "What is this?" heading also
+  // matches an unscoped text query (strict mode).
+  await expect(page.getByText('Twitter/X-style demo of a microservices homelab')).toBeVisible();
   await expect(page.getByText(/Who runs this, and where's the code\?/i)).toBeVisible();
   await expect(page.getByText(/Something looks broken - is that you\?/i)).toBeVisible();
 });
