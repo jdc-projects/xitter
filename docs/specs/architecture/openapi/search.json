@@ -126,6 +126,10 @@
                                             "nullable": true,
                                             "minimum": 0,
                                             "exclusiveMinimum": true
+                                          },
+                                          "url": {
+                                            "type": "string",
+                                            "minLength": 1
                                           }
                                         },
                                         "required": [
@@ -134,7 +138,8 @@
                                           "mimeType",
                                           "bytes",
                                           "width",
-                                          "height"
+                                          "height",
+                                          "url"
                                         ]
                                       }
                                     },
