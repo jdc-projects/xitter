@@ -142,7 +142,9 @@ describe('PostsService media attach rules', () => {
   });
 
   /** Checker whose resolved set the tests control per case. */
-  const checkerOver = (resolve: (ownerId: string, ids: string[]) => MediaAsset[]): MediaChecker => ({
+  const checkerOver = (
+    resolve: (ownerId: string, ids: string[]) => MediaAsset[],
+  ): MediaChecker => ({
     resolveForAttach: (ownerId, ids) => Promise.resolve(resolve(ownerId, ids)),
   });
 
@@ -191,7 +193,12 @@ describe('PostsService media attach rules', () => {
 
   it('rejects ids the lookup did not resolve (missing or not owned)', async () => {
     const { repo } = fakeRepo();
-    const service = new PostsService(repo, spyEvents(), allowAll, checkerOver(() => []));
+    const service = new PostsService(
+      repo,
+      spyEvents(),
+      allowAll,
+      checkerOver(() => []),
+    );
 
     await expect(
       service.create(AUTHOR, { text: 'not mine', mediaIds: [mediaId(3)], replyToId: null }),

@@ -59,6 +59,13 @@ export class MediaLifecycle implements OnApplicationShutdown {
 
 @Module({
   controllers: [MediaController, InternalController],
-  providers: [prismaProvider, eventsProvider, storageProvider, MediaRepository, MediaService, MediaLifecycle],
+  providers: [
+    prismaProvider,
+    eventsProvider,
+    storageProvider,
+    MediaRepository,
+    MediaService,
+    MediaLifecycle,
+  ],
 })
 export class MediaModule {}

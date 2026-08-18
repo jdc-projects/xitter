@@ -251,9 +251,16 @@ describe.skipIf(!hasGeneratedClient)('posts integration (testcontainers)', () =>
     };
     const checker: MediaChecker = {
       resolveForAttach: (_owner, ids) =>
-        Promise.resolve(ids.map((id) => (id === ready.id ? ready : { ...ready, id, status: 'pending' as const }))),
+        Promise.resolve(
+          ids.map((id) => (id === ready.id ? ready : { ...ready, id, status: 'pending' as const })),
+        ),
     };
-    const service = new PostsService(repo, events, { blockedEitherWay: () => Promise.resolve(false) }, checker);
+    const service = new PostsService(
+      repo,
+      events,
+      { blockedEitherWay: () => Promise.resolve(false) },
+      checker,
+    );
 
     const post = await service.create(uid('f2'), {
       text: 'with media',

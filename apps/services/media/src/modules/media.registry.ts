@@ -45,7 +45,10 @@ mediaApi.registerPath({
     body: { content: { 'application/json': { schema: createMediaUploadRequestSchema } } },
   },
   responses: {
-    201: jsonResponse('Upload slot created; PUT bytes to uploadUrl', createMediaUploadResponseSchema),
+    201: jsonResponse(
+      'Upload slot created; PUT bytes to uploadUrl',
+      createMediaUploadResponseSchema,
+    ),
     400: jsonResponse('Validation error', errorSchema),
     413: jsonResponse('Over the 5MB cap', errorSchema),
     415: jsonResponse('Unsupported image type', errorSchema),
@@ -90,7 +93,10 @@ mediaApi.registerPath({
     'Resolve assets for post attachment: returns the assets among mediaIds that exist AND are owned by ownerId. Callers (posts) enforce ready-status on the response.',
   request: { body: { content: { 'application/json': { schema: mediaLookupRequestSchema } } } },
   responses: {
-    200: jsonResponse('Owned assets (possibly fewer than requested)', z.object({ items: z.array(mediaAssetSchema) })),
+    200: jsonResponse(
+      'Owned assets (possibly fewer than requested)',
+      z.object({ items: z.array(mediaAssetSchema) }),
+    ),
   },
 });
 
@@ -101,7 +107,10 @@ mediaApi.registerPath({
   security: [{ serviceToken: [] }],
   description:
     'media-process worker: record processed variants and flip the asset to ready (emits `media.media.processed`). Idempotent on redelivery.',
-  request: { params: mediaParams, body: { content: { 'application/json': { schema: recordVariantsRequestSchema } } } },
+  request: {
+    params: mediaParams,
+    body: { content: { 'application/json': { schema: recordVariantsRequestSchema } } },
+  },
   responses: {
     200: jsonResponse('Updated asset', mediaAssetSchema),
     404: jsonResponse('Not found', errorSchema),
@@ -144,6 +153,7 @@ mediaApi.registerPath({
   path: '/internal/reseed',
   tags: ['internal'],
   security: [{ serviceToken: [] }],
-  description: 'Truncate media metadata (reset job); bucket contents are wiped by the reset itself.',
+  description:
+    'Truncate media metadata (reset job); bucket contents are wiped by the reset itself.',
   responses: { 200: jsonResponse('Acknowledged', z.object({ ok: z.boolean() })) },
 });

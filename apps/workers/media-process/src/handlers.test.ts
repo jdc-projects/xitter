@@ -88,9 +88,7 @@ describe('media-process handleEvent', () => {
 
   it('skips events without a mediaId instead of throwing (poison-proof)', async () => {
     const { deps } = makeDeps('pending');
-    await expect(
-      handleEvent({ ...envelope, payload: {} }, deps),
-    ).resolves.toBeUndefined();
+    await expect(handleEvent({ ...envelope, payload: {} }, deps)).resolves.toBeUndefined();
   });
 
   it('skips already-processed (ready) assets - idempotent redelivery', async () => {
@@ -148,7 +146,10 @@ describe('media-process handleEvent', () => {
     };
     const deps = {
       media,
-      storage: { get: () => Promise.reject(new Error('corrupt bytes')), put: () => Promise.resolve() },
+      storage: {
+        get: () => Promise.reject(new Error('corrupt bytes')),
+        put: () => Promise.resolve(),
+      },
     } as unknown as HandlerDeps;
 
     await expect(handleEvent(envelope, deps)).resolves.toBeUndefined();
@@ -162,7 +163,10 @@ describe('media-process handleEvent', () => {
     };
     const deps = {
       media,
-      storage: { get: () => Promise.reject(new Error('rustfs down')), put: () => Promise.resolve() },
+      storage: {
+        get: () => Promise.reject(new Error('rustfs down')),
+        put: () => Promise.resolve(),
+      },
     } as unknown as HandlerDeps;
 
     await expect(handleEvent(envelope, deps)).rejects.toThrow('rustfs down');

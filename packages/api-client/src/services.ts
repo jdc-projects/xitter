@@ -218,16 +218,11 @@ export class MediaClient extends ServiceClient {
 
   /** Internal (media-process worker): current asset state. */
   internalGetAsset(mediaId: string): Promise<InternalMediaAsset> {
-    return this.get(`${V1}/media/internal/media/${mediaId}`).then(
-      internalMediaAssetSchema.parse,
-    );
+    return this.get(`${V1}/media/internal/media/${mediaId}`).then(internalMediaAssetSchema.parse);
   }
 
   /** Internal (media-process worker): record variants → ready (idempotent). */
-  internalRecordVariants(
-    mediaId: string,
-    variants: MediaVariantCore[],
-  ): Promise<MediaAsset> {
+  internalRecordVariants(mediaId: string, variants: MediaVariantCore[]): Promise<MediaAsset> {
     return this.post(`${V1}/media/internal/media/${mediaId}/variants`, { variants }).then(
       mediaAssetSchema.parse,
     );

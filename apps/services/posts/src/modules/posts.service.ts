@@ -64,8 +64,7 @@ export class PostsService {
     // mediaIds must exist, be owned by the author, and be ready (processed)
     // at attach time - the snapshot taken here is what reads render.
     const requested = [...new Set(input.mediaIds)];
-    const media =
-      requested.length > 0 ? await this.requireAttachable(authorId, requested) : [];
+    const media = requested.length > 0 ? await this.requireAttachable(authorId, requested) : [];
 
     const row = await this.repo.createPost({
       authorId,

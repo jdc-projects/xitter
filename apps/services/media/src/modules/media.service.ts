@@ -114,7 +114,13 @@ export class MediaService {
   async getInternal(mediaId: string): Promise<InternalMediaAsset> {
     const row = await this.repo.find(mediaId);
     if (!row) throw notFound('Media not found');
-    return { ...this.toAsset(row), objectKey: row.objectKey, mimeType: row.mimeType, bytes: row.bytes, attempts: row.attempts };
+    return {
+      ...this.toAsset(row),
+      objectKey: row.objectKey,
+      mimeType: row.mimeType,
+      bytes: row.bytes,
+      attempts: row.attempts,
+    };
   }
 
   /** Internal (posts): existence + ownership + ready-status resolution. */

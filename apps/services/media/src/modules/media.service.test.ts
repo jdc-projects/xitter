@@ -23,7 +23,10 @@ const row = (overrides: Partial<MediaRow> = {}): MediaRow => ({
   ...overrides,
 });
 
-function makeDeps(statBytes: number | null = 1024, statContentType: string | undefined = 'image/png') {
+function makeDeps(
+  statBytes: number | null = 1024,
+  statContentType: string | undefined = 'image/png',
+) {
   const rows = new Map<string, MediaRow>();
   const emitted: [string, Record<string, unknown>][] = [];
   const presigned: { objectKey: string; mimeType: string }[] = [];
@@ -55,7 +58,11 @@ function makeDeps(statBytes: number | null = 1024, statContentType: string | und
     },
     recordAttempt: (id: string, failed: boolean) => {
       const found = rows.get(id)!;
-      const updated = { ...found, attempts: found.attempts + 1, ...(failed ? { status: 'failed' } : {}) };
+      const updated = {
+        ...found,
+        attempts: found.attempts + 1,
+        ...(failed ? { status: 'failed' } : {}),
+      };
       rows.set(id, updated);
       return Promise.resolve(updated);
     },
@@ -91,7 +98,14 @@ function makeDeps(statBytes: number | null = 1024, statContentType: string | und
     shutdown: () => Promise.resolve(),
   };
 
-  return { service: new MediaService(repo, storage, events), rows, repo, emitted, presigned, removed };
+  return {
+    service: new MediaService(repo, storage, events),
+    rows,
+    repo,
+    emitted,
+    presigned,
+    removed,
+  };
 }
 
 const validVariant: MediaVariantRecord = {
@@ -226,9 +240,9 @@ describe('complete (server-side verification)', () => {
     const { service } = makeDeps();
     const slot = await service.createUpload(OWNER, { mimeType: 'image/png', bytes: 512 });
 
-    await expect(service.complete(OWNER, '00000000-0000-4000-8000-0000000000ff')).rejects.toMatchObject(
-      { status: 404 },
-    );
+    await expect(
+      service.complete(OWNER, '00000000-0000-4000-8000-0000000000ff'),
+    ).rejects.toMatchObject({ status: 404 });
     await expect(service.complete(OTHER, slot.mediaId)).rejects.toMatchObject({ status: 404 });
   });
 
@@ -249,7 +263,12 @@ describe('variant recording (worker callbacks)', () => {
 
     const asset = await service.recordVariants(slot.mediaId, [
       validVariant,
-      { ...validVariant, kind: 'thumb', objectKey: `${OWNER}/${slot.mediaId}/thumb.png`, bytes: 100 },
+      {
+        ...validVariant,
+        kind: 'thumb',
+        objectKey: `${OWNER}/${slot.mediaId}/thumb.png`,
+        bytes: 100,
+      },
     ]);
 
     expect(asset.status).toBe('ready');
@@ -294,7 +313,11 @@ describe('lookup + reseed (internal)', () => {
     const mine = await service.createUpload(OWNER, { mimeType: 'image/png', bytes: 10 });
     const theirs = await service.createUpload(OTHER, { mimeType: 'image/png', bytes: 10 });
 
-    const found = await service.lookup(OWNER, [mine.mediaId, theirs.mediaId, '00000000-0000-4000-8000-0000000000ee']);
+    const found = await service.lookup(OWNER, [
+      mine.mediaId,
+      theirs.mediaId,
+      '00000000-0000-4000-8000-0000000000ee',
+    ]);
 
     expect(found.map((asset) => asset.id)).toEqual([mine.mediaId]);
   });

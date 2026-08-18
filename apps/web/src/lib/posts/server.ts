@@ -1,4 +1,10 @@
-import { ApiError, MediaClient, PostsClient, SocialClient, localServiceUrls } from '@xitter/api-client';
+import {
+  ApiError,
+  MediaClient,
+  PostsClient,
+  SocialClient,
+  localServiceUrls,
+} from '@xitter/api-client';
 import type { Profile } from '@xitter/api-contracts';
 import { getSession, type Session } from '@/lib/auth/session';
 

@@ -29,7 +29,8 @@ export class InternalController {
   @HttpCode(200)
   recordVariants(
     @Param('mediaId', mediaIdParam) mediaId: string,
-    @Body(new ZodValidationPipe(recordVariantsRequestSchema)) body: { variants: MediaVariantCore[] },
+    @Body(new ZodValidationPipe(recordVariantsRequestSchema))
+    body: { variants: MediaVariantCore[] },
   ): Promise<MediaAsset> {
     return this.media.recordVariants(mediaId, body.variants);
   }
@@ -57,7 +58,11 @@ export class InternalController {
   @Internal()
   @HttpCode(200)
   lookup(
-    @Body(new ZodValidationPipe(mediaLookupRequestSchema)) body: { ownerId: string; mediaIds: string[] },
+    @Body(new ZodValidationPipe(mediaLookupRequestSchema))
+    body: {
+      ownerId: string;
+      mediaIds: string[];
+    },
   ): Promise<{ items: MediaAsset[] }> {
     return this.media.lookup(body.ownerId, body.mediaIds).then((items) => ({ items }));
   }

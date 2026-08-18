@@ -14,7 +14,8 @@ async function png(width: number, height: number): Promise<Uint8Array> {
 }
 
 const ASSET = {
-  objectKey: '00000000-0000-4000-8000-0000000000a1/00000000-0000-4000-8000-0000000000b2/original.png',
+  objectKey:
+    '00000000-0000-4000-8000-0000000000a1/00000000-0000-4000-8000-0000000000b2/original.png',
   mimeType: 'image/png' as const,
 };
 
