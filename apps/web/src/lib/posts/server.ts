@@ -1,19 +1,21 @@
-import { ApiError, PostsClient, SocialClient, localServiceUrls } from '@xitter/api-client';
+import { ApiError, MediaClient, PostsClient, SocialClient, localServiceUrls } from '@xitter/api-client';
 import type { Profile } from '@xitter/api-contracts';
 import { getSession, type Session } from '@/lib/auth/session';
 
 /**
- * Posts/social API clients bound to the current session's access token
+ * Posts/social/media API clients bound to the current session's access token
  * (ADR 0002: the web server calls services, the browser never holds tokens).
  */
 export function clientsForSession(session: Session): {
   posts: PostsClient;
   social: SocialClient;
+  media: MediaClient;
 } {
   const urls = localServiceUrls();
   return {
     posts: new PostsClient({ baseUrl: urls.posts, token: session.accessToken }),
     social: new SocialClient({ baseUrl: urls.social, token: session.accessToken }),
+    media: new MediaClient({ baseUrl: urls.media, token: session.accessToken }),
   };
 }
 
@@ -22,6 +24,7 @@ export async function postsForSession(): Promise<{
   session: Session;
   posts: PostsClient;
   social: SocialClient;
+  media: MediaClient;
 } | null> {
   const session = await getSession();
   if (!session) return null;
