@@ -48,7 +48,7 @@ postsApi.registerPath({
   tags: ['posts'],
   security: [{ bearerAuth: [] }],
   description:
-    'Create a post or reply. `text` is 1-512 chars; `mediaIds` are shape-checked UUIDs (max 4) - existence/status checks land with the media ticket (#6). Replies are rejected when a block exists between the replier and the parent author in either direction.',
+    'Create a post or reply. `text` is 1-512 chars; `mediaIds` (max 4) must exist, belong to the author and be ready (media internal lookup; non-ready ids 400 with details). Replies are rejected when a block exists between the replier and the parent author in either direction.',
   request: {
     body: { content: { 'application/json': { schema: createPostRequestSchema } } },
   },

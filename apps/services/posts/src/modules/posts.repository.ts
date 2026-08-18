@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import type { MediaAsset } from '@xitter/api-contracts';
 import { encodeCursor, decodeCursor } from '@xitter/service-kit';
 import type { PrismaClient, Prisma } from '../generated/prisma/client.js';
 
@@ -38,6 +39,7 @@ export class PostsRepository {
     authorId: string;
     text: string;
     mediaIds: string[];
+    media: MediaAsset[];
     replyToId: string | null;
   }): Promise<PostRow> {
     return this.db.$transaction(async (tx) => {

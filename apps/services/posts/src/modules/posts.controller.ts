@@ -43,8 +43,8 @@ export class PostsController {
   constructor(private readonly posts: PostsService) {}
 
   /**
-   * mediaIds are shape-checked only (uuid, max 4): existence/status
-   * validation lands with the media ticket (#6).
+   * mediaIds resolve through media's internal lookup: existence, ownership
+   * and ready-status (spec 03); non-ready ids 400 with the offenders listed.
    */
   @Post('posts')
   @UseGuards(RateLimitGuard)

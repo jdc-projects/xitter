@@ -1,7 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { createPostRequestSchema, type CreatePostRequest, type Post } from '@xitter/api-contracts';
+import {
+  createPostRequestSchema,
+  type CreatePostRequest,
+  type MediaAsset,
+  type Post,
+} from '@xitter/api-contracts';
 import { createLogger } from '@xitter/observability';
 import { assertValidCursor, badRequest, forbidden, notFound } from '@xitter/service-kit';
+import { MEDIA_CHECKER, type MediaChecker } from './media-checker.js';
 import { POSTS_EVENTS, type PostsEvents } from './posts-events.js';
 import { PostsRepository, type PostRow } from './posts.repository.js';
 import { RELATIONSHIP_CHECKER, type RelationshipChecker } from './relationship-checker.js';
@@ -23,8 +29,8 @@ export interface PostPage {
  * product 02 §4-6:
  *
  * - `text` is required, 1-512 chars (contract schema, POST_TEXT_MAX);
- * - `mediaIds` are shape-validated UUIDs only - existence/status checks land
- *   with the media ticket (#6), noted per endpoint;
+ * - `mediaIds` resolve through media's internal API: existence, ownership
+ *   and ready-status at creation; a denormalised snapshot rides the row;
  * - deletes are soft: deletedAt set, hidden from every read path;
  * - only the author may delete their own post;
  * - a reply is rejected when a block exists in EITHER direction between the
@@ -38,6 +44,7 @@ export class PostsService {
     private readonly repo: PostsRepository,
     @Inject(POSTS_EVENTS) private readonly events: PostsEvents,
     @Inject(RELATIONSHIP_CHECKER) private readonly relationships: RelationshipChecker,
+    @Inject(MEDIA_CHECKER) private readonly media: MediaChecker,
   ) {}
 
   async create(authorId: string, input: CreatePostRequest): Promise<Post> {
@@ -54,10 +61,17 @@ export class PostsService {
       ? await this.requireReplyTarget(input.replyToId, authorId)
       : null;
 
+    // mediaIds must exist, be owned by the author, and be ready (processed)
+    // at attach time - the snapshot taken here is what reads render.
+    const requested = [...new Set(input.mediaIds)];
+    const media =
+      requested.length > 0 ? await this.requireAttachable(authorId, requested) : [];
+
     const row = await this.repo.createPost({
       authorId,
       text: input.text,
       mediaIds: input.mediaIds,
+      media,
       replyToId: parent?.id ?? null,
     });
     const post = this.toPost(row);
@@ -135,14 +149,32 @@ export class PostsService {
     return parent;
   }
 
+  /**
+   * Every requested id must resolve to a ready asset owned by the author.
+   * The media checker fails closed when media is unreachable; here the
+   * response decides per-asset (missing / not-yours / still-pending).
+   */
+  private async requireAttachable(authorId: string, mediaIds: string[]): Promise<MediaAsset[]> {
+    const resolved = await this.media.resolveForAttach(authorId, mediaIds);
+    const ready = new Set(resolved.filter((asset) => asset.status === 'ready').map((a) => a.id));
+    const invalid = mediaIds.filter((id) => !ready.has(id));
+    if (invalid.length > 0) {
+      throw badRequest('Attached images must be processed and ready', {
+        invalidMediaIds: invalid,
+      });
+    }
+    // Preserve the request order for deterministic rendering.
+    return mediaIds.map((id) => resolved.find((asset) => asset.id === id)!);
+  }
+
   private toPost(row: PostRow): Post {
     return {
       id: row.id,
       authorId: row.authorId,
       text: row.text,
-      // Media hydration lands with #6 (media service); ids live on the row
-      // and in the post.created event payload until then.
-      media: [],
+      // Snapshot taken at creation (see create): variants are immutable, so
+      // this is the render truth without a media call per read.
+      media: (row.media ?? []) as MediaAsset[],
       replyToId: row.replyToId,
       repostOfId: row.repostOfId,
       counts: this.repo.toCounts(row),

@@ -1,10 +1,12 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import { startPostgres } from '@xitter/testing';
 import { POST_TEXT_MAX } from '@xitter/api-contracts';
+import type { MediaAsset } from '@xitter/api-contracts';
+import { NullMediaChecker, type MediaChecker } from './media-checker.js';
 import { PostsService } from './posts.service.js';
 import { PostsRepository, type PostsPrismaClient } from './posts.repository.js';
 import type { PostsEvents } from './posts-events.js';
@@ -42,14 +44,16 @@ describe.skipIf(!hasGeneratedClient)('posts integration (testcontainers)', () =>
     container = await startPostgres('posts-test');
     pool = new Pool({ connectionString: container.connectionString });
 
-    // Apply the committed initial migration - the artifact deploy pipelines
-    // will use, exercised here on every run.
-    const migration = readFileSync(
-      join(process.cwd(), 'prisma/migrations/20260817000000_init/migration.sql'),
-      'utf8',
-    );
-    for (const statement of migration.split(/;\s*\n/).filter((s) => s.trim().length > 0)) {
-      await pool.query(statement);
+    // Apply the committed migrations in order - the artifacts deploy
+    // pipelines will use, exercised here on every run.
+    for (const dir of readdirSync(join(process.cwd(), 'prisma/migrations')).sort()) {
+      const migration = readFileSync(
+        join(process.cwd(), 'prisma/migrations', dir, 'migration.sql'),
+        'utf8',
+      );
+      for (const statement of migration.split(/;\s*\n/).filter((s) => s.trim().length > 0)) {
+        await pool.query(statement);
+      }
     }
 
     db = new generated.PrismaClient({
@@ -70,7 +74,7 @@ describe.skipIf(!hasGeneratedClient)('posts integration (testcontainers)', () =>
       blockedEitherWay: (a, b) =>
         Promise.resolve(blocks.has(`${a}|${b}`) || blocks.has(`${b}|${a}`)),
     };
-    return new PostsService(repo, events, checker);
+    return new PostsService(repo, events, checker, new NullMediaChecker());
   }
 
   it('creates posts with zero-initialised counts', async () => {
@@ -224,6 +228,51 @@ describe.skipIf(!hasGeneratedClient)('posts integration (testcontainers)', () =>
     );
     await expect(service.userPosts(uid('e1'), { cursor: forged, limit: 5 })).rejects.toMatchObject({
       response: { error: { code: 'VALIDATION_ERROR' } },
+    });
+  });
+
+  it('attaches ready media (snapshot survives reads) and rejects non-ready ids', async () => {
+    const ready: MediaAsset = {
+      id: uid('f3'),
+      ownerId: uid('f2'),
+      status: 'ready',
+      variants: [
+        {
+          kind: 'thumb',
+          objectKey: `${uid('f2')}/${uid('f3')}/thumb.png`,
+          mimeType: 'image/png',
+          bytes: 100,
+          width: 320,
+          height: 200,
+          url: `/media/${uid('f2')}/${uid('f3')}/thumb.png`,
+        },
+      ],
+      createdAt: '2026-08-18T00:00:00.000Z',
+    };
+    const checker: MediaChecker = {
+      resolveForAttach: (_owner, ids) =>
+        Promise.resolve(ids.map((id) => (id === ready.id ? ready : { ...ready, id, status: 'pending' as const }))),
+    };
+    const service = new PostsService(repo, events, { blockedEitherWay: () => Promise.resolve(false) }, checker);
+
+    const post = await service.create(uid('f2'), {
+      text: 'with media',
+      mediaIds: [ready.id],
+      replyToId: null,
+    });
+    // Snapshot rendered on reads without a media round-trip.
+    expect((await service.getPost(post.id)).media).toEqual([ready]);
+
+    // A still-pending asset is refused with the offending id in details.
+    await expect(
+      service.create(uid('f2'), { text: 'too early', mediaIds: [uid('f4')], replyToId: null }),
+    ).rejects.toMatchObject({
+      response: {
+        error: expect.objectContaining({
+          code: 'VALIDATION_ERROR',
+          details: { invalidMediaIds: [uid('f4')] },
+        }),
+      },
     });
   });
 
