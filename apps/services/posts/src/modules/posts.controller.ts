@@ -18,9 +18,9 @@ import {
   type CreatePostRequest,
   type Post as PostDto,
 } from '@xitter/api-contracts';
+import { ZodValidationPipe } from '@xitter/service-kit';
 import { z } from 'zod';
 import { PostsService, type PostPage } from './posts.service.js';
-import { ZodValidationPipe } from './zod-validation.pipe.js';
 
 const uuidParam = new ZodValidationPipe(postIdSchema);
 const userParam = new ZodValidationPipe(userIdSchema);

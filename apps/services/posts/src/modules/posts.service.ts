@@ -1,14 +1,9 @@
-import {
-  BadRequestException,
-  ForbiddenException,
-  Inject,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { createPostRequestSchema, type CreatePostRequest, type Post } from '@xitter/api-contracts';
 import { createLogger } from '@xitter/observability';
+import { assertValidCursor, badRequest, forbidden, notFound } from '@xitter/service-kit';
 import { POSTS_EVENTS, type PostsEvents } from './posts-events.js';
-import { PostsRepository, decodeCursor, type PostRow } from './posts.repository.js';
+import { PostsRepository, type PostRow } from './posts.repository.js';
 import { RELATIONSHIP_CHECKER, type RelationshipChecker } from './relationship-checker.js';
 
 const logger = createLogger({ service: 'posts' });
@@ -22,17 +17,6 @@ export interface PostPage {
   items: Post[];
   nextCursor: string | null;
 }
-
-const notFound = (message: string) =>
-  new NotFoundException({ error: { code: 'NOT_FOUND', message } });
-
-const forbidden = (message: string) =>
-  new ForbiddenException({ error: { code: 'FORBIDDEN', message } });
-
-const badRequest = (message: string, details?: object) =>
-  new BadRequestException({
-    error: { code: 'VALIDATION_ERROR', message, ...(details ? { details } : {}) },
-  });
 
 /**
  * Posts, replies, and (from #8) interactions - the rules from spec 03 /
@@ -116,7 +100,7 @@ export class PostsService {
 
   /** Author timeline, newest first, soft-deleted rows excluded. */
   async userPosts(authorId: string, page: PageRequest): Promise<PostPage> {
-    this.requireValidCursor(page.cursor);
+    assertValidCursor(page.cursor);
     const result = await this.repo.authorPosts(authorId, page.cursor, page.limit);
     return { items: result.items.map((row) => this.toPost(row)), nextCursor: result.nextCursor };
   }
@@ -124,7 +108,7 @@ export class PostsService {
   /** Thread order: chronological (oldest first, spec 03). */
   async postReplies(postId: string, page: PageRequest): Promise<PostPage> {
     await this.getPost(postId); // 404 for deleted/missing parents
-    this.requireValidCursor(page.cursor);
+    assertValidCursor(page.cursor);
     const result = await this.repo.replies(postId, page.cursor, page.limit);
     return { items: result.items.map((row) => this.toPost(row)), nextCursor: result.nextCursor };
   }
@@ -149,20 +133,6 @@ export class PostsService {
       }
     }
     return parent;
-  }
-
-  /**
-   * A cursor that doesn't decode to a valid keyset position must 400, not
-   * silently restart at page 1 (clients would re-walk forever) or blow up as
-   * a 500 in Prisma (non-date createdAt).
-   */
-  private requireValidCursor(cursor: string | undefined): void {
-    if (!cursor) return;
-    const parsed = decodeCursor(cursor);
-    const createdAt = parsed ? new Date(parsed.createdAt).getTime() : Number.NaN;
-    if (parsed === null || Number.isNaN(createdAt) || !parsed.id) {
-      throw badRequest('Invalid pagination cursor');
-    }
   }
 
   private toPost(row: PostRow): Post {

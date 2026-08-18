@@ -1,35 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { Profile } from '@xitter/api-contracts';
+import { encodeCursor, decodeCursor } from '@xitter/service-kit';
 import type { PrismaClient, Prisma } from '../../generated/prisma/client.js';
 
 /** DI token for the service-owned Prisma client (tests provide their own). */
 export const SOCIAL_PRISMA = 'SOCIAL_PRISMA';
 
 export type SocialPrismaClient = PrismaClient & { $disconnect(): Promise<void> };
-
-/** Opaque cursor = (follow.createdAt, follow.id) keyset position. */
-interface PageCursor {
-  createdAt: string;
-  id: string;
-}
-
-function encodeCursor(row: { createdAt: Date; id: string }): string {
-  return Buffer.from(
-    JSON.stringify({ createdAt: row.createdAt.toISOString(), id: row.id }),
-  ).toString('base64url');
-}
-
-export function decodeCursor(raw: string): PageCursor | null {
-  try {
-    const parsed = JSON.parse(
-      Buffer.from(raw, 'base64url').toString('utf8'),
-    ) as Partial<PageCursor>;
-    if (typeof parsed.createdAt !== 'string' || typeof parsed.id !== 'string') return null;
-    return { createdAt: parsed.createdAt, id: parsed.id };
-  } catch {
-    return null;
-  }
-}
 
 type ProfileRow = Prisma.ProfileGetPayload<Record<string, never>>;
 
