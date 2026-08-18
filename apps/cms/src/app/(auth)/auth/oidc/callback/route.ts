@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import payloadConfig from '@payload-config';
-import { generatePayloadCookie, getPayload, jwtSign } from 'payload';
+import { getPayload, jwtSign } from 'payload';
 import { createTokenVerifier } from '@xitter/auth';
 import { createLogger } from '@xitter/observability';
 import {
@@ -76,15 +76,19 @@ export async function GET(request: NextRequest) {
       secret: env.PAYLOAD_SECRET,
       tokenExpiration: 7200,
     });
-    const usersConfig = payload.config.collections.find((c) => c.slug === 'users')!;
-    const sessionCookie = generatePayloadCookie({
-      collectionAuthConfig: usersConfig.auth,
-      cookiePrefix: payload.config.cookiePrefix,
-      token,
-    });
 
-    const response = NextResponse.redirect(new URL(returnTo, origin));
-    response.headers.append('set-cookie', sessionCookie);
+    const response = NextResponse.redirect(new URL(`/cms${returnTo}`, origin));
+    // Standard Payload session cookie, set through the cookies API: a raw
+    // set-cookie append gets clobbered by the cookie mutations below.
+    response.cookies.set({
+      name: `${payload.config.cookiePrefix}-token`,
+      value: token,
+      httpOnly: true,
+      path: '/',
+      sameSite: 'lax',
+      expires: new Date(Date.now() + 7200 * 1000),
+      secure: origin.startsWith('https://'),
+    });
     // ID token kept briefly for the end-session hint on logout.
     if (tokenSet.id_token) {
       response.cookies.set({
