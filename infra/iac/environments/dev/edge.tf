@@ -189,8 +189,13 @@ module "ingress_keycloak_demo" {
   name      = "xitter-${var.environment}-keycloak-demo"
   namespace = local.ns
   domain    = local.idp_domain
-  path      = "realms/xitter-demo"
-  priority  = 200
+  # PathPrefix is a raw byte prefix - it would also match sibling realm
+  # names like /realms/xitter-demo-backup. PathRegexp treats `path` as the
+  # verbatim Traefik regex (no automatic leading slash), keeping the
+  # geo-open surface exactly this realm.
+  path         = "^/realms/xitter-demo(/.*)?$"
+  path_matcher = "PathRegexp"
+  priority     = 200
 
   existing_service_name      = "keycloak-keycloakx-http"
   existing_service_namespace = "keycloak"
