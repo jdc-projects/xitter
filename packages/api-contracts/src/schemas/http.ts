@@ -19,7 +19,7 @@ import {
   usernameSchema,
 } from './domain.js';
 
-const cursorPagination = (itemSchema: z.ZodType) =>
+const cursorPagination = <T>(itemSchema: z.ZodType<T>) =>
   z.object({
     items: z.array(itemSchema),
     nextCursor: z.string().nullable(),

@@ -9,6 +9,8 @@ datasource db {
   provider = "postgresql"
 }
 
+/// Materialised home-feed entry written by the fanout worker (ADR 0003).
+/// ids + ordering columns only; post/author payloads hydrate on read.
 model FeedEntry {
   id            String   @id @default(uuid())
   userId        String
@@ -20,5 +22,7 @@ model FeedEntry {
   insertedAt    DateTime @default(now())
 
   @@unique([userId, postId, reason, repostedById])
-  @@index([userId, insertedAt])
+  @@index([userId, postCreatedAt(sort: Desc), id(sort: Desc)])
+  @@index([postId])
+  @@index([userId, authorId])
 }

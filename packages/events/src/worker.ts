@@ -84,7 +84,10 @@ export function startConsumerLagTracker(
           admin.fetchOffsets({ groupId: options.groupId, topics: [topic] }),
         ]);
         const committedByPartition = new Map(
-          committed.map(({ partition, offset }) => [partition, Number(offset)]),
+          (committed[0]?.partitions ?? []).map(({ partition, offset }) => [
+            partition,
+            Number(offset),
+          ]),
         );
         for (const { partition, high } of end) {
           const position = committedByPartition.get(partition) ?? -1;

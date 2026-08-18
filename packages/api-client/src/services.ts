@@ -33,9 +33,7 @@ const V1 = '/api';
 
 function paginated<T>(schema: z.ZodType<T>) {
   return z.object({ items: z.array(schema), nextCursor: z.string().nullable() });
-}
-
-/** Base URLs resolved from env-driven local ports; override with env in deployed contexts. */
+}/** Base URLs resolved from env-driven local ports; override with env in deployed contexts. */
 export const localServiceUrls = () => ({
   social: process.env.XITTER_SOCIAL_URL ?? localUrl('social'),
   posts: process.env.XITTER_POSTS_URL ?? localUrl('posts'),
