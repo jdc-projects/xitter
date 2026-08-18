@@ -28,6 +28,12 @@ export class SocialRepository {
     return this.db.profile.findUnique({ where: { username } });
   }
 
+  /** Bulk lookup for hydration (feed #7); missing ids simply absent. */
+  findProfiles(ids: string[]): Promise<ProfileRow[]> {
+    if (ids.length === 0) return Promise.resolve([]);
+    return this.db.profile.findMany({ where: { id: { in: ids } } });
+  }
+
   createProfile(data: { id: string; username: string; displayName: string; bio: string | null }) {
     return this.db.profile.create({ data });
   }

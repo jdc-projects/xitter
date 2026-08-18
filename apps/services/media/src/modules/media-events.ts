@@ -4,7 +4,8 @@ import type { EventProducer, TopicName } from '@xitter/events';
 export type MediaEventType = 'media.media.uploaded' | 'media.media.processed';
 
 export interface MediaEvents {
-  emit(eventType: MediaEventType, payload: Record<string, unknown>): Promise<void>;
+  /** `key` is the mediaId (per-aggregate ordering, spec 04). */
+  emit(eventType: MediaEventType, payload: Record<string, unknown>, key?: string): Promise<void>;
   shutdown(): Promise<void>;
 }
 
@@ -28,12 +29,13 @@ export class KafkaMediaEvents implements MediaEvents {
     private readonly topic: TopicName,
   ) {}
 
-  emit(eventType: MediaEventType, payload: Record<string, unknown>): Promise<void> {
+  emit(eventType: MediaEventType, payload: Record<string, unknown>, key?: string): Promise<void> {
     return this.producer.emit(this.topic, {
       eventType,
       producer: 'media',
       occurredAt: new Date().toISOString(),
       payload,
+      key,
     });
   }
 

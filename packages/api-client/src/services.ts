@@ -6,13 +6,17 @@ import {
   internalMediaAssetSchema,
   mediaAssetSchema,
   mediaLookupResponseSchema,
+  postLookupResponseSchema,
   postSchema,
+  profileLookupResponseSchema,
   profileSchema,
   profileWithCountsSchema,
   relationshipSchema,
   type createPostRequestSchema,
   type createProfileRequestSchema,
   type updateProfileRequestSchema,
+  type FeedEntryInput,
+  type HydratedFeedItem,
   type InteractionKind,
   type InternalMediaAsset,
   type MediaAsset,
@@ -134,6 +138,13 @@ export class SocialClient extends ServiceClient {
   internalBlockedIds(userId: string): Promise<string[]> {
     return this.get(`${V1}/social/internal/users/${userId}/blocked/ids`);
   }
+
+  /** Internal: bulk profile lookup for server-side hydration (feed #7). */
+  internalProfiles(userIds: string[]): Promise<{ items: Profile[] }> {
+    return this.post(`${V1}/social/internal/profiles/lookup`, { userIds }).then(
+      profileLookupResponseSchema.parse,
+    );
+  }
 }
 
 export class PostsClient extends ServiceClient {
@@ -183,14 +194,56 @@ export class PostsClient extends ServiceClient {
       paginated(postSchema).parse(r),
     );
   }
+
+  /** Internal (feed #7): bulk visible-post lookup for feed hydration. */
+  internalPosts(postIds: string[]): Promise<{ items: Post[] }> {
+    return this.post(`${V1}/posts/internal/posts/lookup`, { postIds }).then(
+      postLookupResponseSchema.parse,
+    );
+  }
 }
 
 export class FeedClient extends ServiceClient {
-  getFeed(cursor?: string): Promise<unknown> {
-    return this.get(`${V1}/feed/v1/feed`, cursor ? { cursor } : undefined).then(
-      feedPageSchema.parse,
+  /** Page 1 or cursor walk of the caller's materialised, hydrated feed. */
+  getFeed(cursor?: string, limit?: number): Promise<FeedPage> {
+    const query: Record<string, string> = {};
+    if (cursor) query.cursor = cursor;
+    if (limit !== undefined) query.limit = String(limit);
+    return this.get(`${V1}/feed/v1/feed`, query).then(feedPageSchema.parse);
+  }
+
+  /** Internal (fanout worker): bulk idempotent entry upsert. */
+  internalUpsertEntries(entries: FeedEntryInput[]): Promise<{ inserted: number }> {
+    return this.post(`${V1}/feed/internal/feed/entries`, { entries }).then((r) =>
+      z.object({ inserted: z.number().int() }).parse(r),
     );
   }
+
+  /** Internal (fanout worker): drop one post from every feed (post deleted). */
+  internalDeletePostEntries(postId: string): Promise<{ deleted: number }> {
+    return this.delete(`${V1}/feed/internal/feed/posts/${postId}/entries`).then((r) =>
+      z.object({ deleted: z.number().int() }).parse(r),
+    );
+  }
+
+  /** Internal (fanout worker): drop an author's entries from one feed (unfollow). */
+  internalDeleteAuthorEntries(userId: string, authorId: string): Promise<{ deleted: number }> {
+    return this.delete(`${V1}/feed/internal/feed/users/${userId}/authors/${authorId}`).then((r) =>
+      z.object({ deleted: z.number().int() }).parse(r),
+    );
+  }
+
+  /** Internal (reset job / fanout): wipe one user's feed. */
+  internalResetUser(userId: string): Promise<{ deleted: number }> {
+    return this.delete(`${V1}/feed/internal/feed/users/${userId}`).then((r) =>
+      z.object({ deleted: z.number().int() }).parse(r),
+    );
+  }
+}
+
+export interface FeedPage {
+  items: HydratedFeedItem[];
+  nextCursor: string | null;
 }
 
 export class SearchClient extends ServiceClient {

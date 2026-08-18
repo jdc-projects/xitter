@@ -1,5 +1,7 @@
-import { Controller, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, Post } from '@nestjs/common';
 import { Internal } from '@xitter/auth-nest';
+import { postLookupRequestSchema, type PostLookupRequest } from '@xitter/api-contracts';
+import { ZodValidationPipe } from '@xitter/service-kit';
 import { PostsService } from './posts.service.js';
 
 /**
@@ -17,5 +19,13 @@ export class InternalController {
   @HttpCode(200)
   reseed(): Promise<{ ok: boolean }> {
     return this.posts.reseed().then(() => ({ ok: true }));
+  }
+
+  /** Bulk visible-post lookup (feed #7 hydration). Deleted ids are omitted. */
+  @Post('posts/lookup')
+  @Internal()
+  @HttpCode(200)
+  lookup(@Body(new ZodValidationPipe(postLookupRequestSchema)) body: PostLookupRequest) {
+    return this.posts.lookupPosts(body.postIds).then((items) => ({ items }));
   }
 }

@@ -74,13 +74,17 @@ export class SocialService {
       displayName: input.displayName ?? (await generatedDisplayName()),
       bio: input.bio ?? null,
     });
-    await this.emitSafe('social.profile.updated', {
-      profileId: caller.id,
-      username: username.data,
-      displayName: profile.displayName,
-      bio: profile.bio,
-      updatedAt: profile.createdAt.toISOString(),
-    });
+    await this.emitSafe(
+      'social.profile.updated',
+      {
+        profileId: caller.id,
+        username: username.data,
+        displayName: profile.displayName,
+        bio: profile.bio,
+        updatedAt: profile.createdAt.toISOString(),
+      },
+      caller.id,
+    );
     return { profile: this.repo.toProfile(profile), created: true };
   }
 
@@ -113,13 +117,17 @@ export class SocialService {
       ...(input.bio !== undefined ? { bio: input.bio } : {}),
     });
     const profile = this.repo.toProfile(row);
-    await this.emitSafe('social.profile.updated', {
-      profileId: profile.id,
-      username: profile.username,
-      displayName: profile.displayName,
-      bio: profile.bio,
-      updatedAt: new Date().toISOString(),
-    });
+    await this.emitSafe(
+      'social.profile.updated',
+      {
+        profileId: profile.id,
+        username: profile.username,
+        displayName: profile.displayName,
+        bio: profile.bio,
+        updatedAt: new Date().toISOString(),
+      },
+      profile.id,
+    );
     return profile;
   }
 
@@ -139,11 +147,15 @@ export class SocialService {
 
     const created = await this.repo.createFollow(viewerId, targetId);
     if (created) {
-      await this.emitSafe('social.follow.created', {
-        followerId: viewerId,
-        followeeId: targetId,
-        createdAt: new Date().toISOString(),
-      });
+      await this.emitSafe(
+        'social.follow.created',
+        {
+          followerId: viewerId,
+          followeeId: targetId,
+          createdAt: new Date().toISOString(),
+        },
+        viewerId,
+      );
     }
   }
 
@@ -152,11 +164,15 @@ export class SocialService {
     await this.requireTarget(targetId);
     const removed = await this.repo.deleteFollow(viewerId, targetId);
     if (removed) {
-      await this.emitSafe('social.follow.deleted', {
-        followerId: viewerId,
-        followeeId: targetId,
-        deletedAt: new Date().toISOString(),
-      });
+      await this.emitSafe(
+        'social.follow.deleted',
+        {
+          followerId: viewerId,
+          followeeId: targetId,
+          deletedAt: new Date().toISOString(),
+        },
+        viewerId,
+      );
     }
   }
 
@@ -175,27 +191,39 @@ export class SocialService {
     // deletions carry the feed-removal semantics (spec 04: blocks are not
     // feed-rewritten by the block event itself).
     if (mine) {
-      await this.emitSafe('social.follow.deleted', {
-        followerId: viewerId,
-        followeeId: targetId,
-        deletedAt: new Date().toISOString(),
-      });
+      await this.emitSafe(
+        'social.follow.deleted',
+        {
+          followerId: viewerId,
+          followeeId: targetId,
+          deletedAt: new Date().toISOString(),
+        },
+        viewerId,
+      );
     }
     if (theirs) {
-      await this.emitSafe('social.follow.deleted', {
-        followerId: targetId,
-        followeeId: viewerId,
-        deletedAt: new Date().toISOString(),
-      });
+      await this.emitSafe(
+        'social.follow.deleted',
+        {
+          followerId: targetId,
+          followeeId: viewerId,
+          deletedAt: new Date().toISOString(),
+        },
+        targetId,
+      );
     }
 
     const created = await this.repo.createBlock(viewerId, targetId);
     if (created) {
-      await this.emitSafe('social.block.created', {
-        blockerId: viewerId,
-        blockedId: targetId,
-        createdAt: new Date().toISOString(),
-      });
+      await this.emitSafe(
+        'social.block.created',
+        {
+          blockerId: viewerId,
+          blockedId: targetId,
+          createdAt: new Date().toISOString(),
+        },
+        viewerId,
+      );
     }
   }
 
@@ -204,11 +232,15 @@ export class SocialService {
     await this.requireTarget(targetId);
     const removed = await this.repo.deleteBlock(viewerId, targetId);
     if (removed) {
-      await this.emitSafe('social.block.deleted', {
-        blockerId: viewerId,
-        blockedId: targetId,
-        deletedAt: new Date().toISOString(),
-      });
+      await this.emitSafe(
+        'social.block.deleted',
+        {
+          blockerId: viewerId,
+          blockedId: targetId,
+          deletedAt: new Date().toISOString(),
+        },
+        viewerId,
+      );
     }
   }
 
@@ -266,6 +298,12 @@ export class SocialService {
     return this.repo.blockedIds(userId);
   }
 
+  /** Internal (feed #7): bulk profile lookup for server-side hydration. */
+  async profilesByIds(userIds: string[]): Promise<Profile[]> {
+    const rows = await this.repo.findProfiles(userIds);
+    return rows.map((row) => this.repo.toProfile(row));
+  }
+
   /** Internal (reset job): wipe profiles + graph; reseed runs via the seed script. */
   async reseed(): Promise<void> {
     await this.repo.truncate();
@@ -283,9 +321,10 @@ export class SocialService {
   private async emitSafe(
     eventType: Parameters<SocialEvents['emit']>[0],
     payload: Record<string, unknown>,
+    key?: string,
   ): Promise<void> {
     try {
-      await this.events.emit(eventType, payload);
+      await this.events.emit(eventType, payload, key);
     } catch (err) {
       // The DB write already committed; a missed event degrades downstream
       // views until the nightly reset rather than failing the user's action.

@@ -96,14 +96,18 @@ export class MediaService {
     if (row.uploadedAt) return this.toAsset(row);
 
     const updated = await this.repo.markUploaded(mediaId, stat.bytes);
-    await this.emitSafe('media.media.uploaded', {
+    await this.emitSafe(
+      'media.media.uploaded',
+      {
+        mediaId,
+        ownerId,
+        objectKey: row.objectKey,
+        mimeType: row.mimeType,
+        bytes: stat.bytes,
+        createdAt: updated.createdAt.toISOString(),
+      },
       mediaId,
-      ownerId,
-      objectKey: row.objectKey,
-      mimeType: row.mimeType,
-      bytes: stat.bytes,
-      createdAt: updated.createdAt.toISOString(),
-    });
+    );
     return this.toAsset(updated);
   }
 
@@ -143,12 +147,16 @@ export class MediaService {
     if (row.status === 'ready') return this.toAsset(row);
 
     const updated = await this.repo.recordVariants(mediaId, variants);
-    await this.emitSafe('media.media.processed', {
+    await this.emitSafe(
+      'media.media.processed',
+      {
+        mediaId,
+        ownerId: updated.ownerId,
+        variants,
+        processedAt: new Date().toISOString(),
+      },
       mediaId,
-      ownerId: updated.ownerId,
-      variants,
-      processedAt: new Date().toISOString(),
-    });
+    );
     return this.toAsset(updated);
   }
 
@@ -216,9 +224,10 @@ export class MediaService {
   private async emitSafe(
     eventType: Parameters<MediaEvents['emit']>[0],
     payload: Record<string, unknown>,
+    key?: string,
   ): Promise<void> {
     try {
-      await this.events.emit(eventType, payload);
+      await this.events.emit(eventType, payload, key);
     } catch (err) {
       // The DB write already committed; a missed event stalls this asset in
       // pending until the nightly reset rather than failing the user's call.

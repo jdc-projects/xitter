@@ -4,7 +4,11 @@ import type { EventProducer, TopicName } from '@xitter/events';
 export type PostsEventType = 'posts.post.created' | 'posts.post.deleted';
 
 export interface PostsEvents {
-  emit(eventType: PostsEventType, payload: Record<string, unknown>): Promise<void>;
+  /**
+   * `key` is the aggregate id (postId): same post = same partition = ordered
+   * lifecycle (create before delete), per spec 04.
+   */
+  emit(eventType: PostsEventType, payload: Record<string, unknown>, key?: string): Promise<void>;
   shutdown(): Promise<void>;
 }
 
@@ -28,12 +32,13 @@ export class KafkaPostsEvents implements PostsEvents {
     private readonly topic: TopicName,
   ) {}
 
-  emit(eventType: PostsEventType, payload: Record<string, unknown>): Promise<void> {
+  emit(eventType: PostsEventType, payload: Record<string, unknown>, key?: string): Promise<void> {
     return this.producer.emit(this.topic, {
       eventType,
       producer: 'posts',
       occurredAt: new Date().toISOString(),
       payload,
+      key,
     });
   }
 

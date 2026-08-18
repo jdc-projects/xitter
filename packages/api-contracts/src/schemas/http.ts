@@ -6,6 +6,8 @@ extendZodWithOpenApi(z);
 import {
   POST_MEDIA_MAX,
   POST_TEXT_MAX,
+  feedEntryInputSchema,
+  hydratedFeedItemSchema,
   interactionKindSchema,
   mediaAssetSchema,
   mediaIdSchema,
@@ -128,11 +130,57 @@ export const mediaLookupResponseSchema = z
   })
   .strict();
 
+// Internal (fanout worker → feed): bulk idempotent upsert of feed entries
+// (natural key (userId, postId, reason, repostedById), spec 04).
+export const upsertFeedEntriesRequestSchema = z
+  .object({
+    entries: z.array(feedEntryInputSchema).min(1).max(1000),
+  })
+  .strict()
+  .openapi('UpsertFeedEntriesRequest');
+
+export type UpsertFeedEntriesRequest = z.infer<typeof upsertFeedEntriesRequestSchema>;
+
+export const upsertFeedEntriesResponseSchema = z
+  .object({
+    /** Rows actually inserted (replays conflict-skip; spec 04 idempotency). */
+    inserted: z.number().int().nonnegative(),
+  })
+  .strict();
+
+// Internal (feed → posts): bulk fetch of visible posts for hydration.
+// Deleted/missing ids are omitted from the response.
+export const postLookupRequestSchema = z
+  .object({
+    postIds: z.array(postIdSchema).min(1).max(100),
+  })
+  .strict();
+
+export const postLookupResponseSchema = z
+  .object({
+    items: z.array(postSchema),
+  })
+  .strict();
+
+// Internal (feed → social): bulk profile lookup for hydration. Missing ids
+// are omitted; callers substitute placeholders.
+export const profileLookupRequestSchema = z
+  .object({
+    userIds: z.array(userIdSchema).min(1).max(100),
+  })
+  .strict();
+
+export const profileLookupResponseSchema = z
+  .object({
+    items: z.array(profileSchema),
+  })
+  .strict();
+
 export const postPageSchema = cursorPagination(postSchema).openapi('PostPage');
 
 export const profilePageSchema = cursorPagination(profileSchema).openapi('ProfilePage');
 
-export const feedPageSchema = cursorPagination(z.unknown()).openapi('FeedPage');
+export const feedPageSchema = cursorPagination(hydratedFeedItemSchema).openapi('FeedPage');
 
 export const idParam = (name: 'userId' | 'postId' | 'mediaId' | 'username') =>
   ({

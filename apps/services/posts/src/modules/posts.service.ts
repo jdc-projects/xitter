@@ -75,15 +75,19 @@ export class PostsService {
     });
     const post = this.toPost(row);
 
-    await this.emitSafe('posts.post.created', {
-      postId: row.id,
-      authorId,
-      text: row.text,
-      mediaIds: row.mediaIds,
-      replyToId: row.replyToId,
-      repostOfId: row.repostOfId,
-      createdAt: row.createdAt.toISOString(),
-    });
+    await this.emitSafe(
+      'posts.post.created',
+      {
+        postId: row.id,
+        authorId,
+        text: row.text,
+        mediaIds: row.mediaIds,
+        replyToId: row.replyToId,
+        repostOfId: row.repostOfId,
+        createdAt: row.createdAt.toISOString(),
+      },
+      row.id,
+    );
     return post;
   }
 
@@ -97,11 +101,15 @@ export class PostsService {
     const deleted = await this.repo.softDelete(postId);
     if (!deleted) return; // concurrent delete already won - idempotent 204
 
-    await this.emitSafe('posts.post.deleted', {
+    await this.emitSafe(
+      'posts.post.deleted',
+      {
+        postId,
+        authorId: callerId,
+        deletedAt: deleted.deletedAt?.toISOString() ?? new Date().toISOString(),
+      },
       postId,
-      authorId: callerId,
-      deletedAt: deleted.deletedAt?.toISOString() ?? new Date().toISOString(),
-    });
+    );
   }
 
   /** Deleted posts are indistinguishable from missing ones. */
@@ -124,6 +132,12 @@ export class PostsService {
     assertValidCursor(page.cursor);
     const result = await this.repo.replies(postId, page.cursor, page.limit);
     return { items: result.items.map((row) => this.toPost(row)), nextCursor: result.nextCursor };
+  }
+
+  /** Internal (feed hydration): visible posts by id, any author. */
+  async lookupPosts(postIds: string[]): Promise<Post[]> {
+    const rows = await this.repo.visiblePosts(postIds);
+    return rows.map((row) => this.toPost(row));
   }
 
   /** Internal (reset job): wipe posts + interactions; reseed via seed script. */
@@ -185,9 +199,10 @@ export class PostsService {
   private async emitSafe(
     eventType: Parameters<PostsEvents['emit']>[0],
     payload: Record<string, unknown>,
+    key?: string,
   ): Promise<void> {
     try {
-      await this.events.emit(eventType, payload);
+      await this.events.emit(eventType, payload, key);
     } catch (err) {
       // The DB write already committed; a missed event degrades downstream
       // views until the nightly reset rather than failing the user's action.
