@@ -1,7 +1,6 @@
 import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
 import { Internal } from '@xitter/auth-nest';
 import {
-  internalMediaAssetSchema,
   mediaIdSchema,
   mediaLookupRequestSchema,
   recordVariantsRequestSchema,
