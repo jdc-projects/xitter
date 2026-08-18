@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { createTokenVerifier, type AuthContext, type TokenVerifier } from '@xitter/auth';
 import type { AuthStrategy, AuthStrategyResult, Payload } from 'payload';
 import { env } from '../env';
@@ -74,7 +75,9 @@ export async function findOrCreateAdminUser(payload: Payload, auth: AuthContext)
   } else {
     await payload.create({
       collection: 'users',
-      data: { email, sub: auth.subject, roles },
+      // Auth collections require a password; this one is random per doc and
+      // never communicated - all login goes through Keycloak.
+      data: { email, sub: auth.subject, roles, password: randomBytes(24).toString('hex') },
       overrideAccess: true,
     });
   }

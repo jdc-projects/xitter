@@ -5,14 +5,15 @@ import { createKeycloakStrategy } from '@/auth/keycloak-strategy';
  * CMS admin users, bridged to the Keycloak admin realm (spec 07):
  *
  * - Browsers log in via the OIDC code flow (apps/cms/src/app/(auth)); the
- *   callback mints a standard Payload session for the mapped user.
+ *   callback mints a standard Payload session cookie for the mapped user.
  * - Machines (web draft-preview fetch, content promotion) present a Keycloak
  *   access token as a Bearer header; the custom strategy below validates it
  *   and maps it to the same user docs.
  *
- * There is no signup and no usable password login: user docs are created by
- * the OIDC callback / keycloak strategy only, so Payload's password fields
- * are never set and the (middleware-bypassed) login form always fails.
+ * No usable password login exists: user docs are created only by the
+ * Keycloak bridge with a random, never-communicated password (Payload
+ * requires one on auth collections), and the proxy sends /admin/login to
+ * Keycloak instead of Payload's local login form.
  */
 export const Users: CollectionConfig = {
   slug: 'users',
