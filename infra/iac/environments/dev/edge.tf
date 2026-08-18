@@ -167,6 +167,34 @@ module "ingress_media" {
   depends_on = [helm_release.rustfs]
 }
 
+# Presigned browser PUTs (T5). SigV4 signs the host AND canonical path of the
+# request the CLIENT sends, so they cannot ride the rewritten `/media` route -
+# the signature would cover `/media/<key>` while RustFS needs to authenticate
+# `/xitter-media/<key>`. The media service therefore presigns against the edge
+# host with path-style addressing, and this route forwards those
+# `/xitter-media/<key>` URLs to the store unauthenticated, un-rewritten. The
+# signature itself is the authorisation (15-minute expiry, exact-key scoped).
+module "ingress_media_uploads" {
+  source = "github.com/jdc-projects/homelab//iac/modules/ingress"
+
+  name      = "xitter-${var.environment}-media-uploads"
+  namespace = local.ns
+  domain    = var.domain
+  path      = "xitter-media"
+  priority  = 100
+
+  existing_service_name      = local.rustfs_svc
+  existing_service_namespace = local.ns
+  target_port                = 9000
+
+  auth_mode          = "none"
+  do_enable_geoblock = false
+
+  kubeconfig_path = local.kubeconfig
+
+  depends_on = [helm_release.rustfs]
+}
+
 # Keycloak demo-realm path routes on the idp host (T14). The homelab edge
 # geo-blocks non-UK traffic host-wide on *.jd-chapman.dev, but the demo is
 # global, so exactly three paths are opened here - owned by this

@@ -26,6 +26,42 @@ locals {
   # enforcement (#5); authn is M2M via KEYCLOAK_CLIENT_ID/SECRET below.
   service_extra_env = {
     posts = [{ name = "XITTER_SOCIAL_URL", value = local.svc_base.social }]
+    # Media storage (T5): server-side S3 calls hit RustFS in-cluster; the
+    # presign endpoint is the edge host because SigV4 signs the host the
+    # browser contacts (path-style /xitter-media/<key> through the
+    # unauthenticated edge route of the same name).
+    media = [
+      { name = "XITTER_MEDIA_S3_ENDPOINT", value = "http://${local.rustfs_svc}:9000" },
+      { name = "XITTER_MEDIA_S3_PUBLIC_ENDPOINT", value = "https://${var.domain}" },
+      { name = "XITTER_MEDIA_S3_BUCKET", value = local.rustfs_bucket },
+    ]
+  }
+
+  # media-process (T5): the MediaClient takes the BARE service base URL and
+  # builds /api/media/internal/... itself, unlike the *_INTERNAL_URL vars
+  # below whose consumers still hardcode the versioned prefix.
+  worker_extra_env = {
+    "media-process" = [
+      { name = "XITTER_MEDIA_S3_ENDPOINT", value = "http://${local.rustfs_svc}:9000" },
+      { name = "XITTER_MEDIA_S3_BUCKET", value = local.rustfs_bucket },
+    ]
+  }
+
+  # Per-service additions to the standard secret_env (T5: media's RustFS
+  # credentials, from the same random_password values the store itself uses).
+  service_extra_secret_env = {
+    media = [
+      {
+        name        = "XITTER_MEDIA_S3_ACCESS_KEY"
+        secret_name = kubernetes_secret.media_s3.metadata[0].name
+        secret_key  = "XITTER_MEDIA_S3_ACCESS_KEY"
+      },
+      {
+        name        = "XITTER_MEDIA_S3_SECRET_KEY"
+        secret_name = kubernetes_secret.media_s3.metadata[0].name
+        secret_key  = "XITTER_MEDIA_S3_SECRET_KEY"
+      },
+    ]
   }
 }
 
@@ -52,20 +88,41 @@ module "api_service" {
     { name = "KEYCLOAK_CLIENT_ID", value = "svc-${each.key}" },
   ], lookup(local.service_extra_env, each.key, []))
 
-  secret_env = [
-    {
-      name        = "DATABASE_URL"
-      secret_name = kubernetes_secret.db_url[each.key].metadata[0].name
-      secret_key  = "DATABASE_URL"
-    },
-    {
-      name        = "KEYCLOAK_CLIENT_SECRET"
-      secret_name = kubernetes_secret.keycloak_client["svc-${each.key}"].metadata[0].name
-      secret_key  = "KEYCLOAK_CLIENT_SECRET"
-    },
-  ]
+  secret_env = concat(
+    [
+      {
+        name        = "DATABASE_URL"
+        secret_name = kubernetes_secret.db_url[each.key].metadata[0].name
+        secret_key  = "DATABASE_URL"
+      },
+      {
+        name        = "KEYCLOAK_CLIENT_SECRET"
+        secret_name = kubernetes_secret.keycloak_client["svc-${each.key}"].metadata[0].name
+        secret_key  = "KEYCLOAK_CLIENT_SECRET"
+      },
+    ],
+    # Media S3 credentials (T5) - only the media service talks to RustFS.
+    lookup(local.service_extra_secret_env, each.key, []),
+  )
 
   depends_on = [kubernetes_manifest.postgres, kubernetes_manifest.kafka]
+}
+
+# RustFS credentials for the media path, keyed as the env vars the workloads
+# expect (Knative workers mount secrets via envFrom: key == var name, no
+# per-key mapping). Same random_password values RustFS itself was bootstrapped
+# with, so service, worker and store always agree.
+resource "kubernetes_secret" "media_s3" {
+  metadata {
+    name      = "media-s3"
+    namespace = local.ns
+    labels    = module.namespace.labels
+  }
+
+  data = {
+    XITTER_MEDIA_S3_ACCESS_KEY = random_password.rustfs_root_username.result
+    XITTER_MEDIA_S3_SECRET_KEY = random_password.rustfs_root_password.result
+  }
 }
 
 # ---------------------------------------------------------------------------
@@ -90,17 +147,23 @@ module "worker" {
     { name = "METRICS_PORT", value = tostring(local.worker_metrics_ports[each.key]) },
     # KEYCLOAK_CLIENT_ID/SECRET both come from the client Secret (envFrom).
     { name = "FEED_INTERNAL_URL", value = "${local.svc_base.feed}/api/feed/v1" },
-    { name = "MEDIA_INTERNAL_URL", value = "${local.svc_base.media}/api/media/v1" },
     { name = "SEARCH_INTERNAL_URL", value = "${local.svc_base.search}/api/search/v1" },
-  ])
+    # MediaClient builds /api/media/... from the bare base (see local.worker_extra_env).
+    { name = "MEDIA_INTERNAL_URL", value = local.svc_base.media },
+  ], lookup(local.worker_extra_env, each.key, []))
 
-  secret_env = [
-    {
-      name        = "KEYCLOAK_CLIENT_SECRET"
-      secret_name = kubernetes_secret.keycloak_client["svc-worker-${each.key}"].metadata[0].name
-      secret_key  = "KEYCLOAK_CLIENT_SECRET"
-    },
-  ]
+  secret_env = concat(
+    [
+      {
+        name        = "KEYCLOAK_CLIENT_SECRET"
+        secret_name = kubernetes_secret.keycloak_client["svc-worker-${each.key}"].metadata[0].name
+        secret_key  = "KEYCLOAK_CLIENT_SECRET"
+      },
+    ],
+    # media-process reads RustFS with the same credentials as the service
+    # (envFrom on Knative: secret keys are already named as the env vars).
+    each.key == "media-process" ? [{ name = "XITTER_MEDIA_S3_ACCESS_KEY", secret_name = kubernetes_secret.media_s3.metadata[0].name, secret_key = "XITTER_MEDIA_S3_ACCESS_KEY" }] : [],
+  )
 
   depends_on = [kubernetes_manifest.kafka_topics]
 }
