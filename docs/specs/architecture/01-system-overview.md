@@ -90,7 +90,7 @@ The edge performs no path rewriting for APIs: each service owns its **full path 
 | `/api/media`  | media service  | JSON metadata + presigned upload URLs; binaries are PUT directly to RustFS |
 | `/api/feed`   | feed service   | Materialised home timeline + WebSocket (`/api/feed/v1/ws`)                 |
 | `/api/search` | search service | Post full-text search                                                      |
-| `/media`      | RustFS         | Public read; `/media/` prefix stripped to bucket root (`xitter-media`)     |
+| `/media`      | RustFS         | Public read; `/media/{key}` rewritten to path-style `/xitter-media/{key}`  |
 | `/cms`        | cms            | Payload admin UI; primary realm, `app-admin` role                          |
 | `/admin`      | admin          | Refine console; primary realm, `system-admin` role                         |
 
