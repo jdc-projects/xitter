@@ -45,7 +45,8 @@ describe('CMS collections', () => {
 
   it('site content enables drafts (live preview) and stable promotion slugs', () => {
     for (const collection of [LandingContent, Faq]) {
-      expect(collection.versions?.drafts).toBe(true);
+      const versions = collection.versions as { drafts?: unknown } | boolean | undefined;
+      expect(Boolean(typeof versions === 'object' ? versions.drafts : versions)).toBe(true);
       const slugs = collection.fields.filter((f) => 'name' in f && f.name === 'slug');
       expect(slugs).toHaveLength(1);
       expect(slugs[0]).toMatchObject({ unique: true, required: true });

@@ -1,5 +1,5 @@
 import { createTokenVerifier, type AuthContext, type TokenVerifier } from '@xitter/auth';
-import type { AuthStrategy, Payload } from 'payload';
+import type { AuthStrategy, AuthStrategyResult, Payload } from 'payload';
 import { env } from '../env.js';
 
 /** Spec 07: the CMS is gated on the app-admin realm role. */
@@ -87,8 +87,8 @@ export async function findOrCreateAdminUser(payload: Payload, auth: AuthContext)
     overrideAccess: true,
     depth: 0,
   });
-  const doc = user.docs[0] as { id: number; email: string; collection?: string; _strategy?: string };
-  doc.collection = 'users';
-  doc._strategy = 'keycloak';
-  return doc;
+  const doc = user.docs[0] as { id: number; email: string };
+  return { ...doc, collection: 'users', _strategy: 'keycloak' } as NonNullable<
+    AuthStrategyResult['user']
+  >;
 }

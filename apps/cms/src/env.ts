@@ -17,12 +17,14 @@ export const env = parseEnv(
   }),
 );
 
-// Local/CI builds may use the default; a deployed environment (envs managed
-// by Tofu: dev/prod/anything else) must inject a real secret - a known shared
-// value must never silently guard the admin API.
-const EPHEMERAL_ENVS = new Set(['local', 'ci']);
+/**
+ * Ephemeral local copies (default, `local`, `ci`, isolated worktree envs like
+ * `t9`) auto-push the schema and may use default secrets; deployed
+ * environments (envs managed by Tofu: dev, prod) must inject real values.
+ */
+const DEPLOYED_ENVS = new Set(['dev', 'prod']);
 export function isEphemeralEnv(): boolean {
-  return !process.env.XITTER_ENV || EPHEMERAL_ENVS.has(process.env.XITTER_ENV);
+  return !DEPLOYED_ENVS.has(process.env.XITTER_ENV ?? 'local');
 }
 if (env.PAYLOAD_SECRET === 'xitter-local-cms-secret' && !isEphemeralEnv()) {
   throw new Error('PAYLOAD_SECRET must be set in deployed environments');

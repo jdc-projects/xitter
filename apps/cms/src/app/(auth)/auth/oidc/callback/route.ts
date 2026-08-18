@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import config from '@payload-config';
+import payloadConfig from '@payload-config';
 import { generatePayloadCookie, getPayload, jwtSign } from 'payload';
 import { createTokenVerifier } from '@xitter/auth';
 import { createLogger } from '@xitter/observability';
@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const payload = await getPayload({ config });
+    const payload = await getPayload({ config: payloadConfig });
     const user = await findOrCreateAdminUser(payload, auth);
 
     const { token } = await jwtSign({
