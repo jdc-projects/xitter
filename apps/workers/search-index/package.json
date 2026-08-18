@@ -18,7 +18,6 @@
     "@xitter/config": "*",
     "@xitter/eslint-config": "*",
     "@xitter/events": "*",
-    "@xitter/observability": "*",
     "@xitter/tsconfig": "*",
     "kafkajs": "^2",
     "zod": "^4"

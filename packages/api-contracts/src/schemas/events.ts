@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   interactionKindSchema,
   mediaIdSchema,
+  mediaVariantCoreSchema,
   postIdSchema,
   userIdSchema,
   usernameSchema,
@@ -97,16 +98,7 @@ export const mediaProcessed = z.object({
   eventType: z.literal('media.media.processed'),
   mediaId: mediaIdSchema,
   ownerId: userIdSchema,
-  variants: z.array(
-    z.object({
-      kind: z.enum(['original', 'thumb']),
-      objectKey: z.string().min(1),
-      mimeType: z.string().min(1),
-      bytes: z.number().int().positive(),
-      width: z.number().int().positive().nullable(),
-      height: z.number().int().positive().nullable(),
-    }),
-  ),
+  variants: z.array(mediaVariantCoreSchema),
   processedAt: z.iso.datetime(),
 });
 

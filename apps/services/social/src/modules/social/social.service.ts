@@ -1,10 +1,4 @@
-import {
-  BadRequestException,
-  ForbiddenException,
-  Inject,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   usernameSchema,
   type Profile,
@@ -12,8 +6,9 @@ import {
   type UpdateProfileRequest,
 } from '@xitter/api-contracts';
 import { createLogger } from '@xitter/observability';
+import { assertValidCursor, badRequest, forbidden, notFound } from '@xitter/service-kit';
 import { SOCIAL_EVENTS, type SocialEvents } from './social-events.js';
-import { SocialRepository, decodeCursor } from './social.repository.js';
+import { SocialRepository } from './social.repository.js';
 
 const logger = createLogger({ service: 'social' });
 
@@ -31,17 +26,6 @@ export interface ProfilePage {
   items: Profile[];
   nextCursor: string | null;
 }
-
-const notFound = (message: string) =>
-  new NotFoundException({ error: { code: 'NOT_FOUND', message } });
-
-const forbidden = (message: string) =>
-  new ForbiddenException({ error: { code: 'FORBIDDEN', message } });
-
-const badRequest = (message: string, details?: object) =>
-  new BadRequestException({
-    error: { code: 'VALIDATION_ERROR', message, ...(details ? { details } : {}) },
-  });
 
 /** Organic profiles get the same faker-generated look as seeded ones. */
 async function generatedDisplayName(): Promise<string> {
@@ -249,7 +233,7 @@ export class SocialService {
 
   async following(targetId: string, page: PageRequest): Promise<ProfilePage> {
     await this.requireTarget(targetId);
-    this.requireValidCursor(page.cursor);
+    assertValidCursor(page.cursor);
     const result = await this.repo.followPage('following', targetId, page.cursor, page.limit);
     return {
       items: result.items.map((row) => this.repo.toProfile(row)),
@@ -259,26 +243,12 @@ export class SocialService {
 
   async followers(targetId: string, page: PageRequest): Promise<ProfilePage> {
     await this.requireTarget(targetId);
-    this.requireValidCursor(page.cursor);
+    assertValidCursor(page.cursor);
     const result = await this.repo.followPage('followers', targetId, page.cursor, page.limit);
     return {
       items: result.items.map((row) => this.repo.toProfile(row)),
       nextCursor: result.nextCursor,
     };
-  }
-
-  /**
-   * A cursor that doesn't decode to a valid keyset position must 400, not
-   * silently restart at page 1 (clients would re-walk forever) or blow up
-   * as a 500 in Prisma (non-date createdAt).
-   */
-  private requireValidCursor(cursor: string | undefined): void {
-    if (!cursor) return;
-    const parsed = decodeCursor(cursor);
-    const createdAt = parsed ? new Date(parsed.createdAt).getTime() : Number.NaN;
-    if (parsed === null || Number.isNaN(createdAt) || !parsed.id) {
-      throw badRequest('Invalid pagination cursor');
-    }
   }
 
   /** Internal (fanout worker): follower ids for feed fanout. */

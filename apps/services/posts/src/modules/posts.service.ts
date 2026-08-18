@@ -1,14 +1,15 @@
+import { Inject, Injectable } from '@nestjs/common';
 import {
-  BadRequestException,
-  ForbiddenException,
-  Inject,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import { createPostRequestSchema, type CreatePostRequest, type Post } from '@xitter/api-contracts';
+  createPostRequestSchema,
+  type CreatePostRequest,
+  type MediaAsset,
+  type Post,
+} from '@xitter/api-contracts';
 import { createLogger } from '@xitter/observability';
+import { assertValidCursor, badRequest, forbidden, notFound } from '@xitter/service-kit';
+import { MEDIA_CHECKER, type MediaChecker } from './media-checker.js';
 import { POSTS_EVENTS, type PostsEvents } from './posts-events.js';
-import { PostsRepository, decodeCursor, type PostRow } from './posts.repository.js';
+import { PostsRepository, type PostRow } from './posts.repository.js';
 import { RELATIONSHIP_CHECKER, type RelationshipChecker } from './relationship-checker.js';
 
 const logger = createLogger({ service: 'posts' });
@@ -23,24 +24,13 @@ export interface PostPage {
   nextCursor: string | null;
 }
 
-const notFound = (message: string) =>
-  new NotFoundException({ error: { code: 'NOT_FOUND', message } });
-
-const forbidden = (message: string) =>
-  new ForbiddenException({ error: { code: 'FORBIDDEN', message } });
-
-const badRequest = (message: string, details?: object) =>
-  new BadRequestException({
-    error: { code: 'VALIDATION_ERROR', message, ...(details ? { details } : {}) },
-  });
-
 /**
  * Posts, replies, and (from #8) interactions - the rules from spec 03 /
  * product 02 §4-6:
  *
  * - `text` is required, 1-512 chars (contract schema, POST_TEXT_MAX);
- * - `mediaIds` are shape-validated UUIDs only - existence/status checks land
- *   with the media ticket (#6), noted per endpoint;
+ * - `mediaIds` resolve through media's internal API: existence, ownership
+ *   and ready-status at creation; a denormalised snapshot rides the row;
  * - deletes are soft: deletedAt set, hidden from every read path;
  * - only the author may delete their own post;
  * - a reply is rejected when a block exists in EITHER direction between the
@@ -54,6 +44,7 @@ export class PostsService {
     private readonly repo: PostsRepository,
     @Inject(POSTS_EVENTS) private readonly events: PostsEvents,
     @Inject(RELATIONSHIP_CHECKER) private readonly relationships: RelationshipChecker,
+    @Inject(MEDIA_CHECKER) private readonly media: MediaChecker,
   ) {}
 
   async create(authorId: string, input: CreatePostRequest): Promise<Post> {
@@ -70,10 +61,16 @@ export class PostsService {
       ? await this.requireReplyTarget(input.replyToId, authorId)
       : null;
 
+    // mediaIds must exist, be owned by the author, and be ready (processed)
+    // at attach time - the snapshot taken here is what reads render.
+    const requested = [...new Set(input.mediaIds)];
+    const media = requested.length > 0 ? await this.requireAttachable(authorId, requested) : [];
+
     const row = await this.repo.createPost({
       authorId,
       text: input.text,
       mediaIds: input.mediaIds,
+      media,
       replyToId: parent?.id ?? null,
     });
     const post = this.toPost(row);
@@ -116,7 +113,7 @@ export class PostsService {
 
   /** Author timeline, newest first, soft-deleted rows excluded. */
   async userPosts(authorId: string, page: PageRequest): Promise<PostPage> {
-    this.requireValidCursor(page.cursor);
+    assertValidCursor(page.cursor);
     const result = await this.repo.authorPosts(authorId, page.cursor, page.limit);
     return { items: result.items.map((row) => this.toPost(row)), nextCursor: result.nextCursor };
   }
@@ -124,7 +121,7 @@ export class PostsService {
   /** Thread order: chronological (oldest first, spec 03). */
   async postReplies(postId: string, page: PageRequest): Promise<PostPage> {
     await this.getPost(postId); // 404 for deleted/missing parents
-    this.requireValidCursor(page.cursor);
+    assertValidCursor(page.cursor);
     const result = await this.repo.replies(postId, page.cursor, page.limit);
     return { items: result.items.map((row) => this.toPost(row)), nextCursor: result.nextCursor };
   }
@@ -152,17 +149,21 @@ export class PostsService {
   }
 
   /**
-   * A cursor that doesn't decode to a valid keyset position must 400, not
-   * silently restart at page 1 (clients would re-walk forever) or blow up as
-   * a 500 in Prisma (non-date createdAt).
+   * Every requested id must resolve to a ready asset owned by the author.
+   * The media checker fails closed when media is unreachable; here the
+   * response decides per-asset (missing / not-yours / still-pending).
    */
-  private requireValidCursor(cursor: string | undefined): void {
-    if (!cursor) return;
-    const parsed = decodeCursor(cursor);
-    const createdAt = parsed ? new Date(parsed.createdAt).getTime() : Number.NaN;
-    if (parsed === null || Number.isNaN(createdAt) || !parsed.id) {
-      throw badRequest('Invalid pagination cursor');
+  private async requireAttachable(authorId: string, mediaIds: string[]): Promise<MediaAsset[]> {
+    const resolved = await this.media.resolveForAttach(authorId, mediaIds);
+    const ready = new Set(resolved.filter((asset) => asset.status === 'ready').map((a) => a.id));
+    const invalid = mediaIds.filter((id) => !ready.has(id));
+    if (invalid.length > 0) {
+      throw badRequest('Attached images must be processed and ready', {
+        invalidMediaIds: invalid,
+      });
     }
+    // Preserve the request order for deterministic rendering.
+    return mediaIds.map((id) => resolved.find((asset) => asset.id === id)!);
   }
 
   private toPost(row: PostRow): Post {
@@ -170,9 +171,9 @@ export class PostsService {
       id: row.id,
       authorId: row.authorId,
       text: row.text,
-      // Media hydration lands with #6 (media service); ids live on the row
-      // and in the post.created event payload until then.
-      media: [],
+      // Snapshot taken at creation (see create): variants are immutable, so
+      // this is the render truth without a media call per read.
+      media: (row.media ?? []) as MediaAsset[],
       replyToId: row.replyToId,
       repostOfId: row.repostOfId,
       counts: this.repo.toCounts(row),

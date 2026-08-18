@@ -3,8 +3,7 @@
  * posts index. Deployed as a Knative service; consumes Kafka only.
  */
 import { kafkaBrokers, localPort, localUrl, loadRepoEnv, parseEnv } from '@xitter/config';
-import { CONSUMER_GROUPS, createEventConsumer } from '@xitter/events';
-import { createLogger, createMetricsServer, initSentry, initTracing } from '@xitter/observability';
+import { CONSUMER_GROUPS, runEventWorker } from '@xitter/events';
 import { z } from 'zod';
 import { handleEvent } from './handlers.js';
 
@@ -18,32 +17,12 @@ const env = parseEnv(
   }),
 );
 
-const logger = createLogger({ service: 'search-index-worker' });
-const tracing = initTracing('search-index-worker');
-initSentry('search-index-worker');
-
-const consumer = createEventConsumer({
+await runEventWorker({
+  service: 'search-index-worker',
   clientId: 'xitter-search-index-worker',
   brokers: env.KAFKA_BROKERS.split(','),
   groupId: CONSUMER_GROUPS.searchIndexWorker,
   topics: ['posts', 'social'],
+  metricsPort: env.METRICS_PORT,
+  handle: (envelope) => handleEvent(envelope, { searchInternalUrl: env.SEARCH_INTERNAL_URL }),
 });
-
-const metrics = createMetricsServer(env.METRICS_PORT);
-await metrics.started;
-logger.info(`metrics on :${env.METRICS_PORT}`);
-
-await consumer.run(async (envelope) => {
-  await handleEvent(envelope, { searchInternalUrl: env.SEARCH_INTERNAL_URL });
-});
-
-process.once('SIGTERM', () => {
-  void (async () => {
-    await consumer.disconnect();
-    await metrics.stop();
-    await tracing.shutdown();
-    process.exit(0);
-  })();
-});
-
-logger.info(`search-index-worker running`);

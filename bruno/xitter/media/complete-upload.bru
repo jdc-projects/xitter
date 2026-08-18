@@ -1,0 +1,75 @@
+meta {
+  name: Complete media upload
+  seq: 8
+}
+
+docs {
+  Step 2 of the upload pair: PUT the actual image bytes to the presigned URL
+  (a minimal 1x1 GIF - 29 bytes), then the completion callback. Completion is
+  server-verified - the media service HEADs the object before accepting, so
+  this pair only passes when RustFS really holds the bytes. The tests then
+  poll the asset until the media-process worker records variants (thumb) -
+  the full lifecycle.
+
+  The GIF is deliberately all-7-bit: the sandbox's sendRequest sends string
+  data UTF-8 encoded (typed arrays get serialised, not sent raw), and bytes
+  <= 0x7F survive that transport byte-identically.
+}
+
+script:pre-request {
+  // Minimal 1x1 GIF89a, no color tables - every byte <= 0x7F (see docs).
+  const GIF_7BIT =
+    "GIF89a\x01\x00\x01\x00\x00\x00\x00" +
+    ",\x00\x00\x00\x00\x01\x00\x01\x00\x00" +
+    "\x02\x02\x44\x01\x00\x3b";
+
+  const put = await bru.sendRequest({
+    method: "PUT",
+    url: bru.getVar("uploadUrl"),
+    headers: { "content-type": "image/gif" },
+    data: GIF_7BIT,
+  });
+  expect(put.status).to.equal(200);
+}
+
+post {
+  url: {{seedBase}}/api/media/v1/media/{{mediaId}}/complete
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+assert {
+  res.status: 200
+}
+
+tests {
+  expect(res.body.id).to.equal(bru.getVar("mediaId"));
+  expect(res.body.ownerId).to.be.a("string").and.not.be.empty;
+  expect(["pending", "ready"]).to.include(res.body.status);
+
+  // The worker consumes media.uploaded async; poll until variants land
+  // (Kafka consumer lag + sharp can take well over 15s on a cold stack).
+  const deadline = Date.now() + 30000;
+  let asset = res.body;
+  while (asset.status !== "ready" && asset.status !== "failed" && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    const poll = await bru.sendRequest({
+      method: "GET",
+      url: `${bru.getEnvVar("seedBase")}/api/media/v1/media/${bru.getVar("mediaId")}`,
+      headers: { authorization: `Bearer ${bru.getEnvVar("token")}` },
+    });
+    const body = typeof poll.data === "string" ? JSON.parse(poll.data) : poll.data;
+    expect(poll.status).to.equal(200);
+    asset = body;
+  }
+  expect(asset.status).to.equal("ready");
+  const kinds = asset.variants.map((variant) => variant.kind).sort();
+  expect(kinds).to.deep.equal(["original", "thumb"]);
+  for (const variant of asset.variants) {
+    expect(variant.url).to.match(/^\/media\/.+\/(original|thumb)\.gif$/);
+  }
+}

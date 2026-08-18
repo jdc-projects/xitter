@@ -18,9 +18,9 @@ import {
   type CreatePostRequest,
   type Post as PostDto,
 } from '@xitter/api-contracts';
+import { ZodValidationPipe } from '@xitter/service-kit';
 import { z } from 'zod';
 import { PostsService, type PostPage } from './posts.service.js';
-import { ZodValidationPipe } from './zod-validation.pipe.js';
 
 const uuidParam = new ZodValidationPipe(postIdSchema);
 const userParam = new ZodValidationPipe(userIdSchema);
@@ -43,8 +43,8 @@ export class PostsController {
   constructor(private readonly posts: PostsService) {}
 
   /**
-   * mediaIds are shape-checked only (uuid, max 4): existence/status
-   * validation lands with the media ticket (#6).
+   * mediaIds resolve through media's internal lookup: existence, ownership
+   * and ready-status (spec 03); non-ready ids 400 with the offenders listed.
    */
   @Post('posts')
   @UseGuards(RateLimitGuard)

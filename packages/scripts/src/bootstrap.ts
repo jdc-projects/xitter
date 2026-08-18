@@ -10,6 +10,9 @@ import { initDemoRealm, initLocalAdminRealm } from './keycloak.js';
 console.log('waiting for dependencies...');
 await waitForDependencies();
 
+console.log('initialising RustFS media bucket...');
+await run('tsx', ['packages/scripts/src/rustfs.ts']);
+
 console.log('creating Kafka topics...');
 await run('tsx', ['packages/scripts/src/topics.ts', 'create']);
 

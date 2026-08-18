@@ -7,7 +7,9 @@ import {
   POST_MEDIA_MAX,
   POST_TEXT_MAX,
   interactionKindSchema,
+  mediaAssetSchema,
   mediaIdSchema,
+  mediaVariantCoreSchema,
   postIdSchema,
   postSchema,
   profileSchema,
@@ -71,12 +73,60 @@ export const createInteractionRequestSchema = z
   })
   .openapi('CreateInteractionRequest');
 
+// Shape-only: the mime allowlist (415) and 5MB cap (413) are enforced by the
+// media service with their spec-03 codes, not folded into the 400s this pipe
+// produces.
 export const createMediaUploadRequestSchema = z
   .object({
-    mimeType: z.enum(['image/png', 'image/jpeg', 'image/webp', 'image/gif']),
+    mimeType: z.string().min(1),
     bytes: z.number().int().positive(),
   })
+  .strict()
   .openapi('CreateMediaUploadRequest');
+
+export type CreateMediaUploadRequest = z.infer<typeof createMediaUploadRequestSchema>;
+
+export const createMediaUploadResponseSchema = z
+  .object({
+    mediaId: mediaIdSchema,
+    uploadUrl: z.string().url(),
+  })
+  .openapi('CreateMediaUploadResponse');
+
+export type CreateMediaUploadResponse = z.infer<typeof createMediaUploadResponseSchema>;
+
+// Internal (media-process worker → media): record processed variants.
+export const recordVariantsRequestSchema = z
+  .object({
+    variants: z.array(mediaVariantCoreSchema),
+  })
+  .strict()
+  .openapi('RecordVariantsRequest');
+
+export type RecordVariantsRequest = z.infer<typeof recordVariantsRequestSchema>;
+
+// Internal (media-process worker → media): report a processing failure; the
+// service owns the attempt counter and the failed transition.
+export const reportMediaFailureRequestSchema = z
+  .object({
+    error: z.string().min(1),
+  })
+  .strict();
+
+// Internal (posts → media): resolve assets for post attachment - existence,
+// ownership and ready-status checks happen against this response.
+export const mediaLookupRequestSchema = z
+  .object({
+    ownerId: userIdSchema,
+    mediaIds: z.array(mediaIdSchema).min(1).max(POST_MEDIA_MAX),
+  })
+  .strict();
+
+export const mediaLookupResponseSchema = z
+  .object({
+    items: z.array(mediaAssetSchema),
+  })
+  .strict();
 
 export const postPageSchema = cursorPagination(postSchema).openapi('PostPage');
 

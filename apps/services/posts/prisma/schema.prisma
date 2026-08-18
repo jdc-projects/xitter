@@ -14,6 +14,9 @@ model Post {
   authorId   String
   text       String
   mediaIds   String[]  @default([])
+  // Denormalised ready-asset snapshot taken at creation (validation already
+  // fetches it; variants are immutable post-processing, so it cannot drift).
+  media      Json      @default("[]")
   replyToId  String?
   repostOfId String?
   createdAt  DateTime  @default(now())

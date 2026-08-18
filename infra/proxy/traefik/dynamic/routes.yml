@@ -2,7 +2,9 @@
 # (XITTER_*_PORT), matching the deployed path-based routing layout:
 #   /                -> web (catch-all, lowest priority)
 #   /api/{service}/* -> service (no strip - services own their /api/{svc}/v1 prefix)
-#   /media/*         -> RustFS (strip /media -> bucket path)
+#   /media/*         -> RustFS (rewrite /media/<key> -> /xitter-media/<key>,
+#                        S3 path-style: hides the bucket name and matches the
+#                        deployed edge's media_path_rewrite exactly)
 #   /cms/*           -> CMS
 #   /admin/*         -> admin panel
 
@@ -55,9 +57,13 @@ http:
       service: admin
 
   middlewares:
+    # Mirrors the deployed edge (infra/iac/environments/dev/edge.tf
+    # media_path_rewrite): /media/<key> -> /xitter-media/<key>, so the public
+    # object URL shape is identical locally and in-cluster.
     strip-media:
-      stripPrefix:
-        prefixes: ['/media']
+      replacePathRegex:
+        regex: '^/media/(.*)'
+        replacement: '/xitter-media/${1}'
 
   services:
     web:

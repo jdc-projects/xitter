@@ -39,7 +39,18 @@
       }
     },
     "apps/web/src/components/post-composer.tsx": {
-      "crap_high": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_moderate": {
+        "count": 3
+      }
+    },
+    "apps/web/src/lib/media/actions.ts": {
+      "crap_moderate": {
         "count": 1
       }
     },
@@ -48,7 +59,7 @@
         "count": 1
       },
       "crap_high": {
-        "count": 1
+        "count": 2
       },
       "crap_moderate": {
         "count": 1
@@ -113,6 +124,7 @@
   },
   "runtime_coverage_findings": [],
   "target_keys": [
-    "packages/auth-nest/src/http.ts:high impact"
+    "packages/auth-nest/src/http.ts:high impact",
+    "apps/web/src/lib/posts/actions.ts:untested risk"
   ]
 }

@@ -1,34 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
+import type { MediaAsset } from '@xitter/api-contracts';
+import { encodeCursor, decodeCursor } from '@xitter/service-kit';
 import type { PrismaClient, Prisma } from '../generated/prisma/client.js';
 
 /** DI token for the service-owned Prisma client (tests provide their own). */
 export const POSTS_PRISMA = 'POSTS_PRISMA';
 
 export type PostsPrismaClient = PrismaClient & { $disconnect(): Promise<void> };
-
-/** Opaque cursor = (post.createdAt, post.id) keyset position. */
-interface PageCursor {
-  createdAt: string;
-  id: string;
-}
-
-function encodeCursor(row: { createdAt: Date; id: string }): string {
-  return Buffer.from(
-    JSON.stringify({ createdAt: row.createdAt.toISOString(), id: row.id }),
-  ).toString('base64url');
-}
-
-export function decodeCursor(raw: string): PageCursor | null {
-  try {
-    const parsed = JSON.parse(
-      Buffer.from(raw, 'base64url').toString('utf8'),
-    ) as Partial<PageCursor>;
-    if (typeof parsed.createdAt !== 'string' || typeof parsed.id !== 'string') return null;
-    return { createdAt: parsed.createdAt, id: parsed.id };
-  } catch {
-    return null;
-  }
-}
 
 export type PostRow = Prisma.PostGetPayload<Record<string, never>>;
 
@@ -61,6 +39,7 @@ export class PostsRepository {
     authorId: string;
     text: string;
     mediaIds: string[];
+    media: MediaAsset[];
     replyToId: string | null;
   }): Promise<PostRow> {
     return this.db.$transaction(async (tx) => {

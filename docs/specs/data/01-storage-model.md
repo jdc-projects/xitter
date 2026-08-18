@@ -58,7 +58,8 @@ erDiagram
         string id PK
         string authorId FK "Profile via social"
         string text "1-512 chars"
-        string[] mediaIds "uuid refs into media (validated shape-only until #6)"
+        string[] mediaIds "uuid refs into media (validated ready at create)"
+        json media "ready-asset snapshot taken at creation"
         string replyToId FK "nullable"
         string repostOfId FK "nullable"
         datetime createdAt
@@ -84,16 +85,19 @@ Unique: `Interaction(kind, postId, userId)` — one of each kind per user per po
 erDiagram
     MediaAsset {
         string id PK
-        string userId
-        string postId "nullable until attached"
+        string ownerId "uploading user"
+        string objectKey "{ownerId}/{id}/original.{ext}"
         string mimeType "png|jpeg|webp|gif"
-        int sizeBytes "<= 5MB"
-        string storageKey "{userId}/{mediaId}/{original|thumb}.{ext}"
+        int bytes "<= 5MB, HEAD-verified at completion"
         string status "pending|ready|failed"
+        json variants "[] until processed: kind, objectKey, mime, bytes, width, height"
+        int attempts "worker failures; 3 -> failed"
+        datetime uploadedAt "nullable - set when completion verified"
         datetime createdAt
-        datetime processedAt "nullable"
     }
 ```
+
+Assets are never foreign-keyed to posts: attachment is validated at post creation (existence, ownership, `ready`) via the media internal API, and the post row stores a snapshot of the ready asset's variants so reads render without a media round-trip. Variants are immutable once recorded, so the snapshot cannot drift.
 
 ### feed
 
@@ -137,19 +141,19 @@ Field tables above (types/constraints inline in each ER diagram) are normative. 
 - All ids are string (ULID/UUID) primary keys.
 - All `createdAt` are set by the owning service; no client-supplied timestamps.
 - `Post.text` is 1–512 chars, enforced at the API boundary and in the schema.
-- `Post.mediaIds` reference media assets by uuid; existence/status checks land with the media ticket (#6).
-- `MediaAsset.sizeBytes` ≤ 5 MB, enforced at upload; `postId` nullable because upload precedes post creation.
+- `Post.mediaIds` reference media assets by uuid; at post creation each must exist, belong to the author and be `ready` (checked via the media internal lookup — see [../architecture/03-service-interfaces.md](../architecture/03-service-interfaces.md)). The row also stores a `media` JSON snapshot of the resolved assets.
+- `MediaAsset.bytes` ≤ 5 MB: claimed at slot creation and re-verified against the object's real size (plus stored content type) when completion HEADs the key — client claims are never trusted.
 
 ## Index strategy
 
-| Store      | Indexes (beyond PKs/uniques)                                                     | Serves                                       |
-| ---------- | -------------------------------------------------------------------------------- | -------------------------------------------- |
-| social     | `Follow(followeeId)`, `Block(blockedId)`                                         | Followers lists; block checks on write paths |
-| posts      | `Post(authorId, createdAt desc)`, `Post(replyToId)`, `Interaction(userId, kind)` | Profiles, threads, "my bookmarks/likes"      |
-| media      | `MediaAsset(postId)`, `MediaAsset(status)`                                       | Attachment lookups; pending/failed cleanup   |
-| feed       | `FeedEntry(userId, createdAt desc)`                                              | The feed page itself — the hot path          |
-| search     | checkpoint lookups by consumerKey                                                | Resume position                              |
-| OpenSearch | standard text index on posts                                                     | Full-text search                             |
+| Store      | Indexes (beyond PKs/uniques)                                                     | Serves                                                    |
+| ---------- | -------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| social     | `Follow(followeeId)`, `Block(blockedId)`                                         | Followers lists; block checks on write paths              |
+| posts      | `Post(authorId, createdAt desc)`, `Post(replyToId)`, `Interaction(userId, kind)` | Profiles, threads, "my bookmarks/likes"                   |
+| media      | `MediaAsset(ownerId)`, `MediaAsset(status)`                                      | Owner lookups (attach validation); pending/failed cleanup |
+| feed       | `FeedEntry(userId, createdAt desc)`                                              | The feed page itself — the hot path                       |
+| search     | checkpoint lookups by consumerKey                                                | Resume position                                           |
+| OpenSearch | standard text index on posts                                                     | Full-text search                                          |
 
 Guideline: index for the read patterns in the product flows ([../product/03-user-flows.md](../product/03-user-flows.md)); add indexes with evidence, not speculation.
 

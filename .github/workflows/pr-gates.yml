@@ -71,6 +71,9 @@ jobs:
     # fallow + react-doctor + mermaid validation; needs the base ref for
     # changed-file attribution and chromium for diagram rendering
     runs-on: ubuntu-latest
+    # the chromium download in setup has hung for >1h before - fail loudly
+    # instead of stalling the PR
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:

@@ -5,6 +5,7 @@ import { createEventProducer } from '@xitter/events';
 import { env } from '../env.js';
 import { PrismaClient } from '../generated/prisma/client.js';
 import { InternalController } from './internal.controller.js';
+import { MEDIA_CHECKER, MediaServiceChecker, type MediaChecker } from './media-checker.js';
 import { KafkaPostsEvents, POSTS_EVENTS, type PostsEvents } from './posts-events.js';
 import { PostsController } from './posts.controller.js';
 import { POSTS_PRISMA, PostsRepository, type PostsPrismaClient } from './posts.repository.js';
@@ -46,6 +47,17 @@ const relationshipCheckerProvider: Provider = {
     }),
 };
 
+const mediaCheckerProvider: Provider = {
+  provide: MEDIA_CHECKER,
+  useFactory: (): MediaChecker =>
+    new MediaServiceChecker({
+      baseUrl: env.XITTER_MEDIA_URL,
+      tokenUrl: realmUrls(env.KEYCLOAK_BASE_URL, env.DEMO_REALM).token,
+      clientId: env.KEYCLOAK_CLIENT_ID,
+      clientSecret: env.KEYCLOAK_CLIENT_SECRET,
+    }),
+};
+
 /** Disconnect order: stop emitting, then close the DB pool. */
 @Injectable()
 export class PostsLifecycle implements OnApplicationShutdown {
@@ -66,6 +78,7 @@ export class PostsLifecycle implements OnApplicationShutdown {
     prismaProvider,
     eventsProvider,
     relationshipCheckerProvider,
+    mediaCheckerProvider,
     PostsRepository,
     PostsService,
     PostsLifecycle,

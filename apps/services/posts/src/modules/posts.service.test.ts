@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createPostRequestSchema, POST_MEDIA_MAX, POST_TEXT_MAX } from '@xitter/api-contracts';
+import type { MediaAsset } from '@xitter/api-contracts';
 import { PostsService } from './posts.service.js';
+import { NullMediaChecker, type MediaChecker } from './media-checker.js';
 import type { PostsEvents } from './posts-events.js';
 import type { PostsRepository, PostRow } from './posts.repository.js';
 import type { RelationshipChecker } from './relationship-checker.js';
@@ -13,6 +15,7 @@ const row = (overrides: Partial<PostRow> = {}): PostRow => ({
   authorId: AUTHOR,
   text: 'hello xitter',
   mediaIds: [],
+  media: [],
   replyToId: null,
   repostOfId: null,
   createdAt: new Date('2026-08-17T00:00:00Z'),
@@ -117,11 +120,109 @@ describe('createPostRequestSchema (contract)', () => {
   });
 });
 
+describe('PostsService media attach rules', () => {
+  const mediaId = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+
+  const readyAsset = (id: string): MediaAsset => ({
+    id,
+    ownerId: AUTHOR,
+    status: 'ready',
+    variants: [
+      {
+        kind: 'thumb',
+        objectKey: `${AUTHOR}/${id}/thumb.png`,
+        mimeType: 'image/png',
+        bytes: 100,
+        width: 10,
+        height: 10,
+        url: `/media/${AUTHOR}/${id}/thumb.png`,
+      },
+    ],
+    createdAt: '2026-08-18T00:00:00.000Z',
+  });
+
+  /** Checker whose resolved set the tests control per case. */
+  const checkerOver = (
+    resolve: (ownerId: string, ids: string[]) => MediaAsset[],
+  ): MediaChecker => ({
+    resolveForAttach: (ownerId, ids) => Promise.resolve(resolve(ownerId, ids)),
+  });
+
+  it('attaches ready assets and snapshots them for reads', async () => {
+    const { repo } = fakeRepo();
+    const events = spyEvents();
+    const service = new PostsService(
+      repo,
+      events,
+      allowAll,
+      checkerOver((_owner, ids) => ids.map(readyAsset)),
+    );
+
+    const post = await service.create(AUTHOR, {
+      text: 'with image',
+      mediaIds: [mediaId(1)],
+      replyToId: null,
+    });
+
+    expect(post.media).toEqual([readyAsset(mediaId(1))]);
+    expect(events.calls[0]![1]).toMatchObject({ mediaIds: [mediaId(1)] });
+  });
+
+  it('rejects non-ready (pending) media with the offending ids', async () => {
+    const { repo } = fakeRepo();
+    const pending = { ...readyAsset(mediaId(2)), status: 'pending' as const };
+    const service = new PostsService(
+      repo,
+      spyEvents(),
+      allowAll,
+      checkerOver(() => [pending]),
+    );
+
+    await expect(
+      service.create(AUTHOR, { text: 'too soon', mediaIds: [mediaId(2)], replyToId: null }),
+    ).rejects.toMatchObject({
+      status: 400,
+      response: expect.objectContaining({
+        error: expect.objectContaining({
+          code: 'VALIDATION_ERROR',
+          details: { invalidMediaIds: [mediaId(2)] },
+        }),
+      }),
+    });
+  });
+
+  it('rejects ids the lookup did not resolve (missing or not owned)', async () => {
+    const { repo } = fakeRepo();
+    const service = new PostsService(
+      repo,
+      spyEvents(),
+      allowAll,
+      checkerOver(() => []),
+    );
+
+    await expect(
+      service.create(AUTHOR, { text: 'not mine', mediaIds: [mediaId(3)], replyToId: null }),
+    ).rejects.toMatchObject({ response: { error: { code: 'VALIDATION_ERROR' } } });
+  });
+
+  it('propagates the fail-closed checker error (media unreachable)', async () => {
+    const { repo } = fakeRepo();
+    const unreachable: MediaChecker = {
+      resolveForAttach: () => Promise.reject(new Error('media down')),
+    };
+    const service = new PostsService(repo, spyEvents(), allowAll, unreachable);
+
+    await expect(
+      service.create(AUTHOR, { text: 'x', mediaIds: [mediaId(4)], replyToId: null }),
+    ).rejects.toThrow('media down');
+  });
+});
+
 describe('PostsService rules', () => {
   it('creates a post with zero-initialised counts and emits the full payload', async () => {
     const { repo } = fakeRepo();
     const events = spyEvents();
-    const service = new PostsService(repo, events, allowAll);
+    const service = new PostsService(repo, events, allowAll, new NullMediaChecker());
 
     const post = await service.create(AUTHOR, {
       text: 'first post',
@@ -149,7 +250,7 @@ describe('PostsService rules', () => {
     const events = spyEvents();
     const parent = row({ id: '00000000-0000-4000-8000-000000000a11' });
     posts.set(parent.id, parent);
-    const service = new PostsService(repo, events, allowAll);
+    const service = new PostsService(repo, events, allowAll, new NullMediaChecker());
 
     await service.create(OTHER, {
       text: 'a reply',
@@ -165,7 +266,7 @@ describe('PostsService rules', () => {
 
   it('rejects replies to missing or deleted parents', async () => {
     const { repo, posts } = fakeRepo();
-    const service = new PostsService(repo, spyEvents(), allowAll);
+    const service = new PostsService(repo, spyEvents(), allowAll, new NullMediaChecker());
 
     await expect(
       service.create(AUTHOR, { text: 'x', mediaIds: [], replyToId: OTHER }),
@@ -191,7 +292,7 @@ describe('PostsService rules', () => {
         return Promise.resolve(true);
       },
     };
-    const service = new PostsService(repo, spyEvents(), blockedChecker);
+    const service = new PostsService(repo, spyEvents(), blockedChecker, new NullMediaChecker());
 
     await expect(
       service.create(OTHER, { text: 'reply', mediaIds: [], replyToId: parent.id }),
@@ -209,7 +310,7 @@ describe('PostsService rules', () => {
   it('soft-deletes own posts, hides them from reads, and emits once', async () => {
     const { repo } = fakeRepo();
     const events = spyEvents();
-    const service = new PostsService(repo, events, allowAll);
+    const service = new PostsService(repo, events, allowAll, new NullMediaChecker());
     const post = await service.create(AUTHOR, { text: 'gone soon', mediaIds: [], replyToId: null });
 
     await service.remove(AUTHOR, post.id);
@@ -226,7 +327,7 @@ describe('PostsService rules', () => {
 
   it('only the author may delete; others get 403 and missing ids 404', async () => {
     const { repo } = fakeRepo();
-    const service = new PostsService(repo, spyEvents(), allowAll);
+    const service = new PostsService(repo, spyEvents(), allowAll, new NullMediaChecker());
     const post = await service.create(AUTHOR, { text: 'mine', mediaIds: [], replyToId: null });
 
     await expect(service.remove(OTHER, post.id)).rejects.toMatchObject({
@@ -243,7 +344,7 @@ describe('PostsService rules', () => {
       emit: vi.fn().mockRejectedValue(new Error('kafka down')),
       shutdown: () => Promise.resolve(),
     };
-    const service = new PostsService(repo, failing, allowAll);
+    const service = new PostsService(repo, failing, allowAll, new NullMediaChecker());
 
     await expect(
       service.create(AUTHOR, { text: 'still works', mediaIds: [], replyToId: null }),

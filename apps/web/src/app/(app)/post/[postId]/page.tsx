@@ -7,6 +7,7 @@ import { ApiError } from '@xitter/api-client';
 import { requireSession } from '@/lib/auth/session';
 import { PostComposer } from '@/components/post-composer';
 import { PostListItem } from '@/components/post-list-item';
+import { imagesFor } from '@/lib/media/images';
 import { DeletePostButton } from '@/components/delete-post-button';
 import { clientsForSession, profilesByAuthorIds } from '@/lib/posts/server';
 
@@ -76,7 +77,7 @@ export default async function PostDetailPage({
         ) : null}
 
         <div data-testid={`post-detail-${post.id}`}>
-          <PostCard author={author} post={post} />
+          <PostCard author={author} post={post} images={imagesFor(post, 'original')} />
         </div>
         {post.authorId === session.subject ? (
           <DeletePostButton postId={post.id} username={author.username} goTo="/feed" />

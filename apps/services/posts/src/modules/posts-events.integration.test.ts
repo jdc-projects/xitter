@@ -10,6 +10,7 @@ import { KafkaPostsEvents } from './posts-events.js';
 import { PostsService } from './posts.service.js';
 import { PostsRepository, type PostsPrismaClient } from './posts.repository.js';
 import { NullRelationshipChecker } from './relationship-checker.js';
+import { NullMediaChecker } from './media-checker.js';
 
 /**
  * Event emission contract: post create/delete produce spec-04 events on
@@ -43,6 +44,14 @@ describe.skipIf(!hasGeneratedClient)('posts events (testcontainers kafka)', () =
     for (const statement of migration.split(/;\s*\n/).filter((s) => s.trim().length > 0)) {
       await pool.query(statement);
     }
+    // Follow-up migrations (media snapshot column) apply in order like deploys.
+    const followUp = readFileSync(
+      join(process.cwd(), 'prisma/migrations/20260818120000_media_snapshot/migration.sql'),
+      'utf8',
+    );
+    for (const statement of followUp.split(/;\s*\n/).filter((s) => s.trim().length > 0)) {
+      await pool.query(statement);
+    }
 
     db = new generated.PrismaClient({
       adapter: new PrismaPg({ connectionString: postgres.connectionString }),
@@ -53,7 +62,12 @@ describe.skipIf(!hasGeneratedClient)('posts events (testcontainers kafka)', () =
       createEventProducer({ clientId: 'posts-test', brokers }),
       'posts',
     );
-    service = new PostsService(new PostsRepository(db), emitter, new NullRelationshipChecker());
+    service = new PostsService(
+      new PostsRepository(db),
+      emitter,
+      new NullRelationshipChecker(),
+      new NullMediaChecker(),
+    );
 
     consumer = new Kafka({ clientId: 'posts-events-test', brokers }).consumer({
       groupId: `posts-events-test-${crypto.randomUUID()}`,
