@@ -16,6 +16,16 @@ export interface ComposerResult {
  * return friendly copy WITHOUT clearing the composer - the draft stays in
  * the client component's state (acceptance: draft preserved on failure).
  */
+/** Friendly copy for the composer's known failure codes. */
+function composerErrorFor(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 400) return `Posts are limited to ${POST_TEXT_MAX} characters.`;
+    if (error.status === 403) return 'You cannot reply to this post.';
+    if (error.status === 429) return 'You are posting too fast - wait a moment.';
+  }
+  return 'Could not publish your post. Try again shortly.';
+}
+
 export async function createPostAction(
   _prev: ComposerResult | undefined,
   formData: FormData,
@@ -35,18 +45,7 @@ export async function createPostAction(
   try {
     await ctx.posts.createPost({ text, replyToId });
   } catch (error) {
-    if (error instanceof ApiError) {
-      if (error.status === 400) {
-        return { error: `Posts are limited to ${POST_TEXT_MAX} characters.` };
-      }
-      if (error.status === 403) {
-        return { error: 'You cannot reply to this post.' };
-      }
-      if (error.status === 429) {
-        return { error: 'You are posting too fast - wait a moment.' };
-      }
-    }
-    return { error: 'Could not publish your post. Try again shortly.' };
+    return { error: composerErrorFor(error) };
   }
 
   revalidatePath('/feed');
@@ -77,5 +76,7 @@ export async function deletePostAction(formData: FormData): Promise<void> {
     // the rendered state honest without an error surface on this minimal UI.
     revalidatePath('/feed');
   }
-  if (typeof goTo === 'string' && goTo.startsWith('/')) redirect(goTo);
+  // Same-origin only: a leading "/" alone still admits protocol-relative
+  // "//evil.com" through Location.
+  if (typeof goTo === 'string' && goTo.startsWith('/') && !goTo.startsWith('//')) redirect(goTo);
 }

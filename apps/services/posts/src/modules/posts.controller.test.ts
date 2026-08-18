@@ -196,7 +196,7 @@ describe('posts HTTP wiring', () => {
     app = await createApp();
 
     const reseed = await app.inject({ method: 'POST', url: '/api/posts/internal/reseed' });
-    expect(reseed.statusCode).toBe(201);
+    expect(reseed.statusCode).toBe(200);
     expect(reseed.json()).toEqual({ ok: true });
 
     const versioned = await app.inject({ method: 'POST', url: '/api/posts/v1/internal/reseed' });

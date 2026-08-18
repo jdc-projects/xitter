@@ -1,4 +1,4 @@
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, rm, stat, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
@@ -79,7 +79,18 @@ async function sweepOrphansOnPort(port: number): Promise<void> {
       (res) => {
         let body = '';
         res.on('data', (c) => (body += c));
-        res.on('end', () => resolve(JSON.parse(body)));
+        res.on('end', () => {
+          try {
+            const parsed = JSON.parse(body) as unknown;
+            if (res.statusCode !== 200 || !Array.isArray(parsed)) {
+              reject(new Error(`socket list failed (${res.statusCode}): ${body.slice(0, 80)}`));
+              return;
+            }
+            resolve(parsed);
+          } catch {
+            reject(new Error(`socket list returned non-JSON (${res.statusCode})`));
+          }
+        });
       },
     );
     req.on('error', reject);
@@ -110,7 +121,14 @@ async function sweepOrphansOnPort(port: number): Promise<void> {
  * ENTIRE lifetime (acquired in startKafka, released by handle.stop()) - if
  * it only covered the start, another suite could acquire it and sweep what
  * it wrongly considers an orphan while the container is still in use.
+ *
+ * Stale locks: no PID probing (permission systems flag kill-based liveness
+ * checks, and /proc is not portable) - a waiter steals any lock older than
+ * staleAfterMs. Healthy holders refresh the lock's mtime every 15s, so the
+ * bound only trips for hard-killed runs.
  */
+const LOCK_STALE_MS = 60_000;
+
 async function acquireFixedPortLock(port: number): Promise<() => Promise<void>> {
   const lockDir = join(tmpdir(), `xitter-test-port-${port}.lock`);
   const maxWaitMs = 240_000;
@@ -122,12 +140,32 @@ async function acquireFixedPortLock(port: number): Promise<() => Promise<void>> 
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
       if (Date.now() > deadline) {
-        throw new Error(`Timed out waiting for test port lock ${port} (stale lock?)`);
+        throw new Error(
+          `Timed out waiting for test port lock ${lockDir}. If no test run is active, remove the directory and retry.`,
+        );
+      }
+      try {
+        const stats = await stat(lockDir);
+        if (Date.now() - stats.mtimeMs > LOCK_STALE_MS) {
+          await rm(lockDir, { recursive: true, force: true });
+          process.stderr.write(`[test-port-lock] removed stale lock ${lockDir}\n`);
+          continue;
+        }
+      } catch {
+        /* lock vanished between checks - the mkdir retry wins the race */
       }
       await new Promise((r) => setTimeout(r, 2_000));
     }
   }
-  return () => rm(lockDir, { recursive: true });
+  // Heartbeat so waiters can distinguish a live holder from a killed one.
+  const heartbeat = setInterval(() => {
+    utimes(lockDir, new Date(), new Date()).catch(() => undefined);
+  }, 15_000);
+  heartbeat.unref();
+  return () => {
+    clearInterval(heartbeat);
+    return rm(lockDir, { recursive: true, force: true });
+  };
 }
 
 /**

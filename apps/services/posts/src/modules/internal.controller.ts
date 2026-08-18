@@ -1,4 +1,4 @@
-import { Controller, Post } from '@nestjs/common';
+import { Controller, HttpCode, Post } from '@nestjs/common';
 import { Internal } from '@xitter/auth-nest';
 import { PostsService } from './posts.service.js';
 
@@ -13,6 +13,8 @@ export class InternalController {
 
   @Post('reseed')
   @Internal()
+  // 200 to match the documented contract (spec 03 / OpenAPI registry).
+  @HttpCode(200)
   reseed(): Promise<{ ok: boolean }> {
     return this.posts.reseed().then(() => ({ ok: true }));
   }
