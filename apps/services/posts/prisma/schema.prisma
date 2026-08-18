@@ -13,6 +13,7 @@ model Post {
   id         String    @id @default(uuid())
   authorId   String
   text       String
+  mediaIds   String[]  @default([])
   replyToId  String?
   repostOfId String?
   createdAt  DateTime  @default(now())
@@ -21,6 +22,12 @@ model Post {
   interactions Interaction[]
   replies      Post[]         @relation("replies")
   parent       Post?          @relation("replies", fields: [replyToId], references: [id])
+
+  // Counts read-model (spec data/01): initialised 0 at creation. Replies are
+  // maintained here by the posts service; likes/reposts by #8's interactions.
+  replyCount Int @default(0)
+  likeCount  Int @default(0)
+  repostCount Int @default(0)
 
   @@index([authorId, createdAt])
   @@index([replyToId])

@@ -5,4 +5,7 @@
 import type { StrykerOptions } from '@stryker-mutator/core';
 import { createStrykerConfig } from '@xitter/testing';
 
-export default createStrykerConfig('service-social') satisfies StrykerOptions;
+export default createStrykerConfig('service-social', {
+  // See service-posts: testcontainers suites stay out of the sandbox.
+  excludeIntegrationTests: true,
+}) satisfies StrykerOptions;

@@ -11,7 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "mutate": "stryker run"
+    "mutate": "stryker run stryker.config.ts"
   },
   "dependencies": {
     "@xitter/api-client": "*",

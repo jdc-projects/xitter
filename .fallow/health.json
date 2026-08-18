@@ -1,5 +1,15 @@
 {
   "finding_counts": {
+    "apps/services/posts/src/modules/posts.repository.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/app/(app)/post/[postId]/page.tsx": {
+      "crap_critical": {
+        "count": 1
+      }
+    },
     "apps/web/src/app/(app)/profile/[username]/actions.ts": {
       "crap_high": {
         "count": 2
@@ -14,7 +24,7 @@
       }
     },
     "apps/web/src/app/(app)/profile/[username]/page.tsx": {
-      "crap_high": {
+      "crap_critical": {
         "count": 1
       }
     },
@@ -24,6 +34,22 @@
       }
     },
     "apps/web/src/app/api/auth/logout/route.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/web/src/components/post-composer.tsx": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "apps/web/src/lib/posts/actions.ts": {
+      "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      },
       "crap_moderate": {
         "count": 1
       }
@@ -74,6 +100,14 @@
     "packages/scripts/src/seed.ts": {
       "crap_moderate": {
         "count": 1
+      }
+    },
+    "packages/testing/src/containers.ts": {
+      "complexity_high": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 2
       }
     }
   },

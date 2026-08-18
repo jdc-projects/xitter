@@ -15,7 +15,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "openapi:gen": "tsx openapi.gen.mts",
-    "mutate": "stryker run"
+    "mutate": "stryker run stryker.config.ts"
   },
   "dependencies": {
     "@fastify/helmet": "^13",

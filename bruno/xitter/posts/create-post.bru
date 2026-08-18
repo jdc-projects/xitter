@@ -3,6 +3,50 @@ meta {
   seq: 4
 }
 
+docs {
+  Posts need an author profile first: profiles are created lazily on first
+  web login, so API-only callers bootstrap one explicitly (idempotent upsert,
+  same pattern as social/ensure-profile) before creating the post. The
+  pre-request script obtains its own token so the request is deterministic
+  standalone - sandbox sendRequest only honours axios-style `data`, and the
+  ensure-profile POST needs an explicit empty JSON body (Fastify 400s an
+  empty application/json body otherwise).
+}
+
+script:pre-request {
+  const form =
+    "grant_type=password&client_id=web" +
+    "&username=" +
+    encodeURIComponent(bru.getEnvVar("username") || "demo1") +
+    "&password=" +
+    encodeURIComponent(bru.getEnvVar("password") || "DemoPass123!");
+  const res = await bru.sendRequest({
+    method: "POST",
+    url: `${bru.getEnvVar("keycloak")}/realms/${bru.getEnvVar("realm")}/protocol/openid-connect/token`,
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    data: form,
+  });
+  const json = typeof res.data === "string" ? JSON.parse(res.data) : res.data;
+  bru.setEnvVar("token", json.access_token);
+
+  // atob is quickjs-safe; the JWT payload is ASCII for demo users.
+  let part = json.access_token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+  part += "=".repeat((4 - (part.length % 4)) % 4);
+  const callerId = JSON.parse(atob(part)).sub;
+  bru.setVar("callerId", callerId);
+
+  // Ensure the author profile exists (idempotent; 200 either way).
+  await bru.sendRequest({
+    method: "POST",
+    url: `${bru.getEnvVar("seedBase")}/api/social/v1/profiles/${callerId}`,
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${json.access_token}`,
+    },
+    data: {},
+  });
+}
+
 post {
   url: {{seedBase}}/api/posts/v1/posts
   body: json
@@ -21,4 +65,14 @@ body:json {
 
 assert {
   res.status: 201
+}
+
+tests {
+  const callerId = bru.getVar("callerId");
+  expect(res.body.id).to.be.a("string").and.not.be.empty;
+  expect(res.body.authorId).to.equal(callerId);
+  expect(res.body.text).to.equal("Hello from Bruno");
+  expect(res.body.counts).to.deep.equal({ replies: 0, likes: 0, reposts: 0 });
+  expect(res.body.replyToId).to.be.null;
+  expect(res.body.deletedAt).to.be.null;
 }

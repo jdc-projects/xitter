@@ -15,14 +15,21 @@ test.describe('unauthenticated access', () => {
     await expect(page).toHaveURL(/\/login\?next=/);
     expect(new URL(page.url()).searchParams.get('next')).toBe('/feed');
     // No user content renders unauthenticated.
-    await expect(page.getByTestId('feed-placeholder')).toHaveCount(0);
+    await expect(page.getByTestId('feed-timeline')).toHaveCount(0);
+    await expect(page.getByTestId('composer-form')).toHaveCount(0);
   });
 
-  test('profiles redirect to login', async ({ page }) => {
+  test('profiles and posts redirect to login', async ({ page }) => {
     await page.goto('/profile/demo2');
     await expect(page).toHaveURL(/\/login\?next=/);
     expect(new URL(page.url()).searchParams.get('next')).toBe('/profile/demo2');
     await expect(page.getByTestId('profile-placeholder')).toHaveCount(0);
+
+    await page.goto('/post/00000000-0000-4000-8000-000000000001');
+    await expect(page).toHaveURL(/\/login\?next=/);
+    expect(new URL(page.url()).searchParams.get('next')).toBe(
+      '/post/00000000-0000-4000-8000-000000000001',
+    );
   });
 });
 
@@ -30,7 +37,7 @@ test.describe('login flow', () => {
   test('demo1 can log in and lands on the feed', async ({ page }) => {
     await loginViaKeycloak(page, 'demo1', 'DemoPass123!');
     await page.waitForURL(/\/feed$/);
-    await expect(page.getByTestId('feed-placeholder')).toBeVisible();
+    await expect(page.getByTestId('composer-form')).toBeVisible();
     await expect(page.getByTestId('nav-username')).toHaveText('@demo1');
   });
 

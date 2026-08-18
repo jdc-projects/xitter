@@ -9,6 +9,7 @@ import {
   interactionKindSchema,
   mediaIdSchema,
   postIdSchema,
+  postSchema,
   profileSchema,
   userIdSchema,
   usernameSchema,
@@ -30,13 +31,18 @@ export const errorSchema = z
   })
   .openapi('Error');
 
+// strict: unknown keys must 400, not silently strip (mediaIds are validated
+// for shape only - uuid, max 4 - until #6 adds existence/status checks).
 export const createPostRequestSchema = z
   .object({
     text: z.string().min(1).max(POST_TEXT_MAX),
     mediaIds: z.array(mediaIdSchema).max(POST_MEDIA_MAX).default([]),
     replyToId: postIdSchema.nullable().default(null),
   })
+  .strict()
   .openapi('CreatePostRequest');
+
+export type CreatePostRequest = z.infer<typeof createPostRequestSchema>;
 
 const profileFields = {
   displayName: z.string().min(1).max(50).optional(),
@@ -72,9 +78,7 @@ export const createMediaUploadRequestSchema = z
   })
   .openapi('CreateMediaUploadRequest');
 
-export const postPageSchema = cursorPagination(
-  z.object({ post: z.unknown(), author: z.unknown() }),
-).openapi('PostPage');
+export const postPageSchema = cursorPagination(postSchema).openapi('PostPage');
 
 export const profilePageSchema = cursorPagination(profileSchema).openapi('ProfilePage');
 

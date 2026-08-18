@@ -3,11 +3,13 @@ meta {
   seq: 3
 }
 
-# Follows demo2 as demo1 (env username). Deterministic without seeding
-# (seeding is a later ticket): both profiles are bootstrapped first - the
-# caller's own via an upsert, the target's with a second token - then the
-# follow is issued against the target's real Keycloak subject id. Idempotent:
-# following an already-followed profile still returns 204.
+docs {
+  Follows demo2 as demo1 (env username). Deterministic without seeding
+  (seeding is a later ticket): both profiles are bootstrapped first - the
+  caller's own via an upsert, the target's with a second token - then the
+  follow is issued against the target's real Keycloak subject id. Idempotent:
+  following an already-followed profile still returns 204.
+}
 
 vars:pre-request {
   targetUsername: demo2
@@ -43,12 +45,16 @@ script:pre-request {
   }
 
   // Target first: bootstrap demo2's profile so the follow has somewhere to land.
-  const targetToken = await login(bu.vars.targetUsername);
+  const targetToken = await login(bru.getVar("targetUsername") || "demo2");
   const targetId = subjectOf(targetToken);
   await bru.sendRequest({
     method: "POST",
     url: `${bru.getEnvVar("seedBase")}/api/social/v1/profiles/${targetId}`,
-    headers: { authorization: `Bearer ${targetToken}` },
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${targetToken}`,
+    },
+    data: {},
   });
 
   // Then act as the caller (default demo1).
@@ -58,7 +64,7 @@ script:pre-request {
 }
 
 post {
-  url: {{seedBase}}/api/social/v1/profiles/:targetUserId/follow
+  url: {{seedBase}}/api/social/v1/profiles/{{targetUserId}}/follow
   body: none
   auth: bearer
 }
