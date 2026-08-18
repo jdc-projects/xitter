@@ -32,6 +32,15 @@ async function compose(page: Page, text: string) {
 /** The first feed post id matching a text snippet (post-item-<id> testid). */
 async function feedPostId(page: Page, text: string): Promise<string> {
   const item = page.locator('[data-testid^="post-item-"]', { hasText: text }).first();
+  // T6: the feed is materialised asynchronously (post -> Kafka -> fanout) -
+  // the ws banner announces arrival, so click through it like a user.
+  const deadline = Date.now() + 20_000;
+  while (!(await item.isVisible().catch(() => false))) {
+    if (Date.now() > deadline) break;
+    const show = page.getByTestId('feed-new-items').getByRole('button');
+    if (await show.isVisible().catch(() => false)) await show.click().catch(() => undefined);
+    await page.waitForTimeout(400);
+  }
   await expect(item).toBeVisible();
   return (await item.getAttribute('data-testid'))!.replace('post-item-', '');
 }
