@@ -33,19 +33,13 @@ export interface PostCardProps {
   bookmarkCount?: number;
 }
 
+const iconProps = { size: 18, stroke: 1.5 } as const;
+
 /**
  * Feed / profile post card. Interaction buttons are presentational here -
  * the web app wires them to its own handlers via props/children when needed.
  */
-export function PostCard({
-  author,
-  post,
-  images = [],
-  viewer,
-  bookmarkCount = 0,
-}: PostCardProps) {
-  const iconProps = { size: 18, stroke: 1.5 } as const;
-
+export function PostCard({ author, post, images = [], viewer, bookmarkCount = 0 }: PostCardProps) {
   return (
     <Card withBorder padding="sm" radius="md" data-testid={`post-${post.id}`}>
       <Group wrap="nowrap" align="flex-start" justify="space-between">

@@ -1,8 +1,9 @@
 'use client';
 
 import { Anchor, Stack } from '@mantine/core';
-import { PostCard, type PostCardImage } from '@xitter/ui';
+import { PostCard } from '@xitter/ui';
 import type { Post } from '@xitter/api-contracts';
+import { imagesFor } from '@/lib/media/images';
 import { DeletePostButton } from './delete-post-button';
 
 export interface PostListItemProps {
@@ -14,17 +15,6 @@ export interface PostListItemProps {
   username?: string;
   /** Redirect target after delete (detail pages navigate away). */
   goTo?: string;
-}
-
-/** Chosen-variant URLs from a post's media snapshot (fallback: the other one). */
-export function imagesFor(
-  post: Pick<Post, 'media'>,
-  variant: 'thumb' | 'original',
-): PostCardImage[] {
-  return post.media.flatMap((asset) => {
-    const chosen = asset.variants.find((item) => item.kind === variant) ?? asset.variants[0];
-    return chosen ? [{ url: chosen.url, alt: 'Image attached to post' }] : [];
-  });
 }
 
 /**

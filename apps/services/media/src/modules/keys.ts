@@ -16,9 +16,7 @@ const MIME_EXTENSIONS: Record<AllowedMimeType, string> = {
 /** Slot-creation limit decisions (spec 03): 415 for type, 413 for size. */
 export function validateUploadRequest(mimeType: string, bytes: number): AllowedMimeType {
   if (!ALLOWED_MIME_TYPES.includes(mimeType as AllowedMimeType)) {
-    throw unsupportedMediaType(
-      `Images must be png, jpeg, webp or gif (got ${mimeType})`,
-    );
+    throw unsupportedMediaType(`Images must be png, jpeg, webp or gif (got ${mimeType})`);
   }
   if (bytes > MEDIA_MAX_BYTES) {
     throw payloadTooLarge(`Images are limited to 5MB (got ${formatBytes(bytes)})`);
@@ -33,14 +31,6 @@ export function originalObjectKey(
   mimeType: AllowedMimeType,
 ): string {
   return `${ownerId}/${mediaId}/original.${MIME_EXTENSIONS[mimeType]}`;
-}
-
-export function thumbObjectKey(
-  ownerId: string,
-  mediaId: string,
-  mimeType: AllowedMimeType,
-): string {
-  return `${ownerId}/${mediaId}/thumb.${MIME_EXTENSIONS[mimeType]}`;
 }
 
 /** Public edge URL for an object (spec 05: bucket served at /media). */

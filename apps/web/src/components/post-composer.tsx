@@ -1,14 +1,20 @@
 'use client';
 
-import { ActionIcon, Alert, Button, Group, Image, SimpleGrid, Text, Textarea, Tooltip } from '@mantine/core';
+import {
+  ActionIcon,
+  Alert,
+  Button,
+  Group,
+  Image,
+  SimpleGrid,
+  Text,
+  Textarea,
+  Tooltip,
+} from '@mantine/core';
 import { IconPhoto, IconX } from '@tabler/icons-react';
 import { useActionState, useRef, useState } from 'react';
 import { MEDIA_MAX_BYTES, POST_MEDIA_MAX, POST_TEXT_MAX } from '@xitter/api-contracts';
-import {
-  completeUploadAction,
-  mediaStatusAction,
-  requestUploadAction,
-} from '@/lib/media/actions';
+import { completeUploadAction, mediaStatusAction, requestUploadAction } from '@/lib/media/actions';
 import { createPostAction, type ComposerResult } from '@/lib/posts/actions';
 
 export interface PostComposerProps {
@@ -74,6 +80,79 @@ async function uploadThrough(file: File): Promise<{ mediaId: string } | { error:
 }
 
 /**
+ * Upload the given attachments sequentially, reporting progress via the
+ * callback. Returns the first friendly error, or null when all are ready.
+ * Module-scope so the component body stays compiler-friendly.
+ */
+async function uploadAttachments(
+  attachments: Attachment[],
+  onUpdate: (clientId: string, patch: Partial<Attachment>) => void,
+): Promise<string | null> {
+  for (const attachment of attachments) {
+    onUpdate(attachment.clientId, { status: 'uploading' });
+    const result = await uploadThrough(attachment.file);
+    if ('error' in result) {
+      onUpdate(attachment.clientId, { status: 'failed' });
+      return result.error;
+    }
+    onUpdate(attachment.clientId, { status: 'ready', mediaId: result.mediaId });
+  }
+  return null;
+}
+
+/** Validate + stage a batch of picked files (friendly errors, no upload). */
+function planPickedFiles(
+  files: Iterable<File>,
+  existing: number,
+): { added: Attachment[]; problems: string[] } {
+  const added: Attachment[] = [];
+  const problems: string[] = [];
+  let count = existing;
+  for (const file of files) {
+    const problem = validateFile(file, count);
+    if (problem) {
+      problems.push(problem);
+      continue;
+    }
+    added.push({
+      clientId: crypto.randomUUID(),
+      file,
+      previewUrl: URL.createObjectURL(file),
+      status: 'new',
+    });
+    count += 1;
+  }
+  return { added, problems };
+}
+
+/**
+ * Upload pending attachments before a submit. True when the composer may
+ * submit; false leaves the draft intact with a friendly error shown.
+ */
+async function submitPendingUploads(
+  notReady: Attachment[],
+  hooks: {
+    setUploading: (value: boolean) => void;
+    setUploadError: (error: string | null) => void;
+    updateAttachment: (clientId: string, patch: Partial<Attachment>) => void;
+  },
+): Promise<boolean> {
+  if (notReady.length === 0) return true;
+  hooks.setUploading(true);
+  hooks.setUploadError(null);
+  try {
+    const error = await uploadAttachments(notReady, hooks.updateAttachment);
+    if (error) {
+      hooks.setUploadError(error);
+      return false;
+    }
+    return true;
+  } finally {
+    hooks.setUploading(false);
+  }
+}
+
+/**
  * Post composer with optional images (≤4, png/jpeg/webp/gif, ≤5MB - checked
  * client-side with friendly errors, re-enforced server-side). Bytes go
  * browser → RustFS via the presigned URL; the web app only brokers the slot
@@ -103,40 +182,28 @@ export function PostComposer({
   if (state?.ok && state !== handledSuccess) {
     setHandledSuccess(state);
     setText('');
-    for (const attachment of attachments) URL.revokeObjectURL(attachment.previewUrl);
+    attachments.forEach((attachment) => URL.revokeObjectURL(attachment.previewUrl));
     setAttachments([]);
     setUploadError(null);
   }
 
   const overLimit = text.length > POST_TEXT_MAX;
-  const readyMediaIds = attachments
-    .filter((attachment) => attachment.status === 'ready' && attachment.mediaId)
-    .map((attachment) => attachment.mediaId!);
+  const readyMediaIds = attachments.flatMap((attachment) =>
+    attachment.status === 'ready' && attachment.mediaId ? [attachment.mediaId] : [],
+  );
 
   function pickFiles(files: FileList | null) {
     if (!files) return;
-    const problems: string[] = [];
-    setAttachments((current) => {
-      let count = current.length;
-      const added: Attachment[] = [];
-      for (const file of files) {
-        const problem = validateFile(file, count);
-        if (problem) {
-          problems.push(problem);
-          continue;
-        }
-        added.push({
-          clientId: crypto.randomUUID(),
-          file,
-          previewUrl: URL.createObjectURL(file),
-          status: 'new',
-        });
-        count += 1;
-      }
-      return [...current, ...added];
-    });
+    const { added, problems } = planPickedFiles(files, attachments.length);
+    if (added.length > 0) setAttachments((current) => [...current, ...added]);
     setUploadError(problems[0] ?? null);
     if (fileInput.current) fileInput.current.value = '';
+  }
+
+  function updateAttachment(clientId: string, patch: Partial<Attachment>) {
+    setAttachments((current) =>
+      current.map((item) => (item.clientId === clientId ? { ...item, ...patch } : item)),
+    );
   }
 
   function removeAttachment(clientId: string) {
@@ -152,41 +219,13 @@ export function PostComposer({
     event.preventDefault();
     if (uploading || pending) return;
 
-    const pendingFiles = attachments.filter((attachment) => attachment.status !== 'ready');
-    if (pendingFiles.length > 0) {
-      setUploading(true);
-      setUploadError(null);
-      try {
-        for (const attachment of pendingFiles) {
-          setAttachments((current) =>
-            current.map((item) =>
-              item.clientId === attachment.clientId ? { ...item, status: 'uploading' } : item,
-            ),
-          );
-          const result = await uploadThrough(attachment.file);
-          if ('error' in result) {
-            setUploadError(result.error);
-            setAttachments((current) =>
-              current.map((item) =>
-                item.clientId === attachment.clientId ? { ...item, status: 'failed' } : item,
-              ),
-            );
-            setUploading(false);
-            return;
-          }
-          setAttachments((current) =>
-            current.map((item) =>
-              item.clientId === attachment.clientId
-                ? { ...item, status: 'ready', mediaId: result.mediaId }
-                : item,
-            ),
-          );
-        }
-      } finally {
-        setUploading(false);
-      }
-    }
-    formRef.current?.requestSubmit();
+    const notReady = attachments.filter((attachment) => attachment.status !== 'ready');
+    const uploaded = await submitPendingUploads(notReady, {
+      setUploading,
+      setUploadError,
+      updateAttachment,
+    });
+    if (uploaded) formRef.current?.requestSubmit();
   }
 
   return (

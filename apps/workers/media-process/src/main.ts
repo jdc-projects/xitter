@@ -6,8 +6,7 @@
 import { realmUrls } from '@xitter/auth';
 import { MediaClient } from '@xitter/api-client';
 import { kafkaBrokers, localPort, localUrl, loadRepoEnv, parseEnv } from '@xitter/config';
-import { CONSUMER_GROUPS, createEventConsumer } from '@xitter/events';
-import { createLogger, createMetricsServer, initSentry, initTracing } from '@xitter/observability';
+import { CONSUMER_GROUPS, runEventWorker } from '@xitter/events';
 import { z } from 'zod';
 import { handleEvent } from './handlers.js';
 import { RustFsWorkerStorage } from './storage.js';
@@ -22,20 +21,13 @@ const env = parseEnv(
     KEYCLOAK_BASE_URL: z.string().url().default(localUrl('keycloak')),
     DEMO_REALM: z.string().min(1).default('xitter-demo'),
     KEYCLOAK_CLIENT_ID: z.string().min(1).default('svc-worker-media-process'),
-    KEYCLOAK_CLIENT_SECRET: z
-      .string()
-      .min(1)
-      .default('svc-worker-media-process-local-secret'),
+    KEYCLOAK_CLIENT_SECRET: z.string().min(1).default('svc-worker-media-process-local-secret'),
     XITTER_MEDIA_S3_ENDPOINT: z.string().url().default(localUrl('rustfs')),
     XITTER_MEDIA_S3_BUCKET: z.string().min(1).default('xitter-media'),
     XITTER_MEDIA_S3_ACCESS_KEY: z.string().min(1).default('xitter-local'),
     XITTER_MEDIA_S3_SECRET_KEY: z.string().min(1).default('xitter-local-secret'),
   }),
 );
-
-const logger = createLogger({ service: 'media-process-worker' });
-const tracing = initTracing('media-process-worker');
-initSentry('media-process-worker');
 
 const media = new MediaClient({
   baseUrl: env.MEDIA_INTERNAL_URL,
@@ -54,28 +46,12 @@ const storage = new RustFsWorkerStorage({
   secretAccessKey: env.XITTER_MEDIA_S3_SECRET_KEY,
 });
 
-const consumer = createEventConsumer({
+await runEventWorker({
+  service: 'media-process-worker',
   clientId: 'xitter-media-process-worker',
   brokers: env.KAFKA_BROKERS.split(','),
   groupId: CONSUMER_GROUPS.mediaProcessWorker,
   topics: ['media'],
+  metricsPort: env.METRICS_PORT,
+  handle: (envelope) => handleEvent(envelope, { media, storage }),
 });
-
-const metrics = createMetricsServer(env.METRICS_PORT);
-await metrics.started;
-logger.info(`metrics on :${env.METRICS_PORT}`);
-
-await consumer.run(async (envelope) => {
-  await handleEvent(envelope, { media, storage });
-});
-
-process.once('SIGTERM', () => {
-  void (async () => {
-    await consumer.disconnect();
-    await metrics.stop();
-    await tracing.shutdown();
-    process.exit(0);
-  })();
-});
-
-logger.info(`media-process-worker running`);

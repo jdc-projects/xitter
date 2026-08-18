@@ -10,7 +10,9 @@
   "unused_files": [
     "apps/services/posts/vitest.mutation.config.ts",
     "apps/services/social/vitest.mutation.config.ts",
-    "bruno/xitter/scripts/login.js"
+    "bruno/xitter/scripts/login.js",
+    "apps/services/media/vitest.mutation.config.ts",
+    "packages/scripts/src/rustfs.ts"
   ],
   "unused_exports": [
     "packages/scripts/src/lib/compose.ts:composeProject",
@@ -105,7 +107,13 @@
     "packages/api-client/src/services.ts:PostsClient.getBookmarks",
     "packages/api-client/src/services.ts:FeedClient.getFeed",
     "packages/api-client/src/services.ts:SearchClient.searchPosts",
-    "packages/api-client/src/services.ts:MediaClient.createUpload"
+    "packages/api-client/src/services.ts:MediaClient.createUpload",
+    "packages/api-client/src/services.ts:MediaClient.completeUpload",
+    "packages/api-client/src/services.ts:MediaClient.getMedia",
+    "packages/api-client/src/services.ts:MediaClient.internalGetAsset",
+    "packages/api-client/src/services.ts:MediaClient.internalRecordVariants",
+    "packages/api-client/src/services.ts:MediaClient.internalReportFailure",
+    "packages/api-client/src/services.ts:MediaClient.internalLookup"
   ],
   "unused_store_members": [],
   "unprovided_injects": [],

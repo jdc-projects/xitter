@@ -6,7 +6,8 @@ import type { Post, Profile } from '@xitter/api-contracts';
 import { ApiError } from '@xitter/api-client';
 import { requireSession } from '@/lib/auth/session';
 import { PostComposer } from '@/components/post-composer';
-import { imagesFor, PostListItem } from '@/components/post-list-item';
+import { PostListItem } from '@/components/post-list-item';
+import { imagesFor } from '@/lib/media/images';
 import { DeletePostButton } from '@/components/delete-post-button';
 import { clientsForSession, profilesByAuthorIds } from '@/lib/posts/server';
 
