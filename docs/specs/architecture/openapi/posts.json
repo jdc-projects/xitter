@@ -950,6 +950,205 @@
         }
       }
     },
+    "/internal/posts/lookup": {
+      "post": {
+        "tags": ["internal"],
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "Bulk visible-post lookup (feed #7 hydration); deleted/missing ids are omitted from the response.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "postIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                    },
+                    "minItems": 1,
+                    "maxItems": 100
+                  }
+                },
+                "required": ["postIds"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Visible posts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                          },
+                          "authorId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                          },
+                          "text": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 512
+                          },
+                          "media": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "format": "uuid"
+                                },
+                                "ownerId": {
+                                  "type": "string",
+                                  "format": "uuid",
+                                  "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                                },
+                                "status": {
+                                  "type": "string",
+                                  "enum": ["pending", "ready", "failed"]
+                                },
+                                "variants": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": ["original", "thumb"]
+                                      },
+                                      "objectKey": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      },
+                                      "mimeType": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      },
+                                      "bytes": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "exclusiveMinimum": true
+                                      },
+                                      "width": {
+                                        "type": "integer",
+                                        "nullable": true,
+                                        "minimum": 0,
+                                        "exclusiveMinimum": true
+                                      },
+                                      "height": {
+                                        "type": "integer",
+                                        "nullable": true,
+                                        "minimum": 0,
+                                        "exclusiveMinimum": true
+                                      },
+                                      "url": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "objectKey",
+                                      "mimeType",
+                                      "bytes",
+                                      "width",
+                                      "height",
+                                      "url"
+                                    ]
+                                  }
+                                },
+                                "createdAt": {
+                                  "type": "string",
+                                  "format": "date-time"
+                                }
+                              },
+                              "required": ["id", "ownerId", "status", "variants", "createdAt"]
+                            }
+                          },
+                          "replyToId": {
+                            "type": "string",
+                            "nullable": true,
+                            "format": "uuid",
+                            "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                          },
+                          "repostOfId": {
+                            "type": "string",
+                            "nullable": true,
+                            "format": "uuid",
+                            "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                          },
+                          "counts": {
+                            "type": "object",
+                            "properties": {
+                              "replies": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "likes": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "reposts": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": ["replies", "likes", "reposts"]
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "deletedAt": {
+                            "type": "string",
+                            "nullable": true,
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "authorId",
+                          "text",
+                          "media",
+                          "replyToId",
+                          "repostOfId",
+                          "counts",
+                          "createdAt",
+                          "deletedAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": ["items"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/internal/reseed": {
       "post": {
         "tags": ["internal"],

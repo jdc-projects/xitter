@@ -16,9 +16,87 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT"
+      },
+      "serviceToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Client-credentials service token (audience = svc-feed)."
       }
     },
-    "schemas": {},
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object",
+                "additionalProperties": {
+                  "nullable": true
+                }
+              }
+            },
+            "required": ["code", "message"]
+          }
+        },
+        "required": ["error"]
+      },
+      "UpsertFeedEntriesRequest": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "userId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                },
+                "postId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                },
+                "authorId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                },
+                "reason": {
+                  "type": "string",
+                  "enum": ["post", "repost"]
+                },
+                "repostedById": {
+                  "type": "string",
+                  "nullable": true,
+                  "format": "uuid",
+                  "default": null,
+                  "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                },
+                "postCreatedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": ["userId", "postId", "authorId", "reason", "postCreatedAt"]
+            },
+            "minItems": 1,
+            "maxItems": 1000
+          }
+        },
+        "required": ["entries"],
+        "additionalProperties": false
+      }
+    },
     "parameters": {}
   },
   "paths": {
@@ -30,10 +108,12 @@
             "bearerAuth": []
           }
         ],
+        "description": "Materialised home timeline (followed + own posts, newest first), hydrated server-side; deleted posts and blocked authors are excluded.",
         "parameters": [
           {
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "required": false,
             "name": "cursor",
@@ -41,8 +121,10 @@
           },
           {
             "schema": {
-              "type": "number",
-              "nullable": true
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
             },
             "required": false,
             "name": "limit",
@@ -249,6 +331,246 @@
                     }
                   },
                   "required": ["items", "nextCursor"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cursor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ws": {
+      "get": {
+        "tags": ["feed"],
+        "description": "WebSocket endpoint (wss upgrade only): `wss://{host}/api/feed/v1/ws?token={accessToken}`. Server-to-client notifications only - `{ \"type\": \"feed.new-items\", \"count\": n }`; clients refetch `GET /v1/feed`.",
+        "responses": {
+          "400": {
+            "description": "Plain HTTP GET: connect via wss upgrade instead",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/feed/entries": {
+      "post": {
+        "tags": ["internal"],
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "Bulk idempotent entry upsert (fanout worker); conflicts on the natural key (userId, postId, reason) are skipped. Affected users get a ws notification.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertFeedEntriesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rows actually inserted (replays report 0)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "inserted": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": ["inserted"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/feed/posts/{postId}/entries": {
+      "delete": {
+        "tags": ["internal"],
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "Post deleted: entries for the post leave every feed (fanout worker).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "b1c2d3e4-0000-4000-8000-000000000002"
+            },
+            "required": true,
+            "name": "postId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rows deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deleted": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["deleted"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/feed/users/{userId}/authors/{authorId}": {
+      "delete": {
+        "tags": ["internal"],
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "Unfollowed: the author entries leave this one feed (fanout worker).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "b1c2d3e4-0000-4000-8000-000000000001"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "b1c2d3e4-0000-4000-8000-000000000001"
+            },
+            "required": true,
+            "name": "authorId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rows deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deleted": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["deleted"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/feed/users/{userId}": {
+      "delete": {
+        "tags": ["internal"],
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "Delete all feed entries for a user (reset job / fanout).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "b1c2d3e4-0000-4000-8000-000000000001"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rows deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deleted": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["deleted"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/reseed": {
+      "post": {
+        "tags": ["internal"],
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "Truncate feed entries (reset job); the timeline rebuilds from events.",
+        "responses": {
+          "200": {
+            "description": "Acknowledged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["ok"]
                 }
               }
             }

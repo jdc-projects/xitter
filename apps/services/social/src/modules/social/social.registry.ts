@@ -3,6 +3,8 @@ import { z } from 'zod';
 import {
   createProfileRequestSchema,
   errorSchema,
+  profileLookupRequestSchema,
+  profileLookupResponseSchema,
   profilePageSchema,
   profileSchema,
   profileWithCountsSchema,
@@ -209,6 +211,19 @@ socialApi.registerPath({
   description: 'Ids this user has blocked (feed #7, search #9 filtering).',
   request: { params: idParams },
   responses: { 200: jsonResponse('Blocked ids', z.array(z.string().uuid())) },
+});
+
+socialApi.registerPath({
+  method: 'post',
+  path: '/internal/profiles/lookup',
+  tags: ['internal'],
+  security: [{ serviceToken: [] }],
+  description:
+    'Bulk profile lookup for server-side hydration (feed #7); missing ids are omitted.',
+  request: { body: { content: { 'application/json': { schema: profileLookupRequestSchema } } } },
+  responses: {
+    200: jsonResponse('Profiles', profileLookupResponseSchema),
+  },
 });
 
 socialApi.registerPath({

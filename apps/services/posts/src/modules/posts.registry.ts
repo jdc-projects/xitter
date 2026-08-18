@@ -3,6 +3,8 @@ import { z } from 'zod';
 import {
   createPostRequestSchema,
   errorSchema,
+  postLookupRequestSchema,
+  postLookupResponseSchema,
   postIdSchema,
   postSchema,
   userIdSchema,
@@ -112,6 +114,19 @@ postsApi.registerPath({
 });
 
 // Internal endpoints: no version segment, service tokens only (spec 03).
+postsApi.registerPath({
+  method: 'post',
+  path: '/internal/posts/lookup',
+  tags: ['internal'],
+  security: [{ serviceToken: [] }],
+  description:
+    'Bulk visible-post lookup (feed #7 hydration); deleted/missing ids are omitted from the response.',
+  request: { body: { content: { 'application/json': { schema: postLookupRequestSchema } } } },
+  responses: {
+    200: jsonResponse('Visible posts', postLookupResponseSchema),
+  },
+});
+
 postsApi.registerPath({
   method: 'post',
   path: '/internal/reseed',
