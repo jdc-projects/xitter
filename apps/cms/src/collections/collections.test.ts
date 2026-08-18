@@ -16,10 +16,10 @@ describe('CMS collections', () => {
   });
 
   it('published site content is publicly readable (served through the web app)', () => {
-    expect(LandingContent.access?.read?.(args({}))).toBe(true);
-    expect(Faq.access?.read?.(args({}))).toBe(true);
-    // Explicit non-draft query stays public too.
-    expect(LandingContent.access?.read?.(args({ query: { draft: 'false' } }))).toBe(true);
+    // Published reads are anonymous but where-constrained (see access test).
+    expect(LandingContent.access?.read?.(args({ query: { draft: 'false' } }))).toEqual({
+      _status: { equals: 'published' },
+    });
   });
 
   it('draft reads require an authenticated CMS user', () => {
@@ -28,6 +28,15 @@ describe('CMS collections', () => {
     expect(LandingContent.access?.read?.(args({ user: { id: 1 }, query: { draft: 'true' } }))).toBe(
       true,
     );
+  });
+
+  it('anonymous published reads are constrained to published docs (draft leak closed)', () => {
+    expect(LandingContent.access?.read?.(args({}))).toEqual({
+      _status: { equals: 'published' },
+    });
+    expect(Faq.access?.read?.(args({}))).toEqual({ _status: { equals: 'published' } });
+    // Authenticated users see the latest versions, filtered or not.
+    expect(LandingContent.access?.read?.(args({ user: { id: 1 } }))).toBe(true);
   });
 
   it('site content mutations require an authenticated CMS user', () => {
