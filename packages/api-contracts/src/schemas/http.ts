@@ -162,6 +162,9 @@ export const postLookupResponseSchema = z
   })
   .strict();
 
+export type PostLookupRequest = z.infer<typeof postLookupRequestSchema>;
+export type PostLookupResponse = z.infer<typeof postLookupResponseSchema>;
+
 // Internal (feed → social): bulk profile lookup for hydration. Missing ids
 // are omitted; callers substitute placeholders.
 export const profileLookupRequestSchema = z
@@ -175,6 +178,9 @@ export const profileLookupResponseSchema = z
     items: z.array(profileSchema),
   })
   .strict();
+
+export type ProfileLookupRequest = z.infer<typeof profileLookupRequestSchema>;
+export type ProfileLookupResponse = z.infer<typeof profileLookupResponseSchema>;
 
 export const postPageSchema = cursorPagination(postSchema).openapi('PostPage');
 

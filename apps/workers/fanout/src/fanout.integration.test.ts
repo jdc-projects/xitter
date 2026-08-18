@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Kafka } from 'kafkajs';
 import { startKafka } from '@xitter/testing';
 import { CONSUMER_GROUPS, createEventConsumer, createEventProducer } from '@xitter/events';
+import type { Post } from '@xitter/api-contracts';
 import { handleEvent, type FeedApi, type PostsApi, type SocialApi } from './handlers.js';
 
 /**
@@ -24,13 +25,16 @@ describe('fanout consumption (testcontainers kafka)', () => {
   let producer: Awaited<ReturnType<typeof createEventProducer>>;
   let consumer: Awaited<ReturnType<typeof createEventConsumer>>;
 
-  const followerIds = vi.fn(() => Promise.resolve([FOLLOWER_1, FOLLOWER_2]));
-  const userPosts = vi.fn(() => Promise.resolve({ items: [], nextCursor: null }));
-  const upsertEntries = vi.fn(
-    (entries: unknown[]) => Promise.resolve({ inserted: entries.length }),
+  const followerIds = vi.fn((_userId: string) => Promise.resolve([FOLLOWER_1, FOLLOWER_2]));
+  const userPosts = vi.fn(
+    (_userId: string, _cursor?: string, _limit?: number) =>
+      Promise.resolve({ items: [] as Post[], nextCursor: null as string | null }),
   );
-  const deletePostEntries = vi.fn(() => Promise.resolve({ deleted: 1 }));
-  const deleteAuthorEntries = vi.fn(() => Promise.resolve({ deleted: 1 }));
+  const upsertEntries = vi.fn((_entries: unknown[]) => Promise.resolve({ inserted: 0 }));
+  const deletePostEntries = vi.fn((_postId: string) => Promise.resolve({ deleted: 1 }));
+  const deleteAuthorEntries = vi.fn(
+    (_userId: string, _authorId: string) => Promise.resolve({ deleted: 1 }),
+  );
 
   beforeAll(async () => {
     kafka = await startKafka();

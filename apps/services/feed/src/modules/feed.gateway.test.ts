@@ -1,5 +1,5 @@
 import { createServer, type Server } from 'node:http';
-import { AddressInfo } from 'node:net';
+import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import type { AuthContext, TokenVerifier } from '@xitter/auth';
@@ -15,6 +15,7 @@ const verifier: TokenVerifier = {
       subject: USER,
       username: 'demo1',
       roles: [],
+      audience: 'svc-feed',
       claims: { sub: USER, azp: 'web', iss: 'http://localhost:8090/realms/xitter-demo' },
     };
   },
@@ -27,20 +28,20 @@ function fakeSubscriber(): RedisSubscriber & {
 } {
   const patterns: string[] = [];
   const listeners: ((pattern: string, channel: string, message: string) => void)[] = [];
-  return {
-    patterns,
+  const subscriber = {
     psubscribe: async (pattern: string) => {
       patterns.push(pattern);
     },
-    on: (_event, listener) => {
+    on: (_event: 'pmessage', listener: (pattern: string, channel: string, message: string) => void) => {
       listeners.push(listener);
-      return this;
+      return subscriber;
     },
     quit: async () => undefined,
     pmessage: (channel: string) => {
       for (const listener of listeners) listener('feed:updates:*', channel, '1');
     },
   };
+  return { ...subscriber, patterns };
 }
 
 describe('FeedGateway (ws auth + notification relay)', () => {

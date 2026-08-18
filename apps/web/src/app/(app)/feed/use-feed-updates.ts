@@ -17,7 +17,9 @@ export function useFeedUpdates(onNewItems: (count: number) => void): FeedSocketS
   const [status, setStatus] = useState<FeedSocketStatus>('connecting');
   // Keep the latest callback without re-subscribing on every render.
   const handler = useRef(onNewItems);
-  handler.current = onNewItems;
+  useEffect(() => {
+    handler.current = onNewItems;
+  }, [onNewItems]);
 
   useEffect(() => {
     let socket: WebSocket | undefined;

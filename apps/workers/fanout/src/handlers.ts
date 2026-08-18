@@ -1,9 +1,4 @@
-import type {
-  FeedEntryInput,
-  Post,
-  PostCreated,
-  FollowCreated,
-} from '@xitter/api-contracts';
+import type { FeedEntryInput, Post, PostCreated } from '@xitter/api-contracts';
 import { eventSchemas, EVENT_TYPES, type DomainEvent } from '@xitter/events';
 import { createLogger } from '@xitter/observability';
 import { BACKFILL_POSTS, entriesForBackfill, entriesForNewPost } from './entries.js';
