@@ -10,7 +10,7 @@ Kafka is the only asynchronous integration mechanism between services and worker
 | `xitter.social.v1` | social   | 6          | 7d        | acting user (`followerId` / `blockerId` / `profileId`) |
 | `xitter.media.v1`  | media    | 6          | 7d        | `mediaId`                                              |
 
-Partition keys preserve per-aggregate ordering (a post's lifecycle, a user's graph changes, a media object's processing) — consumers must not assume cross-partition ordering.
+Partition keys preserve per-aggregate ordering (a post's lifecycle, a user's graph changes, a media object's processing) — consumers must not assume cross-partition ordering. Producers thread the aggregate id (`postId`, acting user, `mediaId`) through `EventProducer.emit` as the Kafka message key; events emitted without a key fall back to the event type, which orders only per event type.
 
 ## Envelope
 
@@ -139,7 +139,7 @@ sequenceDiagram
     FD-->>U: ws {type:"feed.new-items", count}
 ```
 
-Unfollow (`social.follow.deleted`) removes the followee's entries from the follower's feed via the feed internal API. **Blocks are different — explicit product decision:** `social.block.*` prevents _future_ interactions (likes, reposts, replies, follows on the blocker's content, enforced at write time); **historical feed entries are not rewritten and remain until the nightly reset.** Block events therefore have no feed consumer.
+Unfollow (`social.follow.deleted`) removes the followee's entries from the follower's feed via the feed internal API (`DELETE /internal/feed/users/:followerId/authors/:followeeId`). Follow backfill copies the followee's **20 most recent posts** (`GET /v1/users/:followeeId/posts`, bounded window; a full historical rebuild is a reset concern, not a runtime one). **Blocks are different — explicit product decision:** `social.block.*` prevents _future_ interactions (likes, reposts, replies, follows on the blocker's content, enforced at write time); **historical feed entries are not rewritten and remain until the nightly reset.** Block events therefore have no feed consumer; blocked authors are filtered at feed read time instead.
 
 ### Search indexing
 
@@ -160,11 +160,13 @@ sequenceDiagram
 
 ## Consumer groups
 
-| Group           | Worker        | Topics                                | Notes                                                              |
-| --------------- | ------------- | ------------------------------------- | ------------------------------------------------------------------ |
-| `fanout`        | fanout        | `xitter.posts.v1`, `xitter.social.v1` | Feed materialisation + backfill/removal                            |
-| `media-process` | media-process | `xitter.media.v1`                     | Only `media.media.uploaded` is actionable                          |
-| `search-index`  | search-index  | `xitter.posts.v1`                     | Only `posts.post.*` are actionable; batches for `_bulk` efficiency |
+Group ids live in `CONSUMER_GROUPS` (`packages/events/src/topics.ts`); the nightly reset recreates them (see [05-data-platform.md](05-data-platform.md)).
+
+| Group                         | Worker        | Topics                                | Notes                                                              |
+| ----------------------------- | ------------- | ------------------------------------- | ------------------------------------------------------------------ |
+| `xitter-fanout-worker`        | fanout        | `xitter.posts.v1`, `xitter.social.v1` | Feed materialisation + backfill/removal                            |
+| `xitter-media-process-worker` | media-process | `xitter.media.v1`                     | Only `media.media.uploaded` is actionable                          |
+| `xitter-search-index-worker`  | search-index  | `xitter.posts.v1`                     | Only `posts.post.*` are actionable; batches for `_bulk` efficiency |
 
 Groups (and topic data) are deleted and recreated by the nightly reset — see [05-data-platform.md](05-data-platform.md).
 
@@ -174,7 +176,7 @@ At-least-once delivery means every flow below must tolerate redelivery:
 
 1. **eventId dedupe** — each worker persists processed `eventId`s (store with retention ≥ topic retention, 7d) and skips already-seen events before doing side-effectful work.
 2. **Natural-key upserts** — all writes are idempotent on business keys, so a replay after a crash converges:
-   - feed entries: unique `(userId, postId)` — insert on conflict do nothing
+   - feed entries: unique `(userId, postId, reason)` — insert on conflict do nothing (repostedById is excluded because Postgres treats NULLs as distinct in unique indexes)
    - search documents: upsert keyed by `postId`; deletes are tombstones (`deletedAt`)
    - media variants: variant writes keyed by `(mediaId, kind)` — regeneration overwrites
 3. **No read-modify-write races** — counters and variant state use atomic upserts; consumers never rely on event ordering across partitions.

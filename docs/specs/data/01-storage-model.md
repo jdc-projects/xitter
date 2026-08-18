@@ -107,13 +107,15 @@ erDiagram
         string id PK
         string userId "feed owner"
         string postId
-        string reason "post|repost|reply-context"
-        string repostedById "nullable"
-        datetime createdAt "post/interaction time for ordering"
+        string authorId "hydrated from posts/social at read time"
+        string reason "post | repost"
+        string repostedById "nullable - repost entries refine with #8"
+        datetime postCreatedAt "ordering key (post/interaction time)"
+        datetime insertedAt "materialisation time"
     }
 ```
 
-Unique: `FeedEntry(userId, postId, reason, repostedById)` — idempotent event application.
+Unique: `FeedEntry(userId, postId, reason)` — idempotent event application. `repostedById` is deliberately **not** part of the key: Postgres unique indexes treat NULLs as distinct, so a nullable column would defeat the constraint for `reason = 'post'` rows (every replay would insert a duplicate); #8 refines the repost key when reposts land. Entries store ids + ordering columns only — post bodies and author profiles are hydrated server-side from posts/social on read (`GET /v1/feed`). Deleted posts drop out at hydration; blocked authors are filtered at query time (rows persist until the nightly reset, per the block product decision).
 
 ### search
 
@@ -146,14 +148,14 @@ Field tables above (types/constraints inline in each ER diagram) are normative. 
 
 ## Index strategy
 
-| Store      | Indexes (beyond PKs/uniques)                                                     | Serves                                                    |
-| ---------- | -------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| social     | `Follow(followeeId)`, `Block(blockedId)`                                         | Followers lists; block checks on write paths              |
-| posts      | `Post(authorId, createdAt desc)`, `Post(replyToId)`, `Interaction(userId, kind)` | Profiles, threads, "my bookmarks/likes"                   |
-| media      | `MediaAsset(ownerId)`, `MediaAsset(status)`                                      | Owner lookups (attach validation); pending/failed cleanup |
-| feed       | `FeedEntry(userId, createdAt desc)`                                              | The feed page itself — the hot path                       |
-| search     | checkpoint lookups by consumerKey                                                | Resume position                                           |
-| OpenSearch | standard text index on posts                                                     | Full-text search                                          |
+| Store      | Indexes (beyond PKs/uniques)                                                                         | Serves                                                                          |
+| ---------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| social     | `Follow(followeeId)`, `Block(blockedId)`                                                             | Followers lists; block checks on write paths                                    |
+| posts      | `Post(authorId, createdAt desc)`, `Post(replyToId)`, `Interaction(userId, kind)`                     | Profiles, threads, "my bookmarks/likes"                                         |
+| media      | `MediaAsset(ownerId)`, `MediaAsset(status)`                                                          | Owner lookups (attach validation); pending/failed cleanup                       |
+| feed       | `FeedEntry(userId, postCreatedAt desc, id desc)`, `FeedEntry(postId)`, `FeedEntry(userId, authorId)` | The feed page itself (keyset, newest first); deletion fan-out; unfollow cleanup |
+| search     | checkpoint lookups by consumerKey                                                                    | Resume position                                                                 |
+| OpenSearch | standard text index on posts                                                                         | Full-text search                                                                |
 
 Guideline: index for the read patterns in the product flows ([../product/03-user-flows.md](../product/03-user-flows.md)); add indexes with evidence, not speculation.
 
