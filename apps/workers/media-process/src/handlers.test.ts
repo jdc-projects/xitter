@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ApiError } from '@xitter/api-client';
 import { EVENT_TYPES } from '@xitter/events';
 import type { InternalMediaAsset, MediaAsset } from '@xitter/api-contracts';
 import { handleEvent, type HandlerDeps, type MediaApi, type WorkerStorage } from './handlers.js';
@@ -106,13 +107,25 @@ describe('media-process handleEvent', () => {
   it('skips when the asset vanished (reset raced the event)', async () => {
     const deps = {
       media: {
-        internalGetAsset: () => Promise.reject(new Error('404')),
+        internalGetAsset: () => Promise.reject(new ApiError(404, 'not_found', 'Media not found')),
         internalRecordVariants: () => Promise.resolve(asset({ status: 'ready' })),
         internalReportFailure: () => Promise.resolve(asset()),
       },
       storage: { get: () => Promise.resolve(new Uint8Array()), put: () => Promise.resolve() },
     } as unknown as HandlerDeps;
     await expect(handleEvent(envelope, deps)).resolves.toBeUndefined();
+  });
+
+  it('redelivers when the asset lookup fails transiently (media down mid-deploy)', async () => {
+    const deps = {
+      media: {
+        internalGetAsset: () => Promise.reject(new ApiError(503, 'unavailable', 'media down')),
+        internalRecordVariants: () => Promise.resolve(asset({ status: 'ready' })),
+        internalReportFailure: () => Promise.resolve(asset()),
+      },
+      storage: { get: () => Promise.resolve(new Uint8Array()), put: () => Promise.resolve() },
+    } as unknown as HandlerDeps;
+    await expect(handleEvent(envelope, deps)).rejects.toBeInstanceOf(ApiError);
   });
 
   it('processes a pending asset: thumb uploaded, variants recorded', async () => {

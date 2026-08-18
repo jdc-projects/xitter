@@ -1,3 +1,4 @@
+import { ApiError } from '@xitter/api-client';
 import type { InternalMediaAsset, MediaAsset, MediaVariantCore } from '@xitter/api-contracts';
 import { EVENT_TYPES } from '@xitter/events';
 import { createLogger } from '@xitter/observability';
@@ -52,9 +53,14 @@ export async function handleEvent(envelope: unknown, deps: HandlerDeps): Promise
 
   const asset = await deps.media.internalGetAsset(mediaId).catch((err: unknown) => {
     // Deleted between emission and consumption (e.g. the reset raced us):
-    // nothing to process, and throwing would hot-loop a 404.
-    logger.warn({ err, mediaId }, 'asset lookup failed - skipping event');
-    return null;
+    // nothing to process, and throwing would hot-loop a 404. Any other
+    // failure (media down mid-deploy, token fetch error) must redeliver -
+    // skipping here would strand the asset in pending forever.
+    if (err instanceof ApiError && err.status === 404) {
+      logger.warn({ mediaId }, 'asset vanished - skipping event');
+      return null;
+    }
+    throw err;
   });
   if (!asset || asset.status !== 'pending') return; // ready (redelivery) or failed (cap)
 

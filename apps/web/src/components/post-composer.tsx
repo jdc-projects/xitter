@@ -217,9 +217,10 @@ export function PostComposer({
     });
   }
 
+  const bypassSubmit = useRef(false);
+
   /** Upload everything not yet ready, then submit the form for real. */
-  async function submit(event: React.MouseEvent) {
-    event.preventDefault();
+  async function runSubmit() {
     if (uploading || pending) return;
 
     const notReady = attachments.filter((attachment) => attachment.status !== 'ready');
@@ -239,11 +240,27 @@ export function PostComposer({
     // the post references the media that was just uploaded.
     const mediaIds = [...alreadyReady, ...uploaded];
     if (mediaIdsInput.current) mediaIdsInput.current.value = JSON.stringify(mediaIds);
+    bypassSubmit.current = true;
     formRef.current?.requestSubmit();
   }
 
   return (
-    <form action={formAction} ref={formRef} data-testid={`${testId}-form`}>
+    <form
+      action={formAction}
+      ref={formRef}
+      data-testid={`${testId}-form`}
+      onSubmit={(event) => {
+        if (bypassSubmit.current) {
+          bypassSubmit.current = false;
+          return;
+        }
+        // The button click AND Enter-key implicit submission both land here:
+        // route both through the upload flow, or non-ready attachments are
+        // silently dropped from the post.
+        event.preventDefault();
+        void runSubmit();
+      }}
+    >
       <input type="hidden" name="replyToId" value={replyToId ?? ''} />
       <input
         ref={mediaIdsInput}
@@ -346,7 +363,6 @@ export function PostComposer({
           size="xs"
           loading={pending || uploading}
           disabled={!text.trim()}
-          onClick={submit}
           data-testid={`${testId}-submit`}
         >
           {submitLabel}

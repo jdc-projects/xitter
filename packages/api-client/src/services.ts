@@ -5,6 +5,7 @@ import {
   feedPageSchema,
   internalMediaAssetSchema,
   mediaAssetSchema,
+  mediaLookupResponseSchema,
   postSchema,
   profileSchema,
   profileWithCountsSchema,
@@ -237,7 +238,9 @@ export class MediaClient extends ServiceClient {
 
   /** Internal (posts): owned assets among the ids (attach validation). */
   internalLookup(ownerId: string, mediaIds: string[]): Promise<{ items: MediaAsset[] }> {
-    return this.post(`${V1}/media/internal/media/lookup`, { ownerId, mediaIds });
+    return this.post(`${V1}/media/internal/media/lookup`, { ownerId, mediaIds }).then(
+      mediaLookupResponseSchema.parse,
+    );
   }
 }
 

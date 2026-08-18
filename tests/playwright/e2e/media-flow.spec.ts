@@ -62,6 +62,27 @@ test('attach image: post shows thumb in feed, original on detail, served from /m
   expect(await original.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
 });
 
+test('Enter-key submission uploads attachments too (the button is not the only path)', async ({
+  page,
+}) => {
+  await login(page, 'demo9');
+  const text = `t5 e2e enter submit ${crypto.randomUUID()}`;
+
+  await page.getByTestId('composer-textarea').fill(text);
+  await page
+    .getByTestId('composer-file-input')
+    .setInputFiles([{ name: 'enter.png', mimeType: 'image/png', buffer: PNG }]);
+  await expect(page.getByTestId('composer-attachment-new')).toHaveCount(1);
+
+  await page.getByTestId('composer-textarea').press('Enter');
+
+  // The post must carry the image - Enter must not bypass the upload flow.
+  const item = page.locator('[data-testid^="post-item-"]', { hasText: text }).first();
+  await expect(item).toBeVisible({ timeout: 45_000 });
+  const postId = (await item.getAttribute('data-testid'))!.replace('post-item-', '');
+  await expect(page.locator(`[data-testid="post-image-${postId}"]`).first()).toBeVisible();
+});
+
 test('wrong type, oversize and 5th image are rejected before any upload', async ({ page }) => {
   await login(page, 'demo10');
   const error = page.getByTestId('composer-upload-error');

@@ -226,6 +226,16 @@ describe('complete (server-side verification)', () => {
     expect(removed).toHaveLength(1);
   });
 
+  it('rejects 0-byte objects - the empty PUT must not complete', async () => {
+    const { service, rows, emitted, removed } = makeDeps(0);
+    const slot = await service.createUpload(OWNER, { mimeType: 'image/png', bytes: 512 });
+
+    await expect(service.complete(OWNER, slot.mediaId)).rejects.toMatchObject({ status: 400 });
+    expect(rows.get(slot.mediaId)).toMatchObject({ status: 'failed' });
+    expect(removed).toEqual([`${OWNER}/${slot.mediaId}/original.png`]);
+    expect(emitted).toHaveLength(0);
+  });
+
   it('is idempotent: a repeat complete does not re-emit the event', async () => {
     const { service, emitted } = makeDeps();
     const slot = await service.createUpload(OWNER, { mimeType: 'image/png', bytes: 512 });
@@ -304,6 +314,20 @@ describe('variant recording (worker callbacks)', () => {
     const final = await service.reportFailure(slot.mediaId, 'sharp exploded');
     expect(final.status).toBe('failed');
     expect(rows.get(slot.mediaId)).toMatchObject({ attempts: MAX_PROCESS_ATTEMPTS });
+  });
+
+  it('removes the object when the attempt cap flips the asset to failed', async () => {
+    const { service, removed } = makeDeps();
+    const slot = await service.createUpload(OWNER, { mimeType: 'image/png', bytes: 512 });
+
+    await service.reportFailure(slot.mediaId, 'sharp could not decode');
+    expect(removed).toHaveLength(0); // still pending - object may yet process
+
+    for (let attempt = 2; attempt <= MAX_PROCESS_ATTEMPTS; attempt++) {
+      await service.reportFailure(slot.mediaId, 'sharp could not decode');
+    }
+
+    expect(removed).toEqual([`${OWNER}/${slot.mediaId}/original.png`]);
   });
 });
 

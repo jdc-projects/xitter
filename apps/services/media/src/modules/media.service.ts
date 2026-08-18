@@ -83,6 +83,10 @@ export class MediaService {
       await this.rejectUpload(mediaId, row.objectKey);
       throw badRequest('Uploaded object is not an allowed image type');
     }
+    if (stat.bytes <= 0) {
+      await this.rejectUpload(mediaId, row.objectKey);
+      throw badRequest('Uploaded image is empty');
+    }
     if (stat.bytes > MEDIA_MAX_BYTES) {
       await this.rejectUpload(mediaId, row.objectKey);
       throw badRequest('Uploaded image exceeds the 5MB limit');
@@ -157,6 +161,14 @@ export class MediaService {
     const row = await this.requireExisting(mediaId);
     const failed = row.attempts + 1 >= MAX_PROCESS_ATTEMPTS;
     const updated = await this.repo.recordAttempt(mediaId, failed);
+    if (failed) {
+      // Same rationale as rejectUpload: the bucket is public and the asset
+      // is dead (likely corrupt or hostile content sharp cannot decode) -
+      // the object must not stay served until the nightly wipe.
+      await this.storage.remove(row.objectKey).catch((err) => {
+        logger.warn({ err, objectKey: row.objectKey }, 'failed-asset object cleanup failed');
+      });
+    }
     return this.toAsset(updated);
   }
 

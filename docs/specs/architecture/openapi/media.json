@@ -135,7 +135,7 @@
             "bearerAuth": []
           }
         ],
-        "description": "Create an upload slot for one image. The mime allowlist (png/jpeg/webp/gif, 415) and the 5MB cap (413) are enforced here; the response carries a presigned PUT URL for RustFS (15 min, content-type bound).",
+        "description": "Create an upload slot for one image. The mime allowlist (png/jpeg/webp/gif, 415) and the 5MB cap (413) are enforced here; the response carries a presigned PUT URL for RustFS (15 min - SigV4 binds the host only, so the stored content type is re-checked at completion).",
         "requestBody": {
           "content": {
             "application/json": {
