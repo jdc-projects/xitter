@@ -1,5 +1,5 @@
 import type { CollectionConfig } from 'payload';
-import { siteContentAccess } from './site-content-access.js';
+import { siteContentAccess } from './site-content-access';
 
 export const LandingContent: CollectionConfig = {
   slug: 'landing-content',

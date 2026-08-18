@@ -1,6 +1,6 @@
 import { createTokenVerifier, type AuthContext, type TokenVerifier } from '@xitter/auth';
 import type { AuthStrategy, AuthStrategyResult, Payload } from 'payload';
-import { env } from '../env.js';
+import { env } from '../env';
 
 /** Spec 07: the CMS is gated on the app-admin realm role. */
 export const CMS_ADMIN_ROLE = 'app-admin';

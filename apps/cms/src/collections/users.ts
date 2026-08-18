@@ -1,5 +1,5 @@
 import type { CollectionConfig } from 'payload';
-import { createKeycloakStrategy } from '../auth/keycloak-strategy.js';
+import { createKeycloakStrategy } from '@/auth/keycloak-strategy';
 
 /**
  * CMS admin users, bridged to the Keycloak admin realm (spec 07):

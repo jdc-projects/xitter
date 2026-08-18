@@ -11,10 +11,11 @@ const SESSION_COOKIE = 'payload-token';
  * form page itself (/admin/login, where Payload's logout button lands) is
  * treated as a logout intent and routed through Keycloak end-session.
  *
- * Matchers cover the path with and without the /cms basePath - middleware
- * runs before basePath normalisation.
+ * Matchers cover the path with and without the /cms basePath - the proxy runs
+ * before basePath normalisation. (proxy.ts is the Next 16 name for
+ * middleware.ts.)
  */
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   // Normalise: strip the basePath if it is still present.
   let path = request.nextUrl.pathname;
   if (path === '/cms' || path.startsWith('/cms/')) path = path.slice('/cms'.length) || '/';

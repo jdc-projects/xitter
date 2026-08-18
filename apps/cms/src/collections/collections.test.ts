@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { LandingContent } from './landing-content.js';
-import { Faq } from './faq.js';
-import { Users } from './users.js';
+import { LandingContent } from './landing-content';
+import { Faq } from './faq';
+import { Users } from './users';
 
 /** The access functions only destructure `req`, so a minimal object suffices. */
 function args(req: { user?: unknown; query?: Record<string, unknown> }) {
