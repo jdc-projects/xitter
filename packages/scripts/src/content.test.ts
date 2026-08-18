@@ -80,7 +80,7 @@ describe('content promotion', () => {
     for (const post of posts) {
       expect(post.url).toContain('draft=false');
       expect(post.auth).toBe('Bearer seed-tok');
-      expect(JSON.parse(post.body!)).toHaveProperty('slug');
+      expect(JSON.parse(post.body!)).toMatchObject({ slug: expect.any(String), _status: 'published' });
     }
   });
 

@@ -122,7 +122,10 @@ async function fetchDocs(
 
   const res = await doFetch(url.toString(), {
     headers,
-    signal: AbortSignal.timeout(2_000),
+    // Generous: a booted-but-cold CMS can take seconds on its first query,
+    // while an unreachable one fails (ECONNREFUSED) immediately - so the
+    // fallback stays fast and slow-cold-starts still render CMS copy.
+    signal: AbortSignal.timeout(10_000),
     // Published content rides the Next data cache (ISR-shaped); draft
     // previews are per-request and never cached.
     ...(options.draft ? {} : { next: { revalidate: 60, tags: [`cms-${collection}`] } }),

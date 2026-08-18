@@ -92,6 +92,9 @@ async function listExisting(
   return json.docs ?? [];
 }
 
+/** Payload's documented way to publish via REST (draft saves go to versions only). */
+const PUBLISHED = { _status: 'published' } as const;
+
 async function upsertCollection(
   collection: 'landing-content' | 'faq',
   seeds: Array<Record<string, unknown>>,
@@ -108,12 +111,23 @@ async function upsertCollection(
   let updated = 0;
   for (const seed of seeds) {
     const id = existing.get(seed.slug as string);
+    // _status: published - seed content is live immediately, never a draft.
+    const data = JSON.stringify({ ...seed, ...PUBLISHED });
     if (id) {
-      // draft=false publishes the change immediately (seed content is live).
-      await api(`/cms/api/${collection}/${id}?draft=false`, { method: 'PATCH', body: JSON.stringify(seed) }, token, fetchImpl);
+      await api(
+        `/cms/api/${collection}/${id}?draft=false`,
+        { method: 'PATCH', body: data },
+        token,
+        fetchImpl,
+      );
       updated += 1;
     } else {
-      await api(`/cms/api/${collection}?draft=false`, { method: 'POST', body: JSON.stringify(seed) }, token, fetchImpl);
+      await api(
+        `/cms/api/${collection}?draft=false`,
+        { method: 'POST', body: data },
+        token,
+        fetchImpl,
+      );
       created += 1;
     }
   }
