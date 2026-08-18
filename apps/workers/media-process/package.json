@@ -14,7 +14,10 @@
     "mutate": "stryker run stryker.config.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3",
+    "@xitter/api-client": "*",
     "@xitter/api-contracts": "*",
+    "@xitter/auth": "*",
     "@xitter/config": "*",
     "@xitter/eslint-config": "*",
     "@xitter/events": "*",

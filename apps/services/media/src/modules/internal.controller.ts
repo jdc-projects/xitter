@@ -1,10 +1,12 @@
-import { Body, Controller, HttpCode, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
 import { Internal } from '@xitter/auth-nest';
 import {
+  internalMediaAssetSchema,
   mediaIdSchema,
   mediaLookupRequestSchema,
   recordVariantsRequestSchema,
   reportMediaFailureRequestSchema,
+  type InternalMediaAsset,
   type MediaAsset,
   type MediaVariantCore,
 } from '@xitter/api-contracts';
@@ -31,6 +33,13 @@ export class InternalController {
     @Body(new ZodValidationPipe(recordVariantsRequestSchema)) body: { variants: MediaVariantCore[] },
   ): Promise<MediaAsset> {
     return this.media.recordVariants(mediaId, body.variants);
+  }
+
+  /** media-process worker: current asset state (redelivery idempotency). */
+  @Get('media/:mediaId')
+  @Internal()
+  getAsset(@Param('mediaId', mediaIdParam) mediaId: string): Promise<InternalMediaAsset> {
+    return this.media.getInternal(mediaId);
   }
 
   /** media-process worker: failed attempt (service owns the cap). */

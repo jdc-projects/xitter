@@ -71,6 +71,20 @@ export const mediaAssetSchema = z.object({
 
 export type MediaAsset = z.infer<typeof mediaAssetSchema>;
 
+/**
+ * Internal asset view (media ↔ workers/posts): everything the public asset
+ * carries plus the storage coordinates and lifecycle counters the public
+ * contract deliberately omits.
+ */
+export const internalMediaAssetSchema = mediaAssetSchema.extend({
+  objectKey: z.string().min(1),
+  mimeType: z.string().min(1),
+  bytes: z.number().int().positive(),
+  attempts: z.number().int().nonnegative(),
+});
+
+export type InternalMediaAsset = z.infer<typeof internalMediaAssetSchema>;
+
 export const postCountsSchema = z.object({
   replies: z.number().int().nonnegative(),
   likes: z.number().int().nonnegative(),

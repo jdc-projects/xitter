@@ -4,6 +4,7 @@ import {
   createMediaUploadRequestSchema,
   createMediaUploadResponseSchema,
   errorSchema,
+  internalMediaAssetSchema,
   mediaAssetSchema,
   mediaIdSchema,
   mediaLookupRequestSchema,
@@ -103,6 +104,20 @@ mediaApi.registerPath({
   request: { params: mediaParams, body: { content: { 'application/json': { schema: recordVariantsRequestSchema } } } },
   responses: {
     200: jsonResponse('Updated asset', mediaAssetSchema),
+    404: jsonResponse('Not found', errorSchema),
+  },
+});
+
+mediaApi.registerPath({
+  method: 'get',
+  path: '/internal/media/{mediaId}',
+  tags: ['internal'],
+  security: [{ serviceToken: [] }],
+  description:
+    'media-process worker: current asset state (status, objectKey, mimeType, attempts) so redeliveries skip already-processed or failed assets.',
+  request: { params: mediaParams },
+  responses: {
+    200: jsonResponse('Asset (internal view)', internalMediaAssetSchema),
     404: jsonResponse('Not found', errorSchema),
   },
 });

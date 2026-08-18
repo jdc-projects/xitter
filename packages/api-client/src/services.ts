@@ -1,15 +1,21 @@
 import { localUrl } from '@xitter/config';
 import {
   createInteractionRequestSchema,
-  type createPostRequestSchema,
+  createMediaUploadResponseSchema,
   feedPageSchema,
+  internalMediaAssetSchema,
+  mediaAssetSchema,
   postSchema,
   profileSchema,
   profileWithCountsSchema,
   relationshipSchema,
+  type createPostRequestSchema,
   type createProfileRequestSchema,
   type updateProfileRequestSchema,
   type InteractionKind,
+  type InternalMediaAsset,
+  type MediaAsset,
+  type MediaVariantCore,
   type Post,
   type Profile,
   type ProfileWithCounts,
@@ -197,7 +203,46 @@ export class MediaClient extends ServiceClient {
     mimeType: string;
     bytes: number;
   }): Promise<{ mediaId: string; uploadUrl: string }> {
-    return this.post(`${V1}/media/v1/uploads`, body);
+    return this.post(`${V1}/media/v1/uploads`, body).then(createMediaUploadResponseSchema.parse);
+  }
+
+  /** Client callback after the browser PUT; server-side HEAD-verified. */
+  completeUpload(mediaId: string): Promise<MediaAsset> {
+    return this.post(`${V1}/media/v1/media/${mediaId}/complete`).then(mediaAssetSchema.parse);
+  }
+
+  /** Metadata incl. variant URLs under `/media` (rendering + polling). */
+  getMedia(mediaId: string): Promise<MediaAsset> {
+    return this.get(`${V1}/media/v1/media/${mediaId}`).then(mediaAssetSchema.parse);
+  }
+
+  /** Internal (media-process worker): current asset state. */
+  internalGetAsset(mediaId: string): Promise<InternalMediaAsset> {
+    return this.get(`${V1}/media/internal/media/${mediaId}`).then(
+      internalMediaAssetSchema.parse,
+    );
+  }
+
+  /** Internal (media-process worker): record variants → ready (idempotent). */
+  internalRecordVariants(
+    mediaId: string,
+    variants: MediaVariantCore[],
+  ): Promise<MediaAsset> {
+    return this.post(`${V1}/media/internal/media/${mediaId}/variants`, { variants }).then(
+      mediaAssetSchema.parse,
+    );
+  }
+
+  /** Internal (media-process worker): failed attempt (service owns the cap). */
+  internalReportFailure(mediaId: string, error: string): Promise<MediaAsset> {
+    return this.post(`${V1}/media/internal/media/${mediaId}/failure`, { error }).then(
+      mediaAssetSchema.parse,
+    );
+  }
+
+  /** Internal (posts): owned assets among the ids (attach validation). */
+  internalLookup(ownerId: string, mediaIds: string[]): Promise<{ items: MediaAsset[] }> {
+    return this.post(`${V1}/media/internal/media/lookup`, { ownerId, mediaIds });
   }
 }
 

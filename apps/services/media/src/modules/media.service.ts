@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   MEDIA_MAX_BYTES,
   type CreateMediaUploadResponse,
+  type InternalMediaAsset,
   type MediaAsset,
   type MediaVariantCore,
 } from '@xitter/api-contracts';
@@ -107,6 +108,13 @@ export class MediaService {
     const row = await this.repo.find(mediaId);
     if (!row) throw notFound('Media not found');
     return this.toAsset(row);
+  }
+
+  /** Internal (workers): asset incl. storage coordinates + attempt count. */
+  async getInternal(mediaId: string): Promise<InternalMediaAsset> {
+    const row = await this.repo.find(mediaId);
+    if (!row) throw notFound('Media not found');
+    return { ...this.toAsset(row), objectKey: row.objectKey, mimeType: row.mimeType, bytes: row.bytes, attempts: row.attempts };
   }
 
   /** Internal (posts): existence + ownership + ready-status resolution. */

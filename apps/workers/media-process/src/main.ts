@@ -3,11 +3,14 @@
  * and reports them back to the media service. Deployed as a Knative service;
  * consumes Kafka only.
  */
+import { realmUrls } from '@xitter/auth';
+import { MediaClient } from '@xitter/api-client';
 import { kafkaBrokers, localPort, localUrl, loadRepoEnv, parseEnv } from '@xitter/config';
 import { CONSUMER_GROUPS, createEventConsumer } from '@xitter/events';
 import { createLogger, createMetricsServer, initSentry, initTracing } from '@xitter/observability';
 import { z } from 'zod';
 import { handleEvent } from './handlers.js';
+import { RustFsWorkerStorage } from './storage.js';
 
 loadRepoEnv();
 
@@ -16,12 +19,40 @@ const env = parseEnv(
     KAFKA_BROKERS: z.string().min(1).default(kafkaBrokers()),
     MEDIA_INTERNAL_URL: z.string().url().default(localUrl('media')),
     METRICS_PORT: z.coerce.number().int().positive().default(localPort('mediaProcessMetrics')),
+    KEYCLOAK_BASE_URL: z.string().url().default(localUrl('keycloak')),
+    DEMO_REALM: z.string().min(1).default('xitter-demo'),
+    KEYCLOAK_CLIENT_ID: z.string().min(1).default('svc-worker-media-process'),
+    KEYCLOAK_CLIENT_SECRET: z
+      .string()
+      .min(1)
+      .default('svc-worker-media-process-local-secret'),
+    XITTER_MEDIA_S3_ENDPOINT: z.string().url().default(localUrl('rustfs')),
+    XITTER_MEDIA_S3_BUCKET: z.string().min(1).default('xitter-media'),
+    XITTER_MEDIA_S3_ACCESS_KEY: z.string().min(1).default('xitter-local'),
+    XITTER_MEDIA_S3_SECRET_KEY: z.string().min(1).default('xitter-local-secret'),
   }),
 );
 
 const logger = createLogger({ service: 'media-process-worker' });
 const tracing = initTracing('media-process-worker');
 initSentry('media-process-worker');
+
+const media = new MediaClient({
+  baseUrl: env.MEDIA_INTERNAL_URL,
+  internal: {
+    tokenUrl: realmUrls(env.KEYCLOAK_BASE_URL, env.DEMO_REALM).token,
+    clientId: env.KEYCLOAK_CLIENT_ID,
+    clientSecret: env.KEYCLOAK_CLIENT_SECRET,
+  },
+});
+
+const storage = new RustFsWorkerStorage({
+  endpoint: env.XITTER_MEDIA_S3_ENDPOINT,
+  region: 'us-east-1',
+  bucket: env.XITTER_MEDIA_S3_BUCKET,
+  accessKeyId: env.XITTER_MEDIA_S3_ACCESS_KEY,
+  secretAccessKey: env.XITTER_MEDIA_S3_SECRET_KEY,
+});
 
 const consumer = createEventConsumer({
   clientId: 'xitter-media-process-worker',
@@ -35,7 +66,7 @@ await metrics.started;
 logger.info(`metrics on :${env.METRICS_PORT}`);
 
 await consumer.run(async (envelope) => {
-  await handleEvent(envelope, { mediaInternalUrl: env.MEDIA_INTERNAL_URL });
+  await handleEvent(envelope, { media, storage });
 });
 
 process.once('SIGTERM', () => {
