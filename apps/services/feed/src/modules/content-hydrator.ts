@@ -18,21 +18,6 @@ export interface ContentHydrator {
 /** Injection token (string token so test doubles are easy to provide). */
 export const CONTENT_HYDRATOR = 'CONTENT_HYDRATOR';
 
-/** Inert hydrator for tests without service dependencies. */
-export class NullContentHydrator implements ContentHydrator {
-  posts(): Promise<Map<string, Post>> {
-    return Promise.resolve(new Map());
-  }
-
-  profiles(): Promise<Map<string, Profile>> {
-    return Promise.resolve(new Map());
-  }
-
-  blockedAuthorIds(): Promise<string[]> {
-    return Promise.resolve([]);
-  }
-}
-
 /**
  * Posts/social-backed hydration via their internal bulk-lookup endpoints
  * (spec 03), authenticated with feed's client-credentials token (audience

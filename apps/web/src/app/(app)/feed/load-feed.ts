@@ -8,7 +8,7 @@ export interface TimelineEntry {
 }
 
 /** Page size for the web feed (server page 1 and Load more both use it). */
-export const FEED_PAGE_SIZE = 20;
+const FEED_PAGE_SIZE = 20;
 
 /** Feed page items → render entries (pure; the service pre-hydrates). */
 export function toTimelineEntries(items: HydratedFeedItem[]): TimelineEntry[] {

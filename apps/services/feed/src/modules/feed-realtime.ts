@@ -19,15 +19,8 @@ export interface FeedRealtime {
 /** Injection token (string token so test doubles are easy to provide). */
 export const FEED_REALTIME = 'FEED_REALTIME';
 
-/** No-op publisher for tests and contexts without a Valkey dependency. */
-export class NullFeedRealtime implements FeedRealtime {
-  notify(): Promise<void> {
-    return Promise.resolve();
-  }
-}
-
 /** Structural slice of ioredis the publisher needs (unit-testable). */
-export interface RedisPublisher {
+interface RedisPublisher {
   publish(channel: string, message: string): Promise<unknown>;
   quit(): Promise<unknown>;
 }
@@ -42,9 +35,7 @@ export class ValkeyFeedRealtime implements FeedRealtime {
     if (userIds.length === 0) return;
     try {
       const connection = await this.connect();
-      await Promise.all(
-        userIds.map((userId) => connection.publish(feedChannel(userId), '1')),
-      );
+      await Promise.all(userIds.map((userId) => connection.publish(feedChannel(userId), '1')));
     } catch (err) {
       logger.warn({ err }, 'feed update notification failed');
     }

@@ -139,6 +139,8 @@ export class SocialClient extends ServiceClient {
   }
 
   /** Internal: bulk profile lookup for server-side hydration (feed #7). */
+  /** Internal (feed #7): bulk profile lookup for feed hydration. */
+  // fallow-ignore-next-line unused-class-member -- consumed via the feed service's hydrator seam (apps/services/feed/src/modules/content-hydrator.ts)
   internalProfiles(userIds: string[]): Promise<{ items: Profile[] }> {
     return this.post(`${V1}/social/internal/profiles/lookup`, { userIds }).then(
       profileLookupResponseSchema.parse,
@@ -195,6 +197,8 @@ export class PostsClient extends ServiceClient {
   }
 
   /** Internal (feed #7): bulk visible-post lookup for feed hydration. */
+  /** Internal (feed #7): bulk visible-post lookup for feed hydration. */
+  // fallow-ignore-next-line unused-class-member -- consumed via the feed service's hydrator seam (apps/services/feed/src/modules/content-hydrator.ts)
   internalPosts(postIds: string[]): Promise<{ items: Post[] }> {
     return this.post(`${V1}/posts/internal/posts/lookup`, { postIds }).then(
       postLookupResponseSchema.parse,
@@ -202,6 +206,7 @@ export class PostsClient extends ServiceClient {
   }
 
   /** Internal (fanout worker #7): author timeline for the follow backfill. */
+  // fallow-ignore-next-line unused-class-member -- consumed via the fanout worker's PostsApi seam (apps/workers/fanout/src/handlers.ts)
   internalGetAuthorPosts(
     authorId: string,
     cursor?: string,
@@ -223,6 +228,7 @@ export class FeedClient extends ServiceClient {
   }
 
   /** Internal (fanout worker): bulk idempotent entry upsert. */
+  // fallow-ignore-next-line unused-class-member -- consumed via the fanout worker's FeedApi seam (apps/workers/fanout/src/handlers.ts)
   internalUpsertEntries(entries: FeedEntryInput[]): Promise<{ inserted: number }> {
     return this.post(`${V1}/feed/internal/feed/entries`, { entries }).then((r) =>
       z.object({ inserted: z.number().int() }).parse(r),
@@ -230,6 +236,7 @@ export class FeedClient extends ServiceClient {
   }
 
   /** Internal (fanout worker): drop one post from every feed (post deleted). */
+  // fallow-ignore-next-line unused-class-member -- consumed via the fanout worker's FeedApi seam (apps/workers/fanout/src/handlers.ts)
   internalDeletePostEntries(postId: string): Promise<{ deleted: number }> {
     return this.delete(`${V1}/feed/internal/feed/posts/${postId}/entries`).then((r) =>
       z.object({ deleted: z.number().int() }).parse(r),
@@ -237,6 +244,7 @@ export class FeedClient extends ServiceClient {
   }
 
   /** Internal (fanout worker): drop an author's entries from one feed (unfollow). */
+  // fallow-ignore-next-line unused-class-member -- consumed via the fanout worker's FeedApi seam (apps/workers/fanout/src/handlers.ts)
   internalDeleteAuthorEntries(userId: string, authorId: string): Promise<{ deleted: number }> {
     return this.delete(`${V1}/feed/internal/feed/users/${userId}/authors/${authorId}`).then((r) =>
       z.object({ deleted: z.number().int() }).parse(r),
@@ -244,6 +252,7 @@ export class FeedClient extends ServiceClient {
   }
 
   /** Internal (reset job / fanout): wipe one user's feed. */
+  // fallow-ignore-next-line unused-class-member -- consumed by the nightly reset job (#13) per spec 03
   internalResetUser(userId: string): Promise<{ deleted: number }> {
     return this.delete(`${V1}/feed/internal/feed/users/${userId}`).then((r) =>
       z.object({ deleted: z.number().int() }).parse(r),
