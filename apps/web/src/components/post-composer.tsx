@@ -241,7 +241,10 @@ export function PostComposer({
     const mediaIds = [...alreadyReady, ...uploaded];
     if (mediaIdsInput.current) mediaIdsInput.current.value = JSON.stringify(mediaIds);
     bypassSubmit.current = true;
-    formRef.current?.requestSubmit();
+    // requestSubmit() from inside the submit-event dispatch is treated as a
+    // nested submission and dropped by some Chromium builds - always defer
+    // to a macrotask so the original dispatch has fully unwound.
+    setTimeout(() => formRef.current?.requestSubmit(), 0);
   }
 
   return (
@@ -273,6 +276,14 @@ export function PostComposer({
         name="text"
         value={text}
         onChange={(event) => setText(event.currentTarget.value)}
+        onKeyDown={(event) => {
+          // X-style: Enter posts (through the upload flow), Shift+Enter is a
+          // newline. Native Enter in a textarea only inserts a newline.
+          if (event.key !== 'Enter' || event.shiftKey || !text.trim()) return;
+          if (uploading || pending) return;
+          event.preventDefault();
+          void runSubmit();
+        }}
         placeholder={placeholder}
         aria-label="Post text"
         autosize

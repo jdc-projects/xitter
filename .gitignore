@@ -28,6 +28,9 @@ artillery-report/
 reports/
 mutation/
 tests/playwright/*/report/
+# playwright html reporter resolves its output relative to cwd when invoked
+# from the repo root (`npm run test:e2e`), nesting it under the config dir
+tests/playwright/*/tests/
 
 # Generated per-service OpenAPI artifacts (collected into docs/specs/architecture/openapi)
 apps/**/openapi.json

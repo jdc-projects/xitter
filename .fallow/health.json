@@ -46,7 +46,7 @@
         "count": 2
       },
       "crap_moderate": {
-        "count": 2
+        "count": 3
       }
     },
     "apps/web/src/lib/media/actions.ts": {

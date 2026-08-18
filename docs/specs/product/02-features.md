@@ -42,6 +42,7 @@ Acceptance-style catalogue of every user-facing feature area. "Must" = required 
 | 4.4 | Timestamps in lists use relative format when <24 h old, **rounded to the most significant figure** (e.g. `1h`, not `1h 20m`; `5m`; `2d` boundary per feed rules below); absolute `D MMM YYYY HH:mm` when ≥24 h old. |
 | 4.5 | Authors can delete their own posts; deleted posts (and their media) disappear from feeds, profiles, threads, and search.                                                                                            |
 | 4.6 | Validation errors (empty text, >512 chars, too many/too large images) never lose the user's draft.                                                                                                                  |
+| 4.7 | X-style keyboard: **Enter posts** (attachments upload first); **Shift+Enter inserts a newline**.                                                                                                                    |
 
 ## 5. Feed
 
