@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-
 export interface Disposable {
   stop(): Promise<unknown>;
 }
@@ -45,6 +44,49 @@ export interface KafkaHandle extends Disposable {
   bootstrapServers: string;
   /** Releases the fixed-port lock; also stops the container. */
   stop(): Promise<unknown>;
+}
+
+export interface RustFsHandle extends Disposable {
+  /** S3 endpoint URL reachable from the host (testcontainers port). */
+  endpoint: string;
+  accessKey: string;
+  secretKey: string;
+}
+
+// Ephemeral host port, so no fixed-port lock is needed - but label the
+// container so crashed-run orphans can be identified and swept by hand.
+const RUSTFS_TEST_LABEL = 'xitter.test.rustfs';
+
+/**
+ * Start a throwaway RustFS (S3-compatible) server, same image as the local
+ * compose stack (infra/docker/compose.yaml). Ephemeral host port; callers
+ * create buckets themselves with their own S3 client (podman-backed sockets
+ * make log-based waits unreliable, so readiness is the caller's retry loop).
+ */
+export async function startRustfs(
+  accessKey = 'test',
+  secretKey = 'test-secret',
+): Promise<RustFsHandle> {
+  const container = await new GenericContainer('rustfs/rustfs:1.0.0-rc.2')
+    .withLabels({ [RUSTFS_TEST_LABEL]: 'true' })
+    .withEnvironment({
+      RUSTFS_ACCESS_KEY: accessKey,
+      RUSTFS_SECRET_KEY: secretKey,
+      RUSTFS_VOLUMES: '/data',
+      RUSTFS_ADDRESS: '0.0.0.0:9000',
+      RUSTFS_CONSOLE_ENABLE: 'false',
+    })
+    .withExposedPorts(9000)
+    .withWaitStrategy(Wait.forListeningPorts())
+    .start();
+  const port = container.getMappedPort(9000);
+  const host = container.getHost();
+  return {
+    endpoint: `http://${host}:${port}`,
+    accessKey,
+    secretKey,
+    stop: () => container.stop(),
+  };
 }
 
 /**

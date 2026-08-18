@@ -42,7 +42,8 @@ export const profileWithCountsSchema = profileSchema.extend({
 
 export type ProfileWithCounts = z.infer<typeof profileWithCountsSchema>;
 
-export const mediaVariantSchema = z.object({
+/** Variant record as reported by the media-process worker (no derived url). */
+export const mediaVariantCoreSchema = z.object({
   kind: z.enum(['original', 'thumb']),
   objectKey: z.string().min(1),
   mimeType: z.string().min(1),
@@ -50,6 +51,15 @@ export const mediaVariantSchema = z.object({
   width: z.number().int().positive().nullable(),
   height: z.number().int().positive().nullable(),
 });
+
+export type MediaVariantCore = z.infer<typeof mediaVariantCoreSchema>;
+
+/** Variant as served by the media API: core fields + edge URL at `/media/{key}`. */
+export const mediaVariantSchema = mediaVariantCoreSchema.extend({
+  url: z.string().min(1),
+});
+
+export type MediaVariant = z.infer<typeof mediaVariantSchema>;
 
 export const mediaAssetSchema = z.object({
   id: mediaIdSchema,
