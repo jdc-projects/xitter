@@ -43,7 +43,9 @@ test('attach image: post shows thumb in feed, original on detail, served from /m
   await page.getByTestId('composer-submit').click();
 
   const item = page.locator('[data-testid^="post-item-"]', { hasText: text }).first();
-  await expect(item).toBeVisible();
+  // Real-stack cycle: slot -> PUT -> complete -> worker variants -> ready ->
+  // submit. Kafka consumer lag + sharp make this multi-second, not instant.
+  await expect(item).toBeVisible({ timeout: 45_000 });
   const postId = (await item.getAttribute('data-testid'))!.replace('post-item-', '');
 
   // Feed cards render the thumb variant through the public /media path.

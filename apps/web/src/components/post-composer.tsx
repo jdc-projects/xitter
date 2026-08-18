@@ -81,23 +81,25 @@ async function uploadThrough(file: File): Promise<{ mediaId: string } | { error:
 
 /**
  * Upload the given attachments sequentially, reporting progress via the
- * callback. Returns the first friendly error, or null when all are ready.
- * Module-scope so the component body stays compiler-friendly.
+ * callback. Returns every uploaded mediaId (in order), or the first friendly
+ * error. Module-scope so the component body stays compiler-friendly.
  */
 async function uploadAttachments(
   attachments: Attachment[],
   onUpdate: (clientId: string, patch: Partial<Attachment>) => void,
-): Promise<string | null> {
+): Promise<{ mediaIds: string[] } | { error: string }> {
+  const mediaIds: string[] = [];
   for (const attachment of attachments) {
     onUpdate(attachment.clientId, { status: 'uploading' });
     const result = await uploadThrough(attachment.file);
     if ('error' in result) {
       onUpdate(attachment.clientId, { status: 'failed' });
-      return result.error;
+      return { error: result.error };
     }
+    mediaIds.push(result.mediaId);
     onUpdate(attachment.clientId, { status: 'ready', mediaId: result.mediaId });
   }
-  return null;
+  return { mediaIds };
 }
 
 /** Validate + stage a batch of picked files (friendly errors, no upload). */
@@ -126,8 +128,9 @@ function planPickedFiles(
 }
 
 /**
- * Upload pending attachments before a submit. True when the composer may
- * submit; false leaves the draft intact with a friendly error shown.
+ * Upload pending attachments before a submit. Returns the ids of everything
+ * that is now ready (previously-ready + freshly uploaded) on success, or
+ * null with a friendly error shown - leaving the draft intact.
  */
 async function submitPendingUploads(
   notReady: Attachment[],
@@ -136,17 +139,16 @@ async function submitPendingUploads(
     setUploadError: (error: string | null) => void;
     updateAttachment: (clientId: string, patch: Partial<Attachment>) => void;
   },
-): Promise<boolean> {
-  if (notReady.length === 0) return true;
+): Promise<string[] | null> {
   hooks.setUploading(true);
   hooks.setUploadError(null);
   try {
-    const error = await uploadAttachments(notReady, hooks.updateAttachment);
-    if (error) {
-      hooks.setUploadError(error);
-      return false;
+    const result = await uploadAttachments(notReady, hooks.updateAttachment);
+    if ('error' in result) {
+      hooks.setUploadError(result.error);
+      return null;
     }
-    return true;
+    return result.mediaIds;
   } finally {
     hooks.setUploading(false);
   }
@@ -171,6 +173,7 @@ export function PostComposer({
   const [uploading, setUploading] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const mediaIdsInput = useRef<HTMLInputElement>(null);
   const [state, formAction, pending] = useActionState<ComposerResult | undefined, FormData>(
     createPostAction,
     undefined,
@@ -220,18 +223,30 @@ export function PostComposer({
     if (uploading || pending) return;
 
     const notReady = attachments.filter((attachment) => attachment.status !== 'ready');
-    const uploaded = await submitPendingUploads(notReady, {
-      setUploading,
-      setUploadError,
-      updateAttachment,
-    });
-    if (uploaded) formRef.current?.requestSubmit();
+    const alreadyReady = attachments.flatMap((attachment) =>
+      attachment.status === 'ready' && attachment.mediaId ? [attachment.mediaId] : [],
+    );
+    const uploaded = notReady.length
+      ? await submitPendingUploads(notReady, {
+          setUploading,
+          setUploadError,
+          updateAttachment,
+        })
+      : [];
+    if (!uploaded) return;
+    // requestSubmit serialises the CURRENT DOM, which may not have re-rendered
+    // with the freshly-ready ids yet - set the hidden input imperatively so
+    // the post references the media that was just uploaded.
+    const mediaIds = [...alreadyReady, ...uploaded];
+    if (mediaIdsInput.current) mediaIdsInput.current.value = JSON.stringify(mediaIds);
+    formRef.current?.requestSubmit();
   }
 
   return (
     <form action={formAction} ref={formRef} data-testid={`${testId}-form`}>
       <input type="hidden" name="replyToId" value={replyToId ?? ''} />
       <input
+        ref={mediaIdsInput}
         type="hidden"
         name="mediaIds"
         value={JSON.stringify(readyMediaIds)}
