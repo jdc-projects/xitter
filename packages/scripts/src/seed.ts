@@ -13,6 +13,7 @@
  */
 import { faker } from '@faker-js/faker';
 import { envString, loadRepoEnv, localUrl } from '@xitter/config';
+import { applyCmsContent } from './content.js';
 
 const SEED_CONSTANT = 42;
 const POSTS_PER_USER = 12;
@@ -24,7 +25,6 @@ interface DemoUser {
   username: string;
 }
 
-/** Password grant against the demo realm (allowed for the seeder only). */
 /** Password grant against the demo realm (allowed for the seeder only). */
 async function loginToken(username: string): Promise<string> {
   const keycloak = envString('XITTER_SEED_KEYCLOAK_URL', localUrl('keycloak'));
@@ -69,7 +69,11 @@ async function main(): Promise<void> {
   void loginToken;
   void authedFetch;
   console.log(`seeding ${users.length} profiles, ${POSTS_PER_USER} posts each`);
-  console.log('seed skeleton - full implementation lands with the service feature tickets');
+
+  // Promoted CMS content (spec: data 02) - idempotent upserts of the
+  // committed content files; the same seam the nightly reset calls.
+  const cms = await applyCmsContent();
+  console.log(`cms site content: ${cms.created} created, ${cms.updated} updated`);
 }
 
 void main();

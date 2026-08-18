@@ -4,20 +4,32 @@
 
 Deployed environments reset nightly (full data reset at 00:00 UTC). Content authored in a deployed environment — CMS edits, seed tweaks made while demoing — is disposable unless it is promoted back to the repo, where the deterministic reseed can reproduce it.
 
+Only CMS-managed site content participates (landing intro, FAQ entries — spec [product 04](../specs/product/04-content-guidelines.md)); user posts are never promoted. Content is keyed by the unique `slug` field on both collections: promotion upserts by slug, so ids can differ freely between environments.
+
 ## Execution steps
 
-1. **Export CMS content** from the deployed environment, either:
-   - via the Payload REST API using an admin token, or
-   - via the Payload CLI dump.
-2. **Commit the export** as content seed files (JSON/CSV) under `packages/scripts/data/` — create the directory if it doesn't exist yet.
-3. **Extend the seed mapping** in `packages/scripts/src/seed.ts` so `npm run seed` loads the content files (keep the deterministic faker seed intact — promoted content should not change randomised data).
-4. **Verify locally**: `npm run seed` against a local (reset) environment, then diff the result against the deployed content.
-5. **Raise a PR to `dev`** — run `npm run check` first; CI re-runs the gates.
+1. **Export CMS content** from the deployed environment:
 
-Steps 1–2 are repeatable; re-running an export and committing over the previous files is the expected update path.
+   ```sh
+   XITTER_SEED_BASE_URL=https://<env-domain> \
+   XITTER_SEED_KEYCLOAK_URL=https://idp.jd-chapman.dev \
+   XITTER_ADMIN_REALM=<primary-realm> \
+   XITTER_CMS_CLIENT_SECRET=<secret> \
+     npm run content:export
+   ```
+
+   The script fetches **published** content only (drafts stay in the CMS) through the edge (`/cms/api/*`) using a client-credentials token for the `cms` client — its service account carries `app-admin`. Output is deterministic (ordered by `order`, stable key order), so re-exporting unchanged content produces no diff.
+
+2. **Review + commit the export**: `packages/scripts/data/content/landing-content.json` and `faq.json`. Re-running an export and committing over the previous files is the expected update path — never edit the JSON by hand when a live CMS holds the truth.
+
+3. **No seed-mapping step needed**: `npm run seed` (and the nightly reset's reseed via the shared `applyCmsContent` seam) upserts the content files automatically — keyed on `slug`, publishing immediately (`draft=false`), never touching the deterministic faker corpus.
+
+4. **Verify locally**: with the stack up (`npm run dev` or `npm run start` + deps), run `npm run content:apply`, then check the landing page and About page render the promoted copy.
+
+5. **Raise a PR to `dev`** — run `npm run check` first; CI re-runs the gates.
 
 ## Validation steps
 
 1. Reset the environment (trigger the reset job or wait for the nightly reset at 00:00 UTC).
-2. Confirm the promoted content is present after reseed — via the CMS admin UI or the site itself.
-3. If content is missing, re-check the `seed.ts` mapping and that the PR merged to the environment's deploy branch (`dev` for xitter-dev).
+2. Confirm the promoted content is present after reseed — via the site (landing/About) or `GET /cms/api/landing-content`.
+3. If content is missing, re-check that the PR merged to the environment's deploy branch (`dev` for xitter-dev) and that the seed files parse (`npm run content:apply` fails loudly on malformed JSON).
