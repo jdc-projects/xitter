@@ -1,0 +1,226 @@
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { Kafka } from 'kafkajs';
+import { startKafka } from '@xitter/testing';
+import { CONSUMER_GROUPS, createEventConsumer, createEventProducer } from '@xitter/events';
+import { handleEvent, type FeedApi, type PostsApi, type SocialApi } from './handlers.js';
+
+/**
+ * Fanout consumption contract against a throwaway Kafka (testcontainers):
+ * the real consumer wiring from main.ts (group, topics) driving the real
+ * handleEvent, fed by a real producer - entry correctness, backfill window
+ * and removals asserted through the recorded internal-API calls (the feed
+ * service's DB-side behaviour is covered by its own integration suite; the
+ * e2e suite covers the full path).
+ */
+const AUTHOR = '00000000-0000-4000-8000-00000000a001';
+const FOLLOWER_1 = '00000000-0000-4000-8000-00000000b001';
+const FOLLOWER_2 = '00000000-0000-4000-8000-00000000b002';
+const NOW = '2026-08-18T09:00:00.000Z';
+
+const uid = (n: string) => `00000000-0000-4000-8000-${n.padStart(12, '0')}`;
+
+describe('fanout consumption (testcontainers kafka)', () => {
+  let kafka: Awaited<ReturnType<typeof startKafka>>;
+  let producer: Awaited<ReturnType<typeof createEventProducer>>;
+  let consumer: Awaited<ReturnType<typeof createEventConsumer>>;
+
+  const followerIds = vi.fn(() => Promise.resolve([FOLLOWER_1, FOLLOWER_2]));
+  const userPosts = vi.fn(() => Promise.resolve({ items: [], nextCursor: null }));
+  const upsertEntries = vi.fn(
+    (entries: unknown[]) => Promise.resolve({ inserted: entries.length }),
+  );
+  const deletePostEntries = vi.fn(() => Promise.resolve({ deleted: 1 }));
+  const deleteAuthorEntries = vi.fn(() => Promise.resolve({ deleted: 1 }));
+
+  beforeAll(async () => {
+    kafka = await startKafka();
+    const brokers = kafka.bootstrapServers.split(',');
+
+    const admin = new Kafka({ clientId: 'fanout-test-admin', brokers }).admin();
+    await admin.connect();
+    await admin.createTopics({
+      topics: [{ topic: 'xitter.posts.v1' }, { topic: 'xitter.social.v1' }],
+    });
+    await admin.disconnect();
+
+    producer = createEventProducer({ clientId: 'fanout-test-producer', brokers });
+    consumer = createEventConsumer({
+      clientId: 'fanout-test-consumer',
+      brokers,
+      groupId: `${CONSUMER_GROUPS.fanoutWorker}-test-${crypto.randomUUID()}`,
+      topics: ['posts', 'social'],
+    });
+
+    const deps = {
+      social: { internalFollowerIds: followerIds } as unknown as SocialApi,
+      posts: { getUserPosts: userPosts } as unknown as PostsApi,
+      feed: {
+        internalUpsertEntries: upsertEntries,
+        internalDeletePostEntries: deletePostEntries,
+        internalDeleteAuthorEntries: deleteAuthorEntries,
+      } as unknown as FeedApi,
+    };
+    await consumer.run((envelope) => handleEvent(envelope, deps));
+  }, 240_000);
+
+  afterAll(async () => {
+    await consumer?.disconnect().catch(() => undefined);
+    await producer?.disconnect().catch(() => undefined);
+    await kafka?.stop();
+  });
+
+  async function waitFor(predicate: () => boolean, timeoutMs = 30_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (predicate()) return;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    throw new Error('timed out waiting for fanout consumption');
+  }
+
+  /**
+   * A fresh consumer group starts at the log end at assignment time, so an
+   * event emitted before the join completes is missed (createEventConsumer
+   * subscribes fromBeginning: false). Re-emit until the handler records it -
+   * handlers are idempotent doubles, so replays are harmless.
+   */
+  async function emitUntil(emit: () => Promise<void>, predicate: () => boolean): Promise<void> {
+    const deadline = Date.now() + 45_000;
+    while (Date.now() < deadline) {
+      await emit();
+      await waitFor(predicate, 3_000).catch(() => undefined);
+      if (predicate()) return;
+    }
+    throw new Error('timed out waiting for fanout consumption');
+  }
+
+  it('fans a post out to author + followers on the consumed event', async () => {
+    const postId = uid('e001');
+    const emit = () =>
+      producer.emit('posts', {
+        eventType: 'posts.post.created',
+        producer: 'posts',
+        occurredAt: NOW,
+        key: postId,
+        payload: {
+          postId,
+          authorId: AUTHOR,
+          text: 'hello feed',
+          mediaIds: [],
+          replyToId: null,
+          repostOfId: null,
+          createdAt: NOW,
+        },
+      });
+
+    await emitUntil(emit, () => upsertEntries.mock.calls.length > 0);
+    const entries = upsertEntries.mock.calls[0]![0] as { userId: string }[];
+    expect(entries.map((e) => e.userId).sort()).toEqual([AUTHOR, FOLLOWER_1, FOLLOWER_2].sort());
+    expect(followerIds).toHaveBeenCalledWith(AUTHOR);
+  }, 90_000);
+
+  it('backfills the followee recent posts into the follower feed', async () => {
+    const followeePosts = [1, 2, 3].map((n) => ({
+      id: uid(`f00${n}`),
+      authorId: AUTHOR,
+      text: `old post ${n}`,
+      media: [],
+      replyToId: null,
+      repostOfId: null,
+      counts: { replies: 0, likes: 0, reposts: 0 },
+      createdAt: NOW,
+      deletedAt: null,
+    }));
+    userPosts.mockResolvedValue({ items: followeePosts, nextCursor: null });
+
+    const before = upsertEntries.mock.calls.length;
+    const emit = () =>
+      producer.emit('social', {
+        eventType: 'social.follow.created',
+        producer: 'social',
+        occurredAt: NOW,
+        key: FOLLOWER_1,
+        payload: { followerId: FOLLOWER_1, followeeId: AUTHOR, createdAt: NOW },
+      });
+
+    await emitUntil(emit, () => upsertEntries.mock.calls.length > before);
+    expect(userPosts).toHaveBeenCalledWith(AUTHOR, undefined, 20);
+    const entries = upsertEntries.mock.calls.at(-1)![0] as {
+      userId: string;
+      postId: string;
+    }[];
+    expect(entries).toHaveLength(3);
+    expect(new Set(entries.map((e) => e.userId))).toEqual(new Set([FOLLOWER_1]));
+    expect(entries.map((e) => e.postId)).toEqual(followeePosts.map((p) => p.id));
+  }, 60_000);
+
+  it('removes entries on post.deleted and follow.deleted', async () => {
+    const postId = uid('e00d');
+    const done = () =>
+      deletePostEntries.mock.calls.some(([id]) => id === postId) &&
+      deleteAuthorEntries.mock.calls.some(
+        ([follower, followee]) => follower === FOLLOWER_2 && followee === AUTHOR,
+      );
+    const emit = () =>
+      producer
+        .emit('posts', {
+          eventType: 'posts.post.deleted',
+          producer: 'posts',
+          occurredAt: NOW,
+          key: postId,
+          payload: { postId, authorId: AUTHOR, deletedAt: NOW },
+        })
+        .then(() =>
+          producer.emit('social', {
+            eventType: 'social.follow.deleted',
+            producer: 'social',
+            occurredAt: NOW,
+            key: FOLLOWER_2,
+            payload: { followerId: FOLLOWER_2, followeeId: AUTHOR, deletedAt: NOW },
+          }),
+        );
+
+    await emitUntil(emit, done);
+  }, 90_000);
+
+  it('keys same-aggregate events to one partition (ordered consumption)', async () => {
+    // One shared key emitted repeatedly: every event with that key must
+    // arrive on the same partition - that is the per-aggregate ordering
+    // guarantee spec 04 documents (a post's lifecycle stays ordered).
+    const seen: { key: string; partition: number }[] = [];
+    const probe = createEventConsumer({
+      clientId: 'fanout-test-probe',
+      brokers: kafka.bootstrapServers.split(','),
+      groupId: `fanout-probe-${crypto.randomUUID()}`,
+      topics: ['posts'],
+    });
+    await probe.run(async (_envelope, raw) => {
+      const key = raw.message.key?.toString('utf8');
+      if (key === 'probe-shared') seen.push({ key, partition: raw.partition });
+    });
+
+    let n = 0;
+    const emit = () =>
+      producer.emit('posts', {
+        eventType: 'posts.post.created',
+        producer: 'posts',
+        occurredAt: NOW,
+        key: 'probe-shared',
+        payload: {
+          postId: uid(`e1${String(++n).padStart(3, '0')}`),
+          authorId: AUTHOR,
+          text: 'probe',
+          mediaIds: [],
+          replyToId: null,
+          repostOfId: null,
+          createdAt: NOW,
+        },
+      });
+
+    await emitUntil(emit, () => seen.length >= 3);
+
+    expect(new Set(seen.map((s) => s.partition)).size).toBe(1); // one partition
+
+    await probe.disconnect();
+  }, 90_000);
+});

@@ -16,7 +16,9 @@ CREATE TABLE "FeedEntry" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "FeedEntry_userId_postId_reason_repostedById_key" ON "FeedEntry"("userId", "postId", "reason", "repostedById");
+-- Natural key (spec 04 idempotency); repostedById is excluded because
+-- Postgres unique indexes treat NULLs as distinct (see schema comment).
+CREATE UNIQUE INDEX "FeedEntry_userId_postId_reason_key" ON "FeedEntry"("userId", "postId", "reason");
 
 -- CreateIndex
 CREATE INDEX "FeedEntry_userId_postCreatedAt_id_idx" ON "FeedEntry"("userId", "postCreatedAt" DESC, "id" DESC);

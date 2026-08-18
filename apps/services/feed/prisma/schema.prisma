@@ -21,7 +21,11 @@ model FeedEntry {
   postCreatedAt DateTime
   insertedAt    DateTime @default(now())
 
-  @@unique([userId, postId, reason, repostedById])
+  // Natural key (spec 04 idempotency): event replays converge. repostedById
+  // is deliberately OUT of the key - Postgres treats NULLs as distinct in
+  // unique indexes, so a nullable column would defeat the constraint for
+  // reason = 'post' rows. #8 refines the repost key when reposts land.
+  @@unique([userId, postId, reason])
   @@index([userId, postCreatedAt(sort: Desc), id(sort: Desc)])
   @@index([postId])
   @@index([userId, authorId])
