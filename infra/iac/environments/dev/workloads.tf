@@ -10,6 +10,9 @@ locals {
   # In-cluster service addresses (namespace-internal, never through the edge).
   svc_base = { for s in ["social", "posts", "media", "feed", "search"] : s => "http://${s}.${local.ns}.svc:8080" }
 
+  # Shared Valkey (rate limits, feed ws pub/sub) - matches outputs.tf.
+  valkey_url = "redis://valkey.${local.ns}.svc:6379"
+
   common_env = [
     { name = "XITTER_ENV", value = var.environment },
     { name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = local.otel_endpoint },
@@ -23,9 +26,14 @@ locals {
 
   # Cross-service dependencies (namespace-internal, never via the edge).
   # posts calls social's internal relationship endpoint for reply block
-  # enforcement (#5); authn is M2M via KEYCLOAK_CLIENT_ID/SECRET below.
+  # enforcement (#5); feed hydrates posts + social server-side (#7); authn
+  # is M2M via KEYCLOAK_CLIENT_ID/SECRET below.
   service_extra_env = {
     posts = [{ name = "XITTER_SOCIAL_URL", value = local.svc_base.social }]
+    feed = [
+      { name = "XITTER_POSTS_URL", value = local.svc_base.posts },
+      { name = "XITTER_SOCIAL_URL", value = local.svc_base.social },
+    ]
     # Media storage (T5): server-side S3 calls hit RustFS in-cluster; the
     # presign endpoint is the edge host because SigV4 signs the host the
     # browser contacts (path-style /xitter-media/<key> through the
@@ -37,10 +45,15 @@ locals {
     ]
   }
 
-  # media-process (T5): the MediaClient takes the BARE service base URL and
-  # builds /api/media/internal/... itself, unlike the *_INTERNAL_URL vars
-  # below whose consumers still hardcode the versioned prefix.
+  # Workers build /api/{service}/internal/... paths themselves from the BARE
+  # service base URLs (their clients own the prefix construction).
   worker_extra_env = {
+    # fanout (T6): social for follower ids + blocked filtering, posts for
+    # backfill pages (FEED_INTERNAL_URL is in the shared worker env).
+    fanout = [
+      { name = "SOCIAL_INTERNAL_URL", value = local.svc_base.social },
+      { name = "POSTS_INTERNAL_URL", value = local.svc_base.posts },
+    ]
     "media-process" = [
       { name = "XITTER_MEDIA_S3_ENDPOINT", value = "http://${local.rustfs_svc}:9000" },
       { name = "XITTER_MEDIA_S3_BUCKET", value = local.rustfs_bucket },
@@ -86,6 +99,9 @@ module "api_service" {
     { name = "DEMO_REALM", value = local.demo_realm },
     { name = "KAFKA_BROKERS", value = local.kafka_bootstrap },
     { name = "KEYCLOAK_CLIENT_ID", value = "svc-${each.key}" },
+    # Rate limiting (posts/social/media) + feed's ws pub/sub fan-out (T6):
+    # without it services fall back to localhost and silently degrade.
+    { name = "VALKEY_URL", value = local.valkey_url },
   ], lookup(local.service_extra_env, each.key, []))
 
   secret_env = concat(
@@ -145,10 +161,15 @@ module "worker" {
   env = concat(local.common_env, [
     { name = "KAFKA_BROKERS", value = local.kafka_bootstrap },
     { name = "METRICS_PORT", value = tostring(local.worker_metrics_ports[each.key]) },
+    # M2M token issuer for internal API callbacks (the realm URLs the
+    # services use; without it workers default to localhost).
+    { name = "KEYCLOAK_BASE_URL", value = local.keycloak_url },
+    { name = "DEMO_REALM", value = local.demo_realm },
     # KEYCLOAK_CLIENT_ID/SECRET both come from the client Secret (envFrom).
-    { name = "FEED_INTERNAL_URL", value = "${local.svc_base.feed}/api/feed/v1" },
-    { name = "SEARCH_INTERNAL_URL", value = "${local.svc_base.search}/api/search/v1" },
-    # MediaClient builds /api/media/... from the bare base (see local.worker_extra_env).
+    # Service bases are BARE: each worker's client builds /api/{service}/...
+    # paths itself.
+    { name = "FEED_INTERNAL_URL", value = local.svc_base.feed },
+    { name = "SEARCH_INTERNAL_URL", value = local.svc_base.search },
     { name = "MEDIA_INTERNAL_URL", value = local.svc_base.media },
   ], lookup(local.worker_extra_env, each.key, []))
 
@@ -191,6 +212,9 @@ module "web" {
     { name = "XITTER_FEED_URL", value = local.svc_base.feed },
     { name = "XITTER_SEARCH_URL", value = local.svc_base.search },
     { name = "XITTER_KEYCLOAK_URL", value = local.keycloak_url },
+    # Session store (and rate-limit reads) - without it web defaults to a
+    # localhost Valkey and login cannot persist sessions.
+    { name = "XITTER_VALKEY_URL", value = local.valkey_url },
   ])
 }
 
