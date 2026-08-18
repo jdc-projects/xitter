@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { expect, test } from '@playwright/test';
-import { envString, findRepoRoot, loadRepoEnv, localPort } from '@xitter/config';
+import { envString, findRepoRoot, loadRepoEnv, localPort, localUrl } from '@xitter/config';
 
 /**
  * CMS-backed site content over the full stack: the web app renders CMS copy,
