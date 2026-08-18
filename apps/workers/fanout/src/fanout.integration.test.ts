@@ -26,14 +26,13 @@ describe('fanout consumption (testcontainers kafka)', () => {
   let consumer: Awaited<ReturnType<typeof createEventConsumer>>;
 
   const followerIds = vi.fn((_userId: string) => Promise.resolve([FOLLOWER_1, FOLLOWER_2]));
-  const userPosts = vi.fn(
-    (_userId: string, _cursor?: string, _limit?: number) =>
-      Promise.resolve({ items: [] as Post[], nextCursor: null as string | null }),
+  const userPosts = vi.fn((_userId: string, _cursor?: string, _limit?: number) =>
+    Promise.resolve({ items: [] as Post[], nextCursor: null as string | null }),
   );
   const upsertEntries = vi.fn((_entries: unknown[]) => Promise.resolve({ inserted: 0 }));
   const deletePostEntries = vi.fn((_postId: string) => Promise.resolve({ deleted: 1 }));
-  const deleteAuthorEntries = vi.fn(
-    (_userId: string, _authorId: string) => Promise.resolve({ deleted: 1 }),
+  const deleteAuthorEntries = vi.fn((_userId: string, _authorId: string) =>
+    Promise.resolve({ deleted: 1 }),
   );
 
   beforeAll(async () => {
@@ -57,7 +56,7 @@ describe('fanout consumption (testcontainers kafka)', () => {
 
     const deps = {
       social: { internalFollowerIds: followerIds } as unknown as SocialApi,
-      posts: { getUserPosts: userPosts } as unknown as PostsApi,
+      posts: { internalGetAuthorPosts: userPosts } as unknown as PostsApi,
       feed: {
         internalUpsertEntries: upsertEntries,
         internalDeletePostEntries: deletePostEntries,

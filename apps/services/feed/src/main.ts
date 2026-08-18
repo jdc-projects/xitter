@@ -28,7 +28,7 @@ bootstrapApiService({
   // Service-level prefix: the public controller adds its `v1` segment,
   // internal routes sit at /api/feed/internal/... without a version
   // (spec 03). The ws route lives under the public prefix.
-  prefix: 'api/feed/v1',
+  prefix: 'api/feed',
   port: env.PORT,
   module: AppModule,
 })

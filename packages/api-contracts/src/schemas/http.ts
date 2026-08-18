@@ -165,6 +165,18 @@ export const postLookupResponseSchema = z
 export type PostLookupRequest = z.infer<typeof postLookupRequestSchema>;
 export type PostLookupResponse = z.infer<typeof postLookupResponseSchema>;
 
+// Internal (fanout worker → posts): the followee's recent posts for the
+// follow backfill (spec 04). Same page shape as the public author timeline.
+export const internalAuthorPostsRequestSchema = z
+  .object({
+    authorId: userIdSchema,
+    cursor: z.string().optional(),
+    limit: z.number().int().min(1).max(50).optional(),
+  })
+  .strict();
+
+export type InternalAuthorPostsRequest = z.infer<typeof internalAuthorPostsRequestSchema>;
+
 // Internal (feed → social): bulk profile lookup for hydration. Missing ids
 // are omitted; callers substitute placeholders.
 export const profileLookupRequestSchema = z

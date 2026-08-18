@@ -7,6 +7,7 @@ import {
   mediaAssetSchema,
   mediaLookupResponseSchema,
   postLookupResponseSchema,
+  postPageSchema,
   postSchema,
   profileLookupResponseSchema,
   profileSchema,
@@ -33,7 +34,7 @@ const V1 = '/api';
 
 function paginated<T>(schema: z.ZodType<T>) {
   return z.object({ items: z.array(schema), nextCursor: z.string().nullable() });
-}/** Base URLs resolved from env-driven local ports; override with env in deployed contexts. */
+} /** Base URLs resolved from env-driven local ports; override with env in deployed contexts. */
 export const localServiceUrls = () => ({
   social: process.env.XITTER_SOCIAL_URL ?? localUrl('social'),
   posts: process.env.XITTER_POSTS_URL ?? localUrl('posts'),
@@ -197,6 +198,17 @@ export class PostsClient extends ServiceClient {
   internalPosts(postIds: string[]): Promise<{ items: Post[] }> {
     return this.post(`${V1}/posts/internal/posts/lookup`, { postIds }).then(
       postLookupResponseSchema.parse,
+    );
+  }
+
+  /** Internal (fanout worker #7): author timeline for the follow backfill. */
+  internalGetAuthorPosts(
+    authorId: string,
+    cursor?: string,
+    limit?: number,
+  ): Promise<{ items: Post[]; nextCursor: string | null }> {
+    return this.post(`${V1}/posts/internal/posts/by-author`, { authorId, cursor, limit }).then(
+      postPageSchema.parse,
     );
   }
 }

@@ -12,7 +12,7 @@ export interface SocialApi {
 
 /** What the worker needs from posts (test seam). */
 export interface PostsApi {
-  getUserPosts(
+  internalGetAuthorPosts(
     userId: string,
     cursor?: string,
     limit?: number,
@@ -97,7 +97,10 @@ export async function handleEvent(envelope: unknown, deps: HandlerDeps): Promise
 }
 
 /** Boundary validation: unparseable payloads log + skip (poison-safe). */
-function parseEvent(eventType: string, payload: Record<string, unknown> | undefined): DomainEvent | null {
+function parseEvent(
+  eventType: string,
+  payload: Record<string, unknown> | undefined,
+): DomainEvent | null {
   const parsed = eventSchemas.safeParse({ eventType, ...(payload ?? {}) });
   if (parsed.success) return parsed.data;
   logger.warn({ eventType }, 'event payload failed schema validation - skipping');
@@ -116,7 +119,7 @@ async function collectRecentPosts(
   const collected: Pick<PostCreated, 'postId' | 'authorId' | 'createdAt'>[] = [];
   let cursor: string | undefined;
   for (let page = 0; page < 5 && collected.length < BACKFILL_POSTS; page++) {
-    const result = await posts.getUserPosts(followeeId, cursor, 20);
+    const result = await posts.internalGetAuthorPosts(followeeId, cursor, 20);
     collected.push(
       ...result.items.map((post) => ({
         postId: post.id,

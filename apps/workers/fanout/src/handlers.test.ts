@@ -80,7 +80,7 @@ function fakeDeps() {
       internalFollowerIds: vi.fn(() => Promise.resolve([FOLLOWER_1, FOLLOWER_2])),
     } as unknown as SocialApi,
     posts: {
-      getUserPosts: vi.fn(() => Promise.resolve({ items: [], nextCursor: null })),
+      internalGetAuthorPosts: vi.fn(() => Promise.resolve({ items: [], nextCursor: null })),
     } as unknown as PostsApi,
     feed: {
       internalUpsertEntries: vi.fn((entries: FeedEntryInput[]) => {
@@ -126,7 +126,9 @@ describe('handleEvent dispatch', () => {
 
     expect(deps.social.internalFollowerIds).toHaveBeenCalledWith(AUTHOR);
     expect(upserts).toHaveLength(1);
-    expect(upserts[0]!.map((e) => e.userId).sort()).toEqual([AUTHOR, FOLLOWER_1, FOLLOWER_2].sort());
+    expect(upserts[0]!.map((e) => e.userId).sort()).toEqual(
+      [AUTHOR, FOLLOWER_1, FOLLOWER_2].sort(),
+    );
   });
 
   it('backfills follow.created from the followee recent posts', async () => {
@@ -142,7 +144,7 @@ describe('handleEvent dispatch', () => {
       createdAt: CREATED_AT,
       deletedAt: null,
     }));
-    (deps.posts.getUserPosts as ReturnType<typeof vi.fn>).mockResolvedValue({
+    (deps.posts.internalGetAuthorPosts as ReturnType<typeof vi.fn>).mockResolvedValue({
       items,
       nextCursor: null,
     });
@@ -159,7 +161,7 @@ describe('handleEvent dispatch', () => {
       deps,
     );
 
-    expect(deps.posts.getUserPosts).toHaveBeenCalledWith(AUTHOR, undefined, 20);
+    expect(deps.posts.internalGetAuthorPosts).toHaveBeenCalledWith(AUTHOR, undefined, 20);
     expect(upserts[0]).toHaveLength(2);
     expect(upserts[0]!.every((e) => e.userId === FOLLOWER_1)).toBe(true);
   });
