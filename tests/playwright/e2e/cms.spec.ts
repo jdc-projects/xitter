@@ -1,7 +1,6 @@
 import { execFileSync } from 'node:child_process';
-import { resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { loadRepoEnv, localPort } from '@xitter/config';
+import { envString, findRepoRoot, loadRepoEnv, localPort } from '@xitter/config';
 
 /**
  * CMS-backed site content over the full stack: the web app renders CMS copy,
@@ -9,9 +8,24 @@ import { loadRepoEnv, localPort } from '@xitter/config';
  */
 
 // Idempotent: upsert the committed content files into the running CMS.
+// The suite's webServer probes the WEB port, which is ready long before the
+// CMS finishes booting - wait for it (bounded) before applying content.
 test.beforeAll(async () => {
   loadRepoEnv();
-  const repoRoot = resolve(import.meta.dirname, '../../../');
+  const cms = `${envString('XITTER_CMS_URL', localUrl('cms'))}/cms/healthz`;
+  const deadline = Date.now() + 120_000;
+  for (;;) {
+    try {
+      const res = await fetch(cms);
+      if (res.ok) break;
+    } catch {
+      /* retry */
+    }
+    if (Date.now() > deadline) throw new Error(`CMS never became healthy at ${cms}`);
+    await new Promise((r) => setTimeout(r, 1_000));
+  }
+
+  const repoRoot = findRepoRoot();
   execFileSync('npx', ['tsx', 'packages/scripts/src/content.ts', 'apply'], {
     cwd: repoRoot,
     stdio: 'pipe',
