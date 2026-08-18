@@ -1,0 +1,70 @@
+meta {
+  name: Complete media upload
+  seq: 8
+}
+
+docs {
+  Step 2 of the upload pair: PUT the actual PNG bytes to the presigned URL
+  (1x1 transparent png, matching the 70 bytes claimed in request-upload),
+  then the completion callback. Completion is server-verified - the media
+  service HEADs the object before accepting, so this pair only passes when
+  RustFS really holds the bytes. The tests then poll the asset until the
+  media-process worker records variants (thumb) - the full lifecycle.
+}
+
+script:pre-request {
+  const PNG_B64 =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  const binary = atob(PNG_B64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+  const put = await bru.sendRequest({
+    method: "PUT",
+    url: bru.getVar("uploadUrl"),
+    headers: { "content-type": "image/png" },
+    data: bytes,
+  });
+  expect(put.status).to.equal(200);
+}
+
+post {
+  url: {{seedBase}}/api/media/v1/media/{{mediaId}}/complete
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+assert {
+  res.status: 200
+}
+
+tests {
+  expect(res.body.id).to.equal(bru.getVar("mediaId"));
+  expect(res.body.ownerId).to.be.a("string").and.not.be.empty;
+  expect(["pending", "ready"]).to.include(res.body.status);
+
+  // The worker consumes media.uploaded async; poll until variants land.
+  const deadline = Date.now() + 15000;
+  let asset = res.body;
+  while (asset.status !== "ready" && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    const poll = await bru.sendRequest({
+      method: "GET",
+      url: `${bru.getEnvVar("seedBase")}/api/media/v1/media/${bru.getVar("mediaId")}`,
+      headers: { authorization: `Bearer ${bru.getEnvVar("token")}` },
+    });
+    const body = typeof poll.data === "string" ? JSON.parse(poll.data) : poll.data;
+    expect(poll.status).to.equal(200);
+    asset = body;
+  }
+  expect(asset.status).to.equal("ready");
+  const kinds = asset.variants.map((variant) => variant.kind).sort();
+  expect(kinds).to.deep.equal(["original", "thumb"]);
+  for (const variant of asset.variants) {
+    expect(variant.url).to.match(/^\/media\/.+\/(original|thumb)\.png$/);
+  }
+}
