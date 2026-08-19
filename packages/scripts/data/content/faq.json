@@ -1,0 +1,44 @@
+[
+  {
+    "slug": "faq-what-is-this",
+    "question": "What is this?",
+    "answer": "A Twitter/X-style demo of a microservices homelab: a Next.js frontend over small service APIs, Kafka-driven workers, and infrastructure managed as code. It looks like a social network; it is a systems playground.",
+    "order": 0
+  },
+  {
+    "slug": "faq-data-disappears",
+    "question": "Why does the data disappear?",
+    "answer": "Every environment resets nightly at 00:00 UTC - posts, follows, media, the lot. A deterministic reseed can restore a fixed corpus afterwards. It keeps the demo healthy and guarantees nothing lingers.",
+    "order": 1
+  },
+  {
+    "slug": "faq-how-login",
+    "question": "How do I log in?",
+    "answer": "Use the shared demo accounts (demo1 through demo10, password DemoPass123!). The credentials are public by design - anyone can be any demo user at any time.",
+    "order": 2
+  },
+  {
+    "slug": "faq-can-sign-up",
+    "question": "Can I get an account?",
+    "answer": "No. There is no signup, invitation, or account management - the demo accounts are the whole population.",
+    "order": 3
+  },
+  {
+    "slug": "faq-what-not-to-post",
+    "question": "What shouldn't I post?",
+    "answer": "Anything personal or sensitive. There is no privacy here: everyone shares the demo accounts, anyone can read everything, and the nightly reset deletes the rest. Treat every input as public and disposable.",
+    "order": 4
+  },
+  {
+    "slug": "faq-who-runs",
+    "question": "Who runs this, and where's the code?",
+    "answer": "The homelab owner, as a learning project. The code lives in the xitter repository - the About page above explains how the pieces fit together.",
+    "order": 5
+  },
+  {
+    "slug": "faq-broken",
+    "question": "Something looks broken - is that you?",
+    "answer": "Quite possibly. It is a demo: features break on purpose sometimes, and the nightly reset can catch a page mid-wipe. Check back a few minutes later before assuming it is you.",
+    "order": 6
+  }
+]

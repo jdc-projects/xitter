@@ -68,5 +68,5 @@ flowchart LR
 ```
 
 - Only CMS-managed content (landing intro, FAQ entries) participates; user posts are never promoted.
-- Seed content files in the repo are the durable source; the CMS is the editing surface.
+- Seed content files in the repo are the durable source (`packages/scripts/data/content/`, keyed by the collections' unique `slug`); the CMS is the editing surface.
 - A promotion is a PR like any other: reviewed, merged, then picked up by the next seed run.

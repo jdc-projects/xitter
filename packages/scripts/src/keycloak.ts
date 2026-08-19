@@ -91,12 +91,17 @@ async function ensureClient(
   const clients = await kc.clients.find({ realm, clientId });
   const existing = clients[0]?.id;
   if (existing) {
-    console.log(`client ${realm}/${clientId}: exists`);
+    // Upsert, not exists: a volume bootstrapped before this config may hold
+    // an older shape (e.g. a cms client without a service account) - a
+    // plain exists-return would leave bootstrap broken for that stack.
+    // Update rejects realm-in-body (create-only field), so strip it.
+    const { realm: _realm, ...update } = clientPayload(realm, clientId, options);
+    await kc.clients.update({ realm, id: existing }, update);
+    console.log(`client ${realm}/${clientId}: exists (synced)`);
     return existing;
   }
 
-  const payload = clientPayload(realm, clientId, options);
-  const created = await kc.clients.create(payload);
+  const created = await kc.clients.create(clientPayload(realm, clientId, options));
   console.log(`client ${realm}/${clientId}: created`);
   return created.id;
 }
@@ -149,13 +154,13 @@ async function ensureUser(
   realm: string,
   username: string,
   password: string,
-  roleName: string,
+  roleName?: string,
 ): Promise<DemoUser> {
   const existing = await kc.users.find({ realm, username, exact: true });
   if (existing.length > 0) {
     const userId = existing[0]!.id;
     if (!userId) throw new Error(`User ${username} has no id`);
-    await assignRole(kc, realm, userId, roleName);
+    if (roleName) await assignRole(kc, realm, userId, roleName);
     await repairDemoUser(kc, realm, userId, username, existing[0]!);
     return { username, userId };
   }
@@ -172,7 +177,7 @@ async function ensureUser(
     requiredActions: [],
     credentials: [{ type: 'password', value: password, temporary: false }],
   });
-  await assignRole(kc, realm, created.id, roleName);
+  if (roleName) await assignRole(kc, realm, created.id, roleName);
   console.log(`user ${realm}/${username}: created`);
   return { username, userId: created.id };
 }
@@ -287,13 +292,28 @@ export async function initLocalAdminRealm(): Promise<void> {
   await ensureRole(kc, realm, 'app-admin');
 
   await ensureClient(kc, realm, 'admin-panel', { public: true, redirectUris: [`${edgeUrl()}/*`] });
-  await ensureClient(kc, realm, 'cms', {
+  // Confidential client used twice: the CMS's OIDC browser login (code flow)
+  // and machine access to drafts/promotion (client credentials). Direct-port
+  // access is allowed too so the CMS works without the edge proxy.
+  const cmsClientId = await ensureClient(kc, realm, 'cms', {
     public: false,
-    secret: 'cms-local-secret',
-    redirectUris: [`${edgeUrl()}/*`],
+    secret: envString('XITTER_CMS_CLIENT_SECRET', 'cms-local-secret'),
+    redirectUris: [`${edgeUrl()}/*`, `${localUrl('cms')}/*`],
+    serviceAccount: true,
   });
+  // The service account carries app-admin so its tokens pass the CMS's
+  // role gate (web draft-preview fetch + content export).
+  const serviceAccount = await kc.clients.getServiceAccountUser({ realm, id: cmsClientId });
+  if (serviceAccount?.id) {
+    await assignRole(kc, realm, serviceAccount.id, 'app-admin');
+  } else {
+    throw new Error('cms client service account not found');
+  }
 
   await ensureUser(kc, realm, 'localadmin', 'LocalAdmin123!', 'app-admin');
+  // Role-less user: the local stand-in for "admin realm user without
+  // app-admin" - used to prove the CMS rejects them at login.
+  await ensureUser(kc, realm, 'localuser', 'LocalUser123!');
 }
 
 export async function resetDemoRealm(): Promise<void> {

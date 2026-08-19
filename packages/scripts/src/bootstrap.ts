@@ -21,7 +21,7 @@ await initDemoRealm();
 await initLocalAdminRealm();
 
 console.log('pushing schemas...');
-await run('npm', ['run', 'db:push:services']);
+await run('npm', ['run', 'db:push']);
 
 if (process.argv.includes('--seed')) {
   console.log('seeding...');

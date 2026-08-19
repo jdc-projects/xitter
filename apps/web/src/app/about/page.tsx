@@ -1,12 +1,27 @@
+import { connection } from 'next/server';
 import { Container, Divider, Stack, Text, Title } from '@mantine/core';
 import { ResetNotice } from '@xitter/ui';
+import { FaqContentPreview } from '@/components/cms/faq-content-preview';
+import { FaqList } from '@/components/cms/faq-list';
+import { cmsEnv, loadFaq } from '@/lib/cms/content';
+import { resolvePreviewId } from '@/lib/cms/preview';
 
 export const metadata = { title: 'About' };
 
 const demoAccounts = 'demo1 through demo10';
 const demoPassword = 'DemoPass123!';
 
-export default function AboutPage() {
+interface AboutPageProps {
+  searchParams: Promise<{ preview?: string | string[] }>;
+}
+
+export default async function AboutPage({ searchParams }: AboutPageProps) {
+  const previewId = await resolvePreviewId(searchParams);
+
+  // Preview renders are per-request (drafts, uncached - spec 04 exposure).
+  if (previewId !== undefined) await connection();
+  const faq = await loadFaq({ draft: previewId !== undefined });
+
   return (
     <Container size="sm" py="xl">
       <Stack gap="lg">
@@ -80,19 +95,11 @@ export default function AboutPage() {
           <Title order={2} size="h4">
             FAQ
           </Title>
-          <Stack gap="xs">
-            <Text>
-              <b>Can I sign up?</b> No. Only the pre-created demo accounts exist.
-            </Text>
-            <Text>
-              <b>Is my data private?</b> No. Anyone with a demo account can see everything, and it
-              is all deleted nightly. Never enter personal or sensitive information.
-            </Text>
-            <Text>
-              <b>Something broke / looks wrong.</b> That is part of the fun of a demo - it may also
-              be mid-reset. Check back a few minutes later.
-            </Text>
-          </Stack>
+          {previewId !== undefined ? (
+            <FaqContentPreview entries={faq} previewId={previewId} serverURL={cmsEnv().publicUrl} />
+          ) : (
+            <FaqList entries={faq} />
+          )}
         </section>
 
         <Divider />

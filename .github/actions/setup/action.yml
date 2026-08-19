@@ -33,5 +33,19 @@ runs:
 
     - name: Install Playwright chromium
       if: inputs.playwright == 'true'
-      run: npm run test:install
+      # The chromium download has stalled >18m with zero output on multiple
+      # runners. Composite-action steps cannot use timeout-minutes, so bound
+      # it with coreutils `timeout`. A timed-out attempt orphans its apt-get
+      # child holding the dpkg lock - reap it and wait for the lock before
+      # the single retry, or the retry insta-fails with lock contention.
+      run: |
+        if timeout 10m npm run test:install; then exit 0; fi
+        echo "first install attempt failed or timed out - clearing apt locks and retrying once"
+        sudo pkill -9 -f 'apt(-get)?' 2>/dev/null || true
+        for i in $(seq 1 30); do
+          sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || break
+          sleep 2
+        done
+        sudo dpkg --configure -a >/dev/null 2>&1 || true
+        timeout 10m npm run test:install
       shell: bash
