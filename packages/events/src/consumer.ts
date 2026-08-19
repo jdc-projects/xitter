@@ -26,7 +26,14 @@ export interface EventConsumer {
 
 export function createEventConsumer(options: EventConsumerOptions): EventConsumer {
   const kafka = new Kafka({ clientId: options.clientId, brokers: options.brokers });
-  const consumer = kafka.consumer({ groupId: options.groupId });
+  const consumer = kafka.consumer({
+    groupId: options.groupId,
+    // Group-coordinator handover (fresh broker booting, rebalances) is
+    // retriable, but the default 5 fast retries exhaust while
+    // __consumer_offsets settles - crash-looping the consumer instead of
+    // waiting out the handover. Seen on every testcontainers first-join.
+    retry: { retries: 10, initialRetryTime: 500, maxRetryTime: 5_000 },
+  });
   const prefix = options.topicPrefix ? `${options.topicPrefix}.` : '';
   return {
     consumer,
