@@ -1,10 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import {
-  FALLBACK_FAQ,
-  FALLBACK_LANDING,
-  loadFaq,
-  loadLandingContent,
-} from './content';
+import { FALLBACK_FAQ, FALLBACK_LANDING, loadFaq, loadLandingContent } from './content';
 
 interface RecordedRequest {
   url: string;
@@ -18,13 +13,14 @@ function fakeCms(docs: unknown[], opts: { status?: number } = {}) {
     async (input: string | URL | Request, init: RequestInit = {}): Promise<Response> => {
       const target = String(input instanceof Request ? input.url : input);
       requests.push({ url: target, init });
-    if (target.includes('/protocol/openid-connect/token')) {
-      return new Response(JSON.stringify({ access_token: 'tok', expires_in: 300 }), {
-        status: 200,
-      });
-    }
-    return new Response(JSON.stringify({ docs }), { status: opts.status ?? 200 });
-  });
+      if (target.includes('/protocol/openid-connect/token')) {
+        return new Response(JSON.stringify({ access_token: 'tok', expires_in: 300 }), {
+          status: 200,
+        });
+      }
+      return new Response(JSON.stringify({ docs }), { status: opts.status ?? 200 });
+    },
+  );
   return { fetchImpl, requests };
 }
 

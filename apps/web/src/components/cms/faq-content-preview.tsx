@@ -19,8 +19,12 @@ export function FaqContentPreview({
   serverURL: string;
 }) {
   const match = entries.find((entry) => String(entry.id ?? '') === previewId);
-  const initialData =
-    match ?? { id: Number.parseInt(previewId, 10) || 0, slug: '', question: '', answer: '' };
+  const initialData = match ?? {
+    id: Number.parseInt(previewId, 10) || 0,
+    slug: '',
+    question: '',
+    answer: '',
+  };
 
   const { data } = useLivePreview({
     serverURL,

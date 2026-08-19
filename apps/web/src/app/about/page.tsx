@@ -96,11 +96,7 @@ export default async function AboutPage({ searchParams }: AboutPageProps) {
             FAQ
           </Title>
           {previewId !== undefined ? (
-            <FaqContentPreview
-              entries={faq}
-              previewId={previewId}
-              serverURL={cmsEnv().publicUrl}
-            />
+            <FaqContentPreview entries={faq} previewId={previewId} serverURL={cmsEnv().publicUrl} />
           ) : (
             <FaqList entries={faq} />
           )}

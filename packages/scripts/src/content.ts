@@ -150,13 +150,20 @@ async function upsertCollection(
  * Apply the committed content files to a running CMS. The seam the nightly
  * reset (and local bootstrap/seed) uses to restore promoted CMS content.
  */
-export async function applyCmsContent(options: { fetchImpl?: typeof fetch } = {}): Promise<ContentApplyResult> {
+export async function applyCmsContent(
+  options: { fetchImpl?: typeof fetch } = {},
+): Promise<ContentApplyResult> {
   loadRepoEnv();
   const doFetch = options.fetchImpl ?? fetch;
   const files = await readContentFiles();
   const token = await cmsToken(options.fetchImpl).get();
 
-  const landing = await upsertCollection('landing-content', files.landingContent as never, token, doFetch);
+  const landing = await upsertCollection(
+    'landing-content',
+    files.landingContent as never,
+    token,
+    doFetch,
+  );
   const faq = await upsertCollection('faq', files.faq as never, token, doFetch);
   return {
     created: landing.created + faq.created,
@@ -203,7 +210,12 @@ export async function exportCmsContent(
   await writeFile(
     resolve(targetDir, 'landing-content.json'),
     `${JSON.stringify(
-      landingJson.map(({ slug, title, intro, order }) => ({ slug, title, intro, order: order ?? 0 })),
+      landingJson.map(({ slug, title, intro, order }) => ({
+        slug,
+        title,
+        intro,
+        order: order ?? 0,
+      })),
       null,
       2,
     )}\n`,
@@ -211,7 +223,12 @@ export async function exportCmsContent(
   await writeFile(
     resolve(targetDir, 'faq.json'),
     `${JSON.stringify(
-      faqJson.map(({ slug, question, answer, order }) => ({ slug, question, answer, order: order ?? 0 })),
+      faqJson.map(({ slug, question, answer, order }) => ({
+        slug,
+        question,
+        answer,
+        order: order ?? 0,
+      })),
       null,
       2,
     )}\n`,

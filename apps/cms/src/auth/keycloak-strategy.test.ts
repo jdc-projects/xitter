@@ -67,7 +67,9 @@ describe('keycloak auth strategy', () => {
   });
 
   it('maps an app-admin token onto a users doc keyed by sub', async () => {
-    const docs = [{ id: 7, email: 'localadmin@sso.xitter.local', sub: 'kc-123', roles: ['app-admin'] }];
+    const docs = [
+      { id: 7, email: 'localadmin@sso.xitter.local', sub: 'kc-123', roles: ['app-admin'] },
+    ];
     const payload = fakePayload(docs);
     const strategy = createKeycloakStrategy(fakeVerifier({}));
     const result = (await strategy.authenticate({

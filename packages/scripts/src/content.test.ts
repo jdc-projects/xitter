@@ -40,19 +40,20 @@ function fakeCms(docs: Record<'landing-content' | 'faq', FakeDoc[]>) {
         auth: headers.authorization,
       });
 
-    if (target.includes('/protocol/openid-connect/token')) {
-      return new Response(JSON.stringify({ access_token: 'seed-tok', expires_in: 300 }));
-    }
-    const list = target.match(/\/cms\/api\/(landing-content|faq)(\?|$)/);
-    if (list && list[1]) {
-      return new Response(JSON.stringify({ docs: docs[list[1] as 'landing-content'] ?? [] }));
-    }
-    // POST/PATCH against collection paths: accept.
-    if (method === 'POST' || method === 'PATCH') {
-      return new Response(JSON.stringify({ doc: {} }), { status: 201 });
-    }
-    return new Response('not found', { status: 404 });
-  });
+      if (target.includes('/protocol/openid-connect/token')) {
+        return new Response(JSON.stringify({ access_token: 'seed-tok', expires_in: 300 }));
+      }
+      const list = target.match(/\/cms\/api\/(landing-content|faq)(\?|$)/);
+      if (list && list[1]) {
+        return new Response(JSON.stringify({ docs: docs[list[1] as 'landing-content'] ?? [] }));
+      }
+      // POST/PATCH against collection paths: accept.
+      if (method === 'POST' || method === 'PATCH') {
+        return new Response(JSON.stringify({ doc: {} }), { status: 201 });
+      }
+      return new Response('not found', { status: 404 });
+    },
+  );
   return { fetchImpl, calls };
 }
 
@@ -80,7 +81,10 @@ describe('content promotion', () => {
     for (const post of posts) {
       expect(post.url).toContain('draft=false');
       expect(post.auth).toBe('Bearer seed-tok');
-      expect(JSON.parse(post.body!)).toMatchObject({ slug: expect.any(String), _status: 'published' });
+      expect(JSON.parse(post.body!)).toMatchObject({
+        slug: expect.any(String),
+        _status: 'published',
+      });
     }
   });
 
@@ -95,9 +99,7 @@ describe('content promotion', () => {
 
     expect(result.created).toBe(0);
     expect(result.updated).toBe(files.landingContent.length + files.faq.length);
-    expect(calls.filter((c) => c.method === 'POST' && c.url.includes('/cms/api/'))).toHaveLength(
-      0,
-    );
+    expect(calls.filter((c) => c.method === 'POST' && c.url.includes('/cms/api/'))).toHaveLength(0);
     const patches = calls.filter((c) => c.method === 'PATCH');
     expect(patches).toHaveLength(result.updated);
     for (const patch of patches) {

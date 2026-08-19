@@ -11,9 +11,7 @@ let configPromise: Promise<oidc.Configuration> | undefined;
  */
 export function cmsOidcConfig(): Promise<oidc.Configuration> {
   configPromise ??= (async () => {
-    const issuer = new URL(
-      `${env.KEYCLOAK_BASE_URL.replace(/\/$/, '')}/realms/${env.ADMIN_REALM}`,
-    );
+    const issuer = new URL(`${env.KEYCLOAK_BASE_URL.replace(/\/$/, '')}/realms/${env.ADMIN_REALM}`);
     const insecure = issuer.protocol === 'http:';
     return oidc.discovery(issuer, env.CMS_CLIENT_ID, env.CMS_CLIENT_SECRET, undefined, {
       ...(insecure ? { execute: [oidc.allowInsecureRequests] } : {}),

@@ -20,8 +20,12 @@ export function LandingContentPreview({
   serverURL: string;
 }) {
   const match = entries.find((entry) => String(entry.id ?? '') === previewId);
-  const initialData =
-    match ?? { id: Number.parseInt(previewId, 10) || 0, slug: '', title: '', intro: '' };
+  const initialData = match ?? {
+    id: Number.parseInt(previewId, 10) || 0,
+    slug: '',
+    title: '',
+    intro: '',
+  };
 
   const { data } = useLivePreview({
     serverURL,

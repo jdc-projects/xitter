@@ -141,21 +141,27 @@ function byOrderThenSlug(a: PayloadDoc, b: PayloadDoc): number {
 }
 
 function mapLanding(docs: PayloadDoc[]): LandingEntry[] {
-  return docs.slice().sort(byOrderThenSlug).map((doc, i) => ({
-    id: doc.id,
-    slug: doc.slug ?? `landing-${i}`,
-    title: doc.title ?? '',
-    intro: doc.intro ?? '',
-  }));
+  return docs
+    .slice()
+    .sort(byOrderThenSlug)
+    .map((doc, i) => ({
+      id: doc.id,
+      slug: doc.slug ?? `landing-${i}`,
+      title: doc.title ?? '',
+      intro: doc.intro ?? '',
+    }));
 }
 
 function mapFaq(docs: PayloadDoc[]): FaqEntry[] {
-  return docs.slice().sort(byOrderThenSlug).map((doc, i) => ({
-    id: doc.id,
-    slug: doc.slug ?? `faq-${i}`,
-    question: doc.question ?? '',
-    answer: doc.answer ?? '',
-  }));
+  return docs
+    .slice()
+    .sort(byOrderThenSlug)
+    .map((doc, i) => ({
+      id: doc.id,
+      slug: doc.slug ?? `faq-${i}`,
+      question: doc.question ?? '',
+      answer: doc.answer ?? '',
+    }));
 }
 
 /**
