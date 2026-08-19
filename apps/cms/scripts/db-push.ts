@@ -17,7 +17,7 @@ async function main(): Promise<void> {
   const { default: config } = await import('../src/payload.config.js');
 
   const payload = await getPayload({ config });
-  console.log('cms schema pushed');
+  process.stdout.write('cms schema pushed\n');
   await payload.destroy();
   process.exit(0);
 }

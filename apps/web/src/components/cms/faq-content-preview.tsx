@@ -1,10 +1,9 @@
 'use client';
 
 import { useLivePreview } from '@payloadcms/live-preview-react';
-import { useMemo } from 'react';
 import type { FaqEntry } from '@/lib/cms/content';
 import { FaqList } from './faq-list';
-import { cmsPopulateRequest, patchEntry } from './landing-content-preview';
+import { cmsPopulateRequest, patchEntry } from './live-preview-utils';
 
 /**
  * Live preview (/about?preview=<docId>): renders draft FAQ entries
@@ -19,22 +18,14 @@ export function FaqContentPreview({
   previewId: string;
   serverURL: string;
 }) {
-  const initialData = useMemo(() => {
-    const match = entries.find((entry) => String(entry.id ?? '') === previewId);
-    return (
-      match ?? {
-        id: Number.parseInt(previewId, 10) || 0,
-        slug: '',
-        question: '',
-        answer: '',
-      }
-    ) as unknown as Record<string, unknown>;
-  }, [entries, previewId]);
+  const match = entries.find((entry) => String(entry.id ?? '') === previewId);
+  const initialData =
+    match ?? { id: Number.parseInt(previewId, 10) || 0, slug: '', question: '', answer: '' };
 
   const { data } = useLivePreview({
     serverURL,
     depth: 0,
-    initialData,
+    initialData: initialData as unknown as Record<string, unknown>,
     requestHandler: cmsPopulateRequest(serverURL),
   });
 

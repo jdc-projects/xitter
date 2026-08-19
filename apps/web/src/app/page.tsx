@@ -4,15 +4,14 @@ import { ResetNotice } from '@xitter/ui';
 import { LandingContentPreview } from '@/components/cms/landing-content-preview';
 import { LandingCopy } from '@/components/cms/landing-copy';
 import { cmsEnv, loadLandingContent } from '@/lib/cms/content';
+import { resolvePreviewId } from '@/lib/cms/preview';
 
 interface LandingPageProps {
   searchParams: Promise<{ preview?: string | string[] }>;
 }
 
 export default async function LandingPage({ searchParams }: LandingPageProps) {
-  const params = await searchParams;
-  const rawPreview = Array.isArray(params.preview) ? params.preview[0] : params.preview;
-  const previewId = rawPreview === '' ? undefined : rawPreview;
+  const previewId = await resolvePreviewId(searchParams);
 
   // Preview renders are per-request (drafts, auth-gated, never cached).
   if (previewId !== undefined) await connection();

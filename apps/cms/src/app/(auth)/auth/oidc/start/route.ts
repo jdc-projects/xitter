@@ -21,8 +21,13 @@ function flowCookie(response: NextResponse, name: string, value: string) {
 /**
  * Admin-panel login entry point: redirect to the admin realm's authorization
  * endpoint with PKCE. Payload's own login form is bypassed entirely - the
- * middleware sends every unauthenticated /admin visit here.
+ * proxy sends every unauthenticated /admin visit here.
+ *
+ * GET-with-cookies is inherent to a login kickoff route reached via redirect
+ * (same shape as Keycloak's own login URL); the cookies are single-use
+ * short-lived CSRF/nonce carriers, so replay is harmless.
  */
+// react-doctor-disable-next-line nextjs-no-side-effect-in-get-handler
 export async function GET(request: NextRequest) {
   const config = await cmsOidcConfig();
   const state = oidc.randomState();

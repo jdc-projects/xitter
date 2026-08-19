@@ -1,0 +1,45 @@
+/**
+ * Payload live-preview helpers shared by the landing and FAQ preview
+ * components (kept out of the component files so they stay component-only).
+ */
+
+/** Replace the matching entry with the live doc; append brand-new docs. */
+export function patchEntry<T extends { id?: number; slug: string }>(
+  entries: T[],
+  live: Record<string, unknown>,
+): T[] {
+  const liveDoc = live as Partial<T> & { id?: number; slug?: string };
+  const index = entries.findIndex(
+    (entry) =>
+      (liveDoc.id !== undefined && entry.id === liveDoc.id) ||
+      (liveDoc.slug !== undefined && entry.slug === liveDoc.slug),
+  );
+  if (index === -1) {
+    return liveDoc.slug || liveDoc.id !== undefined ? [...entries, liveDoc as T] : entries;
+  }
+  const next = entries.slice();
+  next[index] = { ...entries[index]!, ...liveDoc };
+  return next;
+}
+
+/** Payload live-preview population call, aimed at the CMS's /api routes. */
+export function cmsPopulateRequest(serverURL: string) {
+  return async ({
+    apiPath,
+    data,
+    endpoint,
+  }: {
+    apiPath?: string;
+    data: unknown;
+    endpoint: string;
+  }) =>
+    fetch(`${serverURL}/cms${apiPath ?? '/api'}/${endpoint}`, {
+      body: JSON.stringify(data),
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Payload-HTTP-Method-Override': 'GET',
+      },
+      method: 'POST',
+    });
+}

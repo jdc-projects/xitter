@@ -4,6 +4,7 @@ import { ResetNotice } from '@xitter/ui';
 import { FaqContentPreview } from '@/components/cms/faq-content-preview';
 import { FaqList } from '@/components/cms/faq-list';
 import { cmsEnv, loadFaq } from '@/lib/cms/content';
+import { resolvePreviewId } from '@/lib/cms/preview';
 
 export const metadata = { title: 'About' };
 
@@ -15,9 +16,7 @@ interface AboutPageProps {
 }
 
 export default async function AboutPage({ searchParams }: AboutPageProps) {
-  const params = await searchParams;
-  const rawPreview = Array.isArray(params.preview) ? params.preview[0] : params.preview;
-  const previewId = rawPreview === '' ? undefined : rawPreview;
+  const previewId = await resolvePreviewId(searchParams);
 
   // Preview renders are per-request (drafts, auth-gated, never cached).
   if (previewId !== undefined) await connection();
