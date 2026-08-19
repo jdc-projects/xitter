@@ -123,36 +123,27 @@ describe('search-index consumption (testcontainers kafka + opensearch)', () => {
   }
 
   /**
+   * Fresh groups join at the log end; re-emit until consumed (idempotent).
    * The producer's eager connect can still be mid-flight on the first emit
    * (kafkajs throws 'producer is disconnected' from send() before its own
-   * retry kicks in); retry the transient case after a beat.
+   * retry kicks in), so the transient case is retried once after a beat.
    */
-  async function emit(topic: 'posts' | 'social', event: Parameters<typeof producer.emit>[1]) {
-    for (let attempt = 1; ; attempt++) {
-      try {
-        await producer.emit(topic, event);
-        return;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (
-          attempt >= 5 ||
-          (!message.includes('disconnected') && !message.includes('Connection'))
-        ) {
-          throw err;
-        }
-        await new Promise((r) => setTimeout(r, 500 * attempt));
-      }
-    }
-  }
-
-  /** Fresh groups join at the log end; re-emit until consumed (idempotent). */
   async function emitUntil(
     emit: () => Promise<void>,
     predicate: () => Promise<boolean>,
   ): Promise<void> {
     const deadline = Date.now() + 45_000;
-    while (Date.now() < deadline) {
-      await emit();
+    for (;;) {
+      try {
+        await emit();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const transient = message.includes('disconnected') || message.includes('Connection');
+        if (!transient || Date.now() > deadline) throw err;
+        await new Promise((r) => setTimeout(r, 1_000));
+        continue;
+      }
+      if (Date.now() > deadline) break;
       await waitFor(() => false, 3_000).catch(() => undefined); // settle window
       if (await predicate()) return;
     }

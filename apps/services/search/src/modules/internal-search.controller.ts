@@ -9,11 +9,11 @@ import {
   type UpsertSearchDocumentsRequest,
 } from '@xitter/api-contracts';
 import { ZodValidationPipe } from '@xitter/service-kit';
+import { z } from 'zod';
 import { SearchService } from './search.service.js';
 
-const checkpointQuery = new ZodValidationPipe(
-  searchCheckpointPutRequestSchema.pick({ consumerKey: true }),
-);
+// Single-value param pipes take scalar schemas (object schemas would 400).
+const consumerKeyQuery = new ZodValidationPipe(z.string().min(1).max(100));
 
 /**
  * Service-to-service endpoints (spec 03 internal table): the search-index
@@ -69,8 +69,8 @@ export class InternalSearchController {
   /** Resume positions for one consumer (worker boot). */
   @Get('search/checkpoint')
   @Internal()
-  getCheckpoints(@Query('consumerKey', checkpointQuery) query: { consumerKey: string }) {
-    return this.search.checkpointPositions(query.consumerKey).then((positions) => ({ positions }));
+  getCheckpoints(@Query('consumerKey', consumerKeyQuery) consumerKey: string) {
+    return this.search.checkpointPositions(consumerKey).then((positions) => ({ positions }));
   }
 
   /** Truncate search service state (reset job: checkpoints are disposable). */
