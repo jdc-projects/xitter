@@ -8,8 +8,25 @@ export interface EventConsumerOptions {
   groupId: string;
   /** Topics to consume. */
   topics: TopicName[];
+  /**
+   * Start at the log beginning when the group has no committed offset
+   * (default false = log end). Workers that build derived state from the
+   * event log (search-index) want the full replay on a fresh group.
+   */
+  fromBeginning?: boolean;
   /** Suffix (e.g. env name) for isolation in shared clusters; empty for local. */
   topicPrefix?: string;
+}
+
+export interface EventConsumerRunOptions {
+  /**
+   * Resume positions keyed `topic:partition` -> next offset to consume,
+   * applied as seeks on partition assignment. Overrides the default
+   * (committed group offset / fromBeginning) so a worker with durable
+   * checkpoints survives consumer-group loss. Idempotent handlers make a
+   * stale map safe - it rewinds into harmless replays.
+   */
+  resumeFrom?: ReadonlyMap<string, number>;
 }
 
 export interface EventConsumer {
@@ -20,7 +37,10 @@ export interface EventConsumer {
    * handler error retries per the consumer retry policy and eventually parks
    * the partition.
    */
-  run(handler: (envelope: unknown, raw: EachMessagePayload) => Promise<void>): Promise<void>;
+  run(
+    handler: (envelope: unknown, raw: EachMessagePayload) => Promise<void>,
+    runOptions?: EventConsumerRunOptions,
+  ): Promise<void>;
   disconnect(): Promise<void>;
 }
 
@@ -37,10 +57,13 @@ export function createEventConsumer(options: EventConsumerOptions): EventConsume
   const prefix = options.topicPrefix ? `${options.topicPrefix}.` : '';
   return {
     consumer,
-    async run(handler) {
+    async run(handler, runOptions) {
       await consumer.connect();
       for (const topic of options.topics) {
-        await consumer.subscribe({ topic: `${prefix}${TOPICS[topic]}`, fromBeginning: false });
+        await consumer.subscribe({
+          topic: `${prefix}${TOPICS[topic]}`,
+          fromBeginning: options.fromBeginning ?? false,
+        });
       }
       await consumer.run({
         eachMessage: async (payload) => {
@@ -58,6 +81,16 @@ export function createEventConsumer(options: EventConsumerOptions): EventConsume
             return;
           }
           await handler(envelope, payload);
+        },
+        // Checkpoint seeks must land after assignment but before the first
+        // fetch of each partition - partitionsAssigned is exactly that hook.
+        partitionsAssigned: async (assignment) => {
+          for (const { topic, partition } of assignment) {
+            const nextOffset = runOptions?.resumeFrom?.get(`${topic}:${partition}`);
+            if (nextOffset !== undefined) {
+              consumer.seek({ topic, partition, offset: String(nextOffset) });
+            }
+          }
         },
       });
     },

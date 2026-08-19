@@ -201,6 +201,104 @@ export const profilePageSchema = cursorPagination(profileSchema).openapi('Profil
 
 export const feedPageSchema = cursorPagination(hydratedFeedItemSchema).openapi('FeedPage');
 
+/** Search results carry the same hydrated shape as feed items (spec 03). */
+export const searchPageSchema = cursorPagination(hydratedFeedItemSchema).openapi('SearchPage');
+
+export type SearchPage = z.infer<typeof searchPageSchema>;
+
+// Internal (search-index worker → search): one post document in the
+// OpenSearch `posts` index. `deletedAt` set = tombstone (spec 04: deletes
+// are tombstones; upserts are keyed by postId, so replays converge).
+// `text` has no minimum: tombstones written from posts.post.deleted carry
+// no body (empty placeholder, never matched - queries exclude deletedAt).
+export const searchIndexDocumentSchema = z
+  .object({
+    postId: postIdSchema,
+    authorId: userIdSchema,
+    authorName: z.string().min(1).max(50),
+    text: z.string().max(POST_TEXT_MAX),
+    keywords: z.array(z.string().min(1).max(100)).max(32).default([]),
+    createdAt: z.iso.datetime(),
+    deletedAt: z.iso.datetime().nullable().default(null),
+  })
+  .strict()
+  .openapi('SearchIndexDocument');
+
+export type SearchIndexDocument = z.infer<typeof searchIndexDocumentSchema>;
+
+export const upsertSearchDocumentsRequestSchema = z
+  .object({
+    documents: z.array(searchIndexDocumentSchema).min(1).max(1000),
+  })
+  .strict()
+  .openapi('UpsertSearchDocumentsRequest');
+
+export type UpsertSearchDocumentsRequest = z.infer<typeof upsertSearchDocumentsRequestSchema>;
+
+export const upsertSearchDocumentsResponseSchema = z
+  .object({
+    /** Documents actually submitted to the index bulk request. */
+    indexed: z.number().int().nonnegative(),
+  })
+  .strict();
+
+// Internal (search-index worker → search): refresh the denormalised
+// authorName on every indexed document of the listed authors
+// (social.profile.updated keeps the index self-contained).
+export const refreshSearchAuthorsRequestSchema = z
+  .object({
+    authors: z
+      .array(
+        z
+          .object({
+            authorId: userIdSchema,
+            authorName: z.string().min(1).max(50),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(100),
+  })
+  .strict()
+  .openapi('RefreshSearchAuthorsRequest');
+
+export type RefreshSearchAuthorsRequest = z.infer<typeof refreshSearchAuthorsRequestSchema>;
+
+// Internal (search-index worker → search): report the last processed Kafka
+// position so a worker restart (or a wiped consumer group) resumes exactly
+// there - SearchCheckpoint is the durable resume cursor, not Kafka's group
+// offsets (deleted by the nightly reset).
+export const searchCheckpointPutRequestSchema = z
+  .object({
+    consumerKey: z.string().min(1).max(100),
+    /** `topic:partition`, e.g. `xitter.posts.v1:0`. */
+    topicPartition: z.string().min(1).max(100),
+    offset: z.number().int().nonnegative(),
+    eventId: z.string().min(1),
+    eventAt: z.iso.datetime(),
+  })
+  .strict();
+
+export type SearchCheckpointPutRequest = z.infer<typeof searchCheckpointPutRequestSchema>;
+
+export const searchCheckpointPositionSchema = z
+  .object({
+    topicPartition: z.string(),
+    offset: z.number().int().nonnegative(),
+    eventId: z.string().nullable(),
+    eventAt: z.string().nullable(),
+  })
+  .strict();
+
+export const searchCheckpointListResponseSchema = z
+  .object({
+    positions: z.array(searchCheckpointPositionSchema),
+  })
+  .strict();
+
+export type SearchCheckpointPosition = z.infer<typeof searchCheckpointPositionSchema>;
+
+
 export const idParam = (name: 'userId' | 'postId' | 'mediaId' | 'username') =>
   ({
     userId: { name: 'userId', schema: userIdSchema, in: 'path', required: true },

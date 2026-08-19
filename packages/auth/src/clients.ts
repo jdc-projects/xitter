@@ -21,7 +21,12 @@ export const SERVICE_CLIENTS = [
 export const WORKER_CLIENTS: readonly { clientId: string; audiences: readonly string[] }[] = [
   { clientId: 'svc-worker-fanout', audiences: ['svc-social', 'svc-posts', 'svc-feed'] },
   { clientId: 'svc-worker-media-process', audiences: ['svc-media'] },
-  { clientId: 'svc-worker-search-index', audiences: ['svc-search'] },
+  // search-index feeds the index (svc-search) and resolves author display
+  // names for documents via social's bulk profile lookup (#9).
+  {
+    clientId: 'svc-worker-search-index',
+    audiences: ['svc-search', 'svc-social'],
+  },
   { clientId: 'svc-reset', audiences: [...SERVICE_CLIENTS] },
 ];
 

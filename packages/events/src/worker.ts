@@ -1,7 +1,11 @@
 import client from 'prom-client';
-import { Kafka } from 'kafkajs';
+import { Kafka, type EachMessagePayload } from 'kafkajs';
 import { createLogger, createMetricsServer, initSentry, initTracing } from '@xitter/observability';
-import { createEventConsumer, type EventConsumerOptions } from './consumer.js';
+import {
+  createEventConsumer,
+  type EventConsumerOptions,
+  type EventConsumerRunOptions,
+} from './consumer.js';
 import { TOPICS } from './topics.js';
 
 export interface EventWorkerOptions extends EventConsumerOptions {
@@ -10,7 +14,12 @@ export interface EventWorkerOptions extends EventConsumerOptions {
   /** Local Prometheus scrape port. */
   metricsPort: number;
   /** Event handler; must be idempotent (at-least-once delivery). */
-  handle(envelope: unknown): Promise<void>;
+  handle(envelope: unknown, raw?: EachMessagePayload): Promise<void>;
+  /**
+   * Checkpoint resume positions (`topic:partition` -> next offset), applied
+   * on partition assignment - see EventConsumerRunOptions.resumeFrom.
+   */
+  resumeFrom?: ReadonlyMap<string, number>;
 }
 
 /**
@@ -31,9 +40,12 @@ export async function runEventWorker(options: EventWorkerOptions): Promise<void>
 
   const lag = startConsumerLagTracker(options, metrics.registry, logger);
 
-  await consumer.run(async (envelope) => {
-    await options.handle(envelope);
-  });
+  const runOptions: EventConsumerRunOptions = options.resumeFrom
+    ? { resumeFrom: options.resumeFrom }
+    : {};
+  await consumer.run(async (envelope, raw) => {
+    await options.handle(envelope, raw);
+  }, runOptions);
 
   process.once('SIGTERM', () => {
     void (async () => {

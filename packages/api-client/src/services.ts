@@ -3,6 +3,7 @@ import {
   createInteractionRequestSchema,
   createMediaUploadResponseSchema,
   feedPageSchema,
+  hydratedFeedItemSchema,
   internalMediaAssetSchema,
   mediaAssetSchema,
   mediaLookupResponseSchema,
@@ -26,6 +27,9 @@ import {
   type Profile,
   type ProfileWithCounts,
   type Relationship,
+  type SearchCheckpointPosition,
+  type SearchCheckpointPutRequest,
+  type SearchIndexDocument,
 } from '@xitter/api-contracts';
 import { z } from 'zod';
 import { ServiceClient, type ServiceClientOptions } from './client.js';
@@ -266,8 +270,62 @@ export interface FeedPage {
 }
 
 export class SearchClient extends ServiceClient {
-  searchPosts(q: string, cursor?: string): Promise<unknown> {
-    return this.get(`${V1}/search/v1/posts`, { q, ...(cursor ? { cursor } : {}) });
+  /** Cursor-paginated full-text post search (user token). */
+  searchPosts(
+    q: string,
+    cursor?: string,
+    limit?: number,
+  ): Promise<{ items: HydratedFeedItem[]; nextCursor: string | null }> {
+    const query: Record<string, string> = { q };
+    if (cursor) query.cursor = cursor;
+    if (limit !== undefined) query.limit = String(limit);
+    return this.get(`${V1}/search/v1/posts`, query).then((r) =>
+      paginated(hydratedFeedItemSchema).parse(r),
+    );
+  }
+
+  /** Internal (search-index worker): bulk index upsert; tombstones included. */
+  // fallow-ignore-next-line unused-class-member -- consumed via the search-index worker's SearchApi seam (apps/workers/search-index/src/handlers.ts)
+  internalUpsertDocuments(documents: SearchIndexDocument[]): Promise<{ indexed: number }> {
+    return this.post(`${V1}/search/internal/search/index`, { documents }).then((r) =>
+      z.object({ indexed: z.number().int().nonnegative() }).parse(r),
+    );
+  }
+
+  /** Internal (search-index worker): refresh denormalised author names. */
+  // fallow-ignore-next-line unused-class-member -- consumed via the search-index worker's SearchApi seam (apps/workers/search-index/src/handlers.ts)
+  internalRefreshAuthors(
+    authors: { authorId: string; authorName: string }[],
+  ): Promise<{ updated: number }> {
+    return this.post(`${V1}/search/internal/search/index/authors`, { authors }).then((r) =>
+      z.object({ updated: z.number().int().nonnegative() }).parse(r),
+    );
+  }
+
+  /** Internal (reset job): clear the posts index (docs only, mapping stays). */
+  // fallow-ignore-next-line unused-class-member -- consumed by the nightly reset job (#13) per spec 03
+  internalClearIndex(): Promise<{ deleted: number }> {
+    return this.delete(`${V1}/search/internal/search/index`).then((r) =>
+      z.object({ deleted: z.number().int().nonnegative() }).parse(r),
+    );
+  }
+
+  /** Internal (search-index worker): persist the last processed position. */
+  // fallow-ignore-next-line unused-class-member -- consumed via the search-index worker's checkpoint seam (apps/workers/search-index/src/checkpoints.ts)
+  internalPutCheckpoint(body: SearchCheckpointPutRequest): Promise<void> {
+    return this.post(`${V1}/search/internal/search/checkpoint`, body);
+  }
+
+  /** Internal (search-index worker boot): resume positions for a consumer. */
+  // fallow-ignore-next-line unused-class-member -- consumed via the search-index worker's checkpoint seam (apps/workers/search-index/src/checkpoints.ts)
+  internalGetCheckpoints(
+    consumerKey: string,
+  ): Promise<{ positions: SearchCheckpointPosition[] }> {
+    return this.get(`${V1}/search/internal/search/checkpoint`, { consumerKey }).then((r) =>
+      z.object({ positions: z.array(z.object({ topicPartition: z.string(), offset: z.number() })) })
+        .passthrough()
+        .parse(r),
+    );
   }
 }
 

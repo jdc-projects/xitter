@@ -6,6 +6,7 @@ export * from './ports.js';
 export * from './schema.js';
 export * from './service-env.js';
 export * from './health-routes.js';
+export * from './search-index.js';
 
 /** Find the repo root by walking up from cwd (or the module itself) to package.json + turbo.json. */
 export function findRepoRoot(start: string = process.cwd()): string {
