@@ -17,6 +17,17 @@ class PlaceholderController {
   }
 }
 
+// Stands in for the internal controller so the prefix test can prove
+// internal routes land OUTSIDE the versioned prefix (the v1-must-not-
+// prefix-internal bug class this service shipped and fixed once already).
+@Controller('internal/feed')
+class PlaceholderInternalController {
+  @Get()
+  find() {
+    return { ok: true };
+  }
+}
+
 const healthyDb: HealthCheckedDb = {
   $queryRawUnsafe: () => Promise.resolve(1),
   $disconnect: () => Promise.resolve(undefined),
@@ -25,15 +36,17 @@ const healthyDb: HealthCheckedDb = {
 async function createApp(dbOverride?: object): Promise<NestFastifyApplication> {
   const builder = Test.createTestingModule({
     imports: [HealthModule.forRoot({ prismaFactory: () => healthyDb })],
-    controllers: [PlaceholderController],
+    controllers: [PlaceholderController, PlaceholderInternalController],
   });
   if (dbOverride) builder.overrideProvider(HEALTH_DB).useValue(dbOverride);
   const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
-  // Mirrors main.ts: probes sit at the root, outside the versioned prefix.
-  // Only this prefix wiring is replicated here - main.ts's bootstrap config
-  // (env parsing, tracing, Sentry) isn't unit-testable.
-  app.setGlobalPrefix('api/feed/v1', { exclude: ['healthz', 'readyz'] });
+  // Mirrors main.ts: internal routes sit at /api/feed/internal/... without a
+  // version segment (spec 03) - the placeholder controller stands in for
+  // them so the prefix wiring has something to assert against. Only this
+  // prefix wiring is replicated here - main.ts's bootstrap config (env
+  // parsing, tracing, Sentry) isn't unit-testable.
+  app.setGlobalPrefix('api/feed', { exclude: ['healthz', 'readyz'] });
   await app.init();
   return app;
 }
@@ -73,5 +86,18 @@ describe('health probe wiring', () => {
     const res = await app.inject({ method: 'GET', url: '/api/feed/v1/healthz' });
 
     expect(res.statusCode).toBe(404);
+  });
+
+  it('serves internal routes outside the versioned prefix', async () => {
+    app = await createApp();
+
+    // Spec 03: internal routes sit at /api/feed/internal/... - a versioned
+    // service prefix buries them at /api/feed/v1/internal/... and the
+    // fanout worker's upserts 404.
+    const internal = await app.inject({ method: 'GET', url: '/api/feed/internal/feed' });
+    expect(internal.statusCode).toBe(200);
+
+    const versioned = await app.inject({ method: 'GET', url: '/api/feed/v1/internal/feed' });
+    expect(versioned.statusCode).toBe(404);
   });
 });

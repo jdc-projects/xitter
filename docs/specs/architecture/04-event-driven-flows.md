@@ -133,13 +133,13 @@ sequenceDiagram
     S->>S: persist follow (block checks)
     S->>K: social.follow.created
     K->>F: consume
-    F->>P: GET /v1/users/:followeeId/posts (bounded window, newest first)
+    F->>P: POST /internal/posts/by-author (bounded window, newest first)
     P-->>F: recent posts
     F->>FD: POST /internal/feed/entries (bulk upsert for follower)
     FD-->>U: ws {type:"feed.new-items", count}
 ```
 
-Unfollow (`social.follow.deleted`) removes the followee's entries from the follower's feed via the feed internal API (`DELETE /internal/feed/users/:followerId/authors/:followeeId`). Follow backfill copies the followee's **20 most recent posts** (`GET /v1/users/:followeeId/posts`, bounded window; a full historical rebuild is a reset concern, not a runtime one). **Blocks are different — explicit product decision:** `social.block.*` prevents _future_ interactions (likes, reposts, replies, follows on the blocker's content, enforced at write time); **historical feed entries are not rewritten and remain until the nightly reset.** Block events therefore have no feed consumer; blocked authors are filtered at feed read time instead.
+Unfollow (`social.follow.deleted`) removes the followee's entries from the follower's feed via the feed internal API (`DELETE /internal/feed/users/:followerId/authors/:followeeId`). Follow backfill copies the followee's **20 most recent posts** (`POST /api/posts/internal/posts/by-author` — workers hold service tokens, the public timeline requires a user token; bounded window; a full historical rebuild is a reset concern, not a runtime one). **Blocks are different — explicit product decision:** `social.block.*` prevents _future_ interactions (likes, reposts, replies, follows on the blocker's content, enforced at write time); **historical feed entries are not rewritten and remain until the nightly reset.** Block events therefore have no feed consumer; blocked authors are filtered at feed read time instead.
 
 ### Search indexing
 

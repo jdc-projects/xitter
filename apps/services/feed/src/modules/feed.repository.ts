@@ -33,8 +33,11 @@ export class FeedRepository {
 
   /**
    * Bulk idempotent insert (spec 04 natural-key rule): conflicts on
-   * (userId, postId, reason, repostedById) are skipped, so event replays
-   * converge. Returns the number of rows actually inserted.
+   * (userId, postId, reason) are skipped, so event replays converge.
+   * repostedById is deliberately NOT part of the key - a nullable member
+   * would defeat idempotency for every reason='post' replay (Postgres
+   * treats NULLs as distinct); schema.prisma documents the #8 refinement.
+   * Returns the number of rows actually inserted.
    */
   upsertEntries(entries: NewFeedEntry[]): Promise<number> {
     if (entries.length === 0) return Promise.resolve(0);

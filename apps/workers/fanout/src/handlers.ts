@@ -5,6 +5,16 @@ import { BACKFILL_POSTS, entriesForBackfill, entriesForNewPost } from './entries
 
 const logger = createLogger({ service: 'fanout-worker' });
 
+/** Upsert requests cap at 1000 entries (contract); stay safely under. */
+const UPSERT_BATCH = 1_000;
+
+/** Idempotent batches keep chunked upserts replay-safe (natural key). */
+async function upsertInBatches(feed: FeedApi, entries: FeedEntryInput[]): Promise<void> {
+  for (let i = 0; i < entries.length; i += UPSERT_BATCH) {
+    await feed.internalUpsertEntries(entries.slice(i, i + UPSERT_BATCH));
+  }
+}
+
 /** What the worker needs from social (test seam). */
 export interface SocialApi {
   internalFollowerIds(userId: string): Promise<string[]>;
@@ -57,7 +67,9 @@ export async function handleEvent(envelope: unknown, deps: HandlerDeps): Promise
       const event = parseEvent(eventType, payload);
       if (!event || event.eventType !== EVENT_TYPES.postCreated) return;
       const followerIds = await deps.social.internalFollowerIds(event.authorId);
-      await deps.feed.internalUpsertEntries(entriesForNewPost(event, followerIds));
+      // The upsert contract caps a batch at 1000 entries; a popular author
+      // would otherwise 400 and the redelivery would stall this partition.
+      await upsertInBatches(deps.feed, entriesForNewPost(event, followerIds));
       logger.info({ postId: event.postId, recipients: followerIds.length + 1 }, 'post fanned out');
       return;
     }
@@ -67,7 +79,7 @@ export async function handleEvent(envelope: unknown, deps: HandlerDeps): Promise
       const recent = await collectRecentPosts(deps.posts, event.followeeId);
       const entries = entriesForBackfill(event, recent);
       if (entries.length === 0) return;
-      await deps.feed.internalUpsertEntries(entries);
+      await upsertInBatches(deps.feed, entries);
       logger.info(
         { followerId: event.followerId, followeeId: event.followeeId, posts: entries.length },
         'follow backfilled',

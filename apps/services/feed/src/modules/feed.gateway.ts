@@ -119,8 +119,9 @@ export class FeedGateway {
   /** Subscribe once per process; degraded (log) when Valkey is unreachable. */
   private async ensureSubscribed(): Promise<void> {
     if (this.subscriber) return;
+    let subscriber: RedisSubscriber | undefined;
     try {
-      const subscriber = this.options.subscriber ?? (await this.connectValkey());
+      subscriber = this.options.subscriber ?? (await this.connectValkey());
       await subscriber.psubscribe(`${CHANNEL_PREFIX}*`);
       subscriber.on('pmessage', (_pattern, channel) => {
         const userId = channel.slice(CHANNEL_PREFIX.length);
@@ -129,6 +130,9 @@ export class FeedGateway {
       this.subscriber = subscriber;
       logger.info('ws pub/sub subscribed to feed:updates:*');
     } catch (err) {
+      // A failed subscribe leaves a retrying client nobody owns - quit it
+      // so an outage doesn't accumulate one leaked connection per attempt.
+      await subscriber?.quit().catch(() => undefined);
       logger.warn({ err }, 'ws pub/sub subscribe failed - notifications degraded');
     }
   }

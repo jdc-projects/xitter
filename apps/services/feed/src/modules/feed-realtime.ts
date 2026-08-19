@@ -55,14 +55,21 @@ export class ValkeyFeedRealtime implements FeedRealtime {
       enableOfflineQueue: false,
       connectTimeout: 2_000,
     });
-    // enableOfflineQueue:false makes publishes during the lazy-connect
-    // window throw - await readiness once so the first notify (always the
-    // post-boot one, i.e. a real user's) doesn't race the handshake.
-    await new Promise<void>((resolve, reject) => {
-      connection.once('ready', () => resolve());
-      connection.once('error', (err) => reject(err));
-    });
+    try {
+      // enableOfflineQueue:false makes publishes during the lazy-connect
+      // window throw - await readiness once so the first notify (always the
+      // post-boot one, i.e. a real user's) doesn't race the handshake.
+      await new Promise<void>((resolve, reject) => {
+        connection.once('ready', () => resolve());
+        connection.once('error', (err) => reject(err));
+      });
+    } catch (err) {
+      // Never leak the retrying client on a failed handshake; concurrent
+      // notify() calls also race here, and the loser must not accumulate.
+      connection.disconnect();
+      throw err;
+    }
     this.connection = connection;
-    return connection;
+    return this.connection;
   }
 }

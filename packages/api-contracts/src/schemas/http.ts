@@ -131,7 +131,8 @@ export const mediaLookupResponseSchema = z
   .strict();
 
 // Internal (fanout worker → feed): bulk idempotent upsert of feed entries
-// (natural key (userId, postId, reason, repostedById), spec 04).
+// (natural key (userId, postId, reason) - repostedById deliberately
+// excluded, nullable columns break replay idempotency; spec 04).
 export const upsertFeedEntriesRequestSchema = z
   .object({
     entries: z.array(feedEntryInputSchema).min(1).max(1000),

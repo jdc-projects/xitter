@@ -35,6 +35,12 @@ const internal = {
   clientSecret: env.KEYCLOAK_CLIENT_SECRET,
 };
 
+// Constructed once: each client instance owns its JWT cache, so per-event
+// construction would fetch a fresh Keycloak token per message.
+const social = new SocialClient({ baseUrl: env.SOCIAL_INTERNAL_URL, internal });
+const posts = new PostsClient({ baseUrl: env.POSTS_INTERNAL_URL, internal });
+const feed = new FeedClient({ baseUrl: env.FEED_INTERNAL_URL, internal });
+
 await runEventWorker({
   service: 'fanout-worker',
   clientId: 'xitter-fanout-worker',
@@ -42,10 +48,5 @@ await runEventWorker({
   groupId: CONSUMER_GROUPS.fanoutWorker,
   topics: ['posts', 'social'],
   metricsPort: env.METRICS_PORT,
-  handle: (envelope) =>
-    handleEvent(envelope, {
-      social: new SocialClient({ baseUrl: env.SOCIAL_INTERNAL_URL, internal }),
-      posts: new PostsClient({ baseUrl: env.POSTS_INTERNAL_URL, internal }),
-      feed: new FeedClient({ baseUrl: env.FEED_INTERNAL_URL, internal }),
-    }),
+  handle: (envelope) => handleEvent(envelope, { social, posts, feed }),
 });
