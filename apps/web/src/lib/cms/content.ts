@@ -135,7 +135,8 @@ async function fetchDocs(
     signal: AbortSignal.timeout(10_000),
     // Published content rides the Next data cache (ISR-shaped); draft
     // previews are per-request and never cached.
-    ...(options.draft ? {} : { next: { revalidate: 60, tags: [`cms-${collection}`] } }),  });
+    ...(options.draft ? {} : { next: { revalidate: 60, tags: [`cms-${collection}`] } }),
+  });
   if (!res.ok) throw new Error(`CMS ${collection} responded ${res.status}`);
   const json = (await res.json()) as { docs?: PayloadDoc[] };
   return Array.isArray(json.docs) ? json.docs : [];
