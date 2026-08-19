@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError } from '@xitter/api-client';
-import { POST_TEXT_MAX } from '@xitter/api-contracts';
+import { POST_MEDIA_MAX, POST_TEXT_MAX } from '@xitter/api-contracts';
 import { postsForSession } from './server';
 
 export interface ComposerResult {
@@ -26,6 +26,24 @@ function composerErrorFor(error: unknown): string {
   return 'Could not publish your post. Try again shortly.';
 }
 
+/** mediaIds arrive as a JSON string from the composer's hidden input. */
+function parseMediaIds(raw: FormDataEntryValue | null): string[] {
+  if (typeof raw !== 'string' || raw === '') return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      Array.isArray(parsed) &&
+      parsed.every((id) => typeof id === 'string') &&
+      parsed.length <= POST_MEDIA_MAX
+    ) {
+      return parsed as string[];
+    }
+  } catch {
+    /* fall through: malformed input is dropped, the service re-validates */
+  }
+  return [];
+}
+
 export async function createPostAction(
   _prev: ComposerResult | undefined,
   formData: FormData,
@@ -33,6 +51,7 @@ export async function createPostAction(
   const text = String(formData.get('text') ?? '');
   const replyRaw = formData.get('replyToId');
   const replyToId = typeof replyRaw === 'string' && replyRaw !== '' ? replyRaw : null;
+  const mediaIds = parseMediaIds(formData.get('mediaIds'));
 
   if (!text.trim()) return { error: 'Write something first.' };
   if (text.length > POST_TEXT_MAX) {
@@ -43,7 +62,7 @@ export async function createPostAction(
   if (!ctx) redirect('/login');
 
   try {
-    await ctx.posts.createPost({ text, replyToId });
+    await ctx.posts.createPost({ text, mediaIds, replyToId });
   } catch (error) {
     return { error: composerErrorFor(error) };
   }

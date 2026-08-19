@@ -1,8 +1,8 @@
 import { Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
 import { Internal } from '@xitter/auth-nest';
 import { userIdSchema, type Relationship } from '@xitter/api-contracts';
+import { ZodValidationPipe } from '@xitter/service-kit';
 import { SocialService } from './social.service.js';
-import { ZodValidationPipe } from './zod-validation.pipe.js';
 
 const uuidParam = new ZodValidationPipe(userIdSchema);
 

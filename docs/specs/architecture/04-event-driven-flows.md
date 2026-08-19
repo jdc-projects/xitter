@@ -45,19 +45,19 @@ Every message is JSON with a single envelope; consumers validate it at the bound
 
 ## Event catalogue
 
-| eventType                   | Topic              | Payload fields                                                                       | Emitted when                                               |
-| --------------------------- | ------------------ | ------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
-| `posts.post.created`        | `xitter.posts.v1`  | `postId`, `authorId`, `text`, `mediaIds[]`, `replyToId?`, `repostOfId?`, `createdAt` | Post created (top-level or reply)                          |
-| `posts.post.deleted`        | `xitter.posts.v1`  | `postId`, `authorId`, `deletedAt`                                                    | Post deleted by author                                     |
-| `posts.interaction.created` | `xitter.posts.v1`  | `interactionId`, `postId`, `userId`, `kind`, `createdAt`                             | like/bookmark/repost added                                 |
-| `posts.interaction.deleted` | `xitter.posts.v1`  | `postId`, `userId`, `kind`, `deletedAt`                                              | Interaction removed                                        |
-| `social.follow.created`     | `xitter.social.v1` | `followerId`, `followeeId`, `createdAt`                                              | Follow established                                         |
-| `social.follow.deleted`     | `xitter.social.v1` | `followerId`, `followeeId`, `deletedAt`                                              | Unfollowed                                                 |
-| `social.block.created`      | `xitter.social.v1` | `blockerId`, `blockedId`, `createdAt`                                                | Block established                                          |
-| `social.block.deleted`      | `xitter.social.v1` | `blockerId`, `blockedId`, `deletedAt`                                                | Block removed                                              |
-| `social.profile.updated`    | `xitter.social.v1` | `profileId`, `username`, `displayName`, `bio`, `updatedAt`                           | Own profile created (login bootstrap) or edited (name/bio) |
-| `media.media.uploaded`      | `xitter.media.v1`  | `mediaId`, `userId`, `mimeType`, `bytes`, `createdAt`                                | Upload slot fulfilled — object confirmed present in RustFS |
-| `media.media.processed`     | `xitter.media.v1`  | `mediaId`, `variants[] {kind, key}`, `processedAt`                                   | Variants (`original`, `thumb`) written and recorded        |
+| eventType                   | Topic              | Payload fields                                                                                      | Emitted when                                                                         |
+| --------------------------- | ------------------ | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `posts.post.created`        | `xitter.posts.v1`  | `postId`, `authorId`, `text`, `mediaIds[]`, `replyToId?`, `repostOfId?`, `createdAt`                | Post created (top-level or reply)                                                    |
+| `posts.post.deleted`        | `xitter.posts.v1`  | `postId`, `authorId`, `deletedAt`                                                                   | Post deleted by author                                                               |
+| `posts.interaction.created` | `xitter.posts.v1`  | `interactionId`, `postId`, `userId`, `kind`, `createdAt`                                            | like/bookmark/repost added                                                           |
+| `posts.interaction.deleted` | `xitter.posts.v1`  | `postId`, `userId`, `kind`, `deletedAt`                                                             | Interaction removed                                                                  |
+| `social.follow.created`     | `xitter.social.v1` | `followerId`, `followeeId`, `createdAt`                                                             | Follow established                                                                   |
+| `social.follow.deleted`     | `xitter.social.v1` | `followerId`, `followeeId`, `deletedAt`                                                             | Unfollowed                                                                           |
+| `social.block.created`      | `xitter.social.v1` | `blockerId`, `blockedId`, `createdAt`                                                               | Block established                                                                    |
+| `social.block.deleted`      | `xitter.social.v1` | `blockerId`, `blockedId`, `deletedAt`                                                               | Block removed                                                                        |
+| `social.profile.updated`    | `xitter.social.v1` | `profileId`, `username`, `displayName`, `bio`, `updatedAt`                                          | Own profile created (login bootstrap) or edited (name/bio)                           |
+| `media.media.uploaded`      | `xitter.media.v1`  | `mediaId`, `ownerId`, `objectKey`, `mimeType`, `bytes`, `createdAt`                                 | Completion verified the object (HEAD) — key, size and stored content type re-checked |
+| `media.media.processed`     | `xitter.media.v1`  | `mediaId`, `ownerId`, `variants[] {kind, objectKey, mimeType, bytes, width, height}`, `processedAt` | Variants (`original`, `thumb`) written and recorded                                  |
 
 ## Flows
 
@@ -106,15 +106,16 @@ sequenceDiagram
     M-->>W: {mediaId, uploadUrl}
     W->>B: presigned URL
     B->>R: PUT object (direct)
-    R->>M: object confirmed (bucket notification / completion check)
+    B->>M: POST /v1/media/:id/complete (via web)
+    M->>R: HEAD exact key (size + stored content type re-verified)
     M->>K: media.media.uploaded
-    K->>MP: consume
+    K->>MP: consume (skip if already ready/failed)
     MP->>R: GET original, generate thumb, PUT variants
     MP->>M: POST /internal/media/:id/variants
     M->>K: media.media.processed
     Note over B,P: browser may now attach mediaId to a post
     B->>W: create post with mediaIds
-    W->>P: POST /v1/posts (media validated: state, type, size, ≤4)
+    W->>P: POST /v1/posts (media validated: owner, ready, type, size, ≤4)
 ```
 
 ### Follow → timeline backfill

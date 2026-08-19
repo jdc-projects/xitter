@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 import { ErrorEnvelopeFilter, RateLimitGuard } from '@xitter/auth-nest';
 import { afterEach, describe, expect, it } from 'vitest';
 import { InternalController } from './internal.controller.js';
+import { MEDIA_CHECKER, NullMediaChecker } from './media-checker.js';
 import { NullPostsEvents, POSTS_EVENTS } from './posts-events.js';
 import { PostsController } from './posts.controller.js';
 import { PostsRepository } from './posts.repository.js';
@@ -75,6 +76,7 @@ async function createApp(): Promise<NestFastifyApplication> {
       { provide: PostsRepository, useValue: repoStub },
       { provide: POSTS_EVENTS, useValue: new NullPostsEvents() },
       { provide: RELATIONSHIP_CHECKER, useValue: new NullRelationshipChecker() },
+      { provide: MEDIA_CHECKER, useValue: new NullMediaChecker() },
       PostsService,
     ],
   })

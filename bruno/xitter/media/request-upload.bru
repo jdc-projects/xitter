@@ -1,0 +1,56 @@
+meta {
+  name: Request media upload slot
+  seq: 7
+}
+
+docs {
+  Step 1 of the upload pair (complete-upload.bru is step 2). The service
+  validates mime + size, creates a pending MediaAsset and returns a presigned
+  PUT to RustFS - the actual object PUT happens browser/CLI-side, never
+  through the media service.
+}
+
+script:pre-request {
+  const form =
+    "grant_type=password&client_id=web" +
+    "&username=" +
+    encodeURIComponent(bru.getEnvVar("username") || "demo1") +
+    "&password=" +
+    encodeURIComponent(bru.getEnvVar("password") || "DemoPass123!");
+  const res = await bru.sendRequest({
+    method: "POST",
+    url: `${bru.getEnvVar("keycloak")}/realms/${bru.getEnvVar("realm")}/protocol/openid-connect/token`,
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    data: form,
+  });
+  const json = typeof res.data === "string" ? JSON.parse(res.data) : res.data;
+  bru.setEnvVar("token", json.access_token);
+}
+
+post {
+  url: {{seedBase}}/api/media/v1/uploads
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "mimeType": "image/gif",
+    "bytes": 29
+  }
+}
+
+assert {
+  res.status: 201
+}
+
+tests {
+  expect(res.body.mediaId).to.be.a("string").and.not.be.empty;
+  expect(res.body.uploadUrl).to.be.a("string").and.to.include("X-Amz-Signature");
+  bru.setVar("mediaId", res.body.mediaId);
+  bru.setVar("uploadUrl", res.body.uploadUrl);
+}

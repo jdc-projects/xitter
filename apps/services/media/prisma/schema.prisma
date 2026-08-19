@@ -10,14 +10,17 @@ datasource db {
 }
 
 model MediaAsset {
-  id        String   @id @default(uuid())
-  ownerId   String
-  status    String // pending | ready | failed
-  objectKey String
-  mimeType  String
-  bytes     Int
-  variants  Json
-  createdAt DateTime @default(now())
+  id         String    @id @default(uuid())
+  ownerId    String
+  status     String // pending | ready | failed
+  objectKey  String
+  mimeType   String
+  bytes      Int
+  variants   Json     @default("[]")
+  attempts   Int      @default(0)
+  uploadedAt DateTime?
+  createdAt  DateTime  @default(now())
 
   @@index([ownerId])
+  @@index([status])
 }

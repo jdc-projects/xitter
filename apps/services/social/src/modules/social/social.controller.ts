@@ -23,8 +23,8 @@ import {
   type Relationship,
 } from '@xitter/api-contracts';
 import { z } from 'zod';
+import { ZodValidationPipe } from '@xitter/service-kit';
 import { SocialService } from './social.service.js';
-import { ZodValidationPipe } from './zod-validation.pipe.js';
 
 const uuidParam = new ZodValidationPipe(userIdSchema);
 const usernameParam = new ZodValidationPipe(usernameSchema);

@@ -1,0 +1,34 @@
+{
+  "name": "@xitter/service-kit",
+  "version": "0.0.0",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "peerDependencies": {
+    "@nestjs/common": "^11",
+    "reflect-metadata": "^0.2",
+    "zod": "^3 || ^4"
+  },
+  "devDependencies": {
+    "@nestjs/common": "^11",
+    "@xitter/eslint-config": "*",
+    "@xitter/tsconfig": "*",
+    "reflect-metadata": "^0.2",
+    "vitest": "^4",
+    "zod": "^4"
+  }
+}
