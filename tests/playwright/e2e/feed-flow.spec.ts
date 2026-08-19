@@ -81,6 +81,11 @@ test('following an account backfills their recent posts into the feed', async ({
   const demo7 = await loggedInPage(browser, 'demo7');
   const oldText = `t6 backfill history ${crypto.randomUUID()}`;
   await compose(demo7, oldText);
+  // compose() returns on click - the post's creation can still be in
+  // flight, and a follow that overtakes it races BOTH fanout paths
+  // (post fanout reads followers pre-follow; backfill reads posts
+  // pre-create). The author always has their own post: settle it first.
+  await waitForFeedItem(demo7, oldText);
   await demo7.close();
 
   await login(page, 'demo6');

@@ -139,7 +139,18 @@ async function fetchDocs(
   });
   if (!res.ok) throw new Error(`CMS ${collection} responded ${res.status}`);
   const json = (await res.json()) as { docs?: PayloadDoc[] };
-  return Array.isArray(json.docs) ? json.docs : [];
+  const docs = Array.isArray(json.docs) ? json.docs : [];
+  if (docs.length > 0 || options.draft) return docs;
+
+  // An EMPTY result means content is not applied yet (suite ordering, or a
+  // reset mid-flight). Caching that empty page for 60s would pin the
+  // fallback copy even after the content lands - the tag revalidate races
+  // whichever parallel render re-caches it. Bypass the data cache for the
+  // empty case so the next render sees the applied content immediately.
+  const fresh = await doFetch(url.toString(), { headers, cache: 'no-store' });
+  if (!fresh.ok) throw new Error(`CMS ${collection} responded ${fresh.status}`);
+  const freshJson = (await fresh.json()) as { docs?: PayloadDoc[] };
+  return Array.isArray(freshJson.docs) ? freshJson.docs : [];
 }
 
 /** Stable CMS-defined ordering: `order` first, slug as tiebreaker. */
