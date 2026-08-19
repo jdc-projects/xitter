@@ -37,7 +37,10 @@ function createFeedConnection(callbacks: {
   const connect = async () => {
     if (destroyed) return;
     try {
-      const res = await fetch('/api/feed/ws-token');
+      // /api/ws/* is web-owned: the edge routes /api/{service}/* to the
+      // services, so a broker under /api/feed/ would shadow to the feed
+      // service (404).
+      const res = await fetch('/api/ws/feed-token');
       if (res.status === 401) {
         callbacks.onStatus('closed'); // signed out - no socket to make
         return;

@@ -48,7 +48,7 @@ async function waitForFeedItem(page: Page, text: string, timeoutMs = 20_000) {
 /** Bearer access token for API-driven setup (the session holds it; the ws
  * route is the broker). Uses the page's own session cookies. */
 async function accessToken(page: Page): Promise<string> {
-  const res = await page.request.get('/api/feed/ws-token');
+  const res = await page.request.get('/api/ws/feed-token');
   expect(res.status()).toBe(200);
   const body = (await res.json()) as { token: string };
   return body.token;
@@ -113,10 +113,11 @@ test('a followed account new post drives the ws banner and refetches newest-firs
   await waitForFeedItem(demo6, older);
 
   // A live socket on the feed page: the new post must surface as a banner,
-  // never as a silent data push.
+  // never as a silent data push. (Concurrent suites share demo users, so an
+  // intermediate banner can arrive first - keep clicking until ours lands.)
   await compose(demo7, newer);
   await expect(demo6.getByTestId('feed-new-items')).toBeVisible({ timeout: 20_000 });
-  await demo6.getByTestId('feed-new-items').getByRole('button').click();
+  await waitForFeedItem(demo6, newer, 20_000);
 
   const items = demo6.locator('[data-testid^="post-item-"]');
   await expect(items.filter({ hasText: newer })).toBeVisible();
@@ -163,9 +164,16 @@ test('unfollowed accounts stop appearing in the feed', async ({ page, browser })
   await expect(demo9.getByTestId('follow-button')).toBeVisible();
 
   await demo9.goto('/feed');
-  await expect(demo9.locator('[data-testid^="post-item-"]', { hasText: text })).toHaveCount(0, {
-    timeout: 15_000,
-  });
+  // Removals are not pushed (banners fire on inserts only) and the entry
+  // delete lands within ~1s of the unfollow - poll fresh renders until the
+  // materialised feed catches up.
+  const removed = demo9.locator('[data-testid^="post-item-"]', { hasText: text });
+  const deadline = Date.now() + 15_000;
+  while ((await removed.count()) > 0 && Date.now() < deadline) {
+    await demo9.reload(); // reload awaits load; the sleep paces consumer lag
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  await expect(removed).toHaveCount(0);
 
   await demo9.close();
   await demo10.close();

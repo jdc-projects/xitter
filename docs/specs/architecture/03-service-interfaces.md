@@ -74,14 +74,14 @@ Owns prefix `/api/feed`. Content rule: only posts from followed authors plus the
 
 ### WebSocket contract
 
-| Aspect           | Contract                                                                                                                                              |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| URL              | `wss://{host}/api/feed/v1/ws?token={accessToken}` (token as query param; in-cluster the feed service receives the edge-validated identity on upgrade) |
-| Direction        | Server → client notifications **only**                                                                                                                |
-| Messages         | `{ "type": "feed.new-items", "count": number }` — count of new items since the last delivered notification                                            |
-| Client behaviour | On receipt, refetch `GET /v1/feed`; the server never pushes post payloads over the socket                                                             |
-| Liveness         | Server pings every 30s; clients reconnect with exponential backoff and resubscribe                                                                    |
-| Delivery         | At-most-once per connection; a missed notification is recovered by the next refetch/poll — notifications are a UX hint, not a data channel            |
+| Aspect           | Contract                                                                                                                                                                                                                                                                                                                         |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| URL              | `wss://{host}/api/feed/v1/ws?token={accessToken}` (token as query param; in-cluster the feed service receives the edge-validated identity on upgrade). The web brokers that token at `GET /api/ws/feed-token` — under `/api/ws/` because the edge routes `/api/{service}/*` to services, and a web route there would be shadowed |
+| Direction        | Server → client notifications **only**                                                                                                                                                                                                                                                                                           |
+| Messages         | `{ "type": "feed.new-items", "count": number }` — count of new items since the last delivered notification                                                                                                                                                                                                                       |
+| Client behaviour | On receipt, refetch `GET /v1/feed`; the server never pushes post payloads over the socket                                                                                                                                                                                                                                        |
+| Liveness         | Server pings every 30s; clients reconnect with exponential backoff and resubscribe                                                                                                                                                                                                                                               |
+| Delivery         | At-most-once per connection; a missed notification is recovered by the next refetch/poll — notifications are a UX hint, not a data channel                                                                                                                                                                                       |
 
 ## search
 

@@ -50,11 +50,19 @@ export class ValkeyFeedRealtime implements FeedRealtime {
     // Same posture as the rate limiter: fail fast while Valkey is down -
     // notifications are a UX hint, never worth blocking a request on.
     const { Redis } = await import('ioredis');
-    this.connection = new Redis(this.url, {
+    const connection = new Redis(this.url, {
       maxRetriesPerRequest: 1,
       enableOfflineQueue: false,
       connectTimeout: 2_000,
     });
-    return this.connection;
+    // enableOfflineQueue:false makes publishes during the lazy-connect
+    // window throw - await readiness once so the first notify (always the
+    // post-boot one, i.e. a real user's) doesn't race the handshake.
+    await new Promise<void>((resolve, reject) => {
+      connection.once('ready', () => resolve());
+      connection.once('error', (err) => reject(err));
+    });
+    this.connection = connection;
+    return connection;
   }
 }
