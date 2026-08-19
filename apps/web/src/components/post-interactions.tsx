@@ -30,6 +30,16 @@ export function PostInteractions({ postId, viewer, children }: PostInteractionsP
   const [error, setError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
+  // Server revalidation re-renders the card with authoritative flags - sync
+  // during render (same pattern as the feed timeline's page reset). In-flight
+  // flips are not clobbered: revalidation only lands after the action
+  // resolved, when server state already matches the flip.
+  const [synced, setSynced] = useState(viewer);
+  if (viewer !== synced) {
+    setSynced(viewer);
+    setOptimistic(viewer);
+  }
+
   function onInteract(kind: PostCardInteractionKind, active: boolean) {
     setError(null);
     setBusy((current) => [...current, kind]);

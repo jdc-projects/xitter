@@ -203,6 +203,7 @@ export class PostsClient extends ServiceClient {
   }
 
   /** Batched viewer flags (like/repost/bookmark) for list rendering (#8). */
+  // fallow-ignore-next-line unused-class-member -- consumed by the web feed/detail/profile/bookmarks loaders (apps/web/src/lib/posts/server.ts, apps/web/src/app/(app)/feed/load-feed.ts)
   getViewerState(postIds: string[]): Promise<{ items: PostViewerState[] }> {
     return this.get(`${V1}/posts/v1/viewer-state`, { postIds: postIds.join(',') }).then(
       viewerStateResponseSchema.parse,
