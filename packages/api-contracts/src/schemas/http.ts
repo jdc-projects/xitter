@@ -87,7 +87,10 @@ export const viewerStateQuerySchema = z
       .string()
       .min(1)
       .transform((raw, ctx) => {
-        const ids = raw.split(',').map((id) => id.trim()).filter(Boolean);
+        const ids = raw
+          .split(',')
+          .map((id) => id.trim())
+          .filter(Boolean);
         const parsed = z.array(postIdSchema).max(100).safeParse(ids);
         if (!parsed.success) {
           ctx.addIssue({ code: 'custom', message: 'postIds must be 1-100 comma-separated uuids' });

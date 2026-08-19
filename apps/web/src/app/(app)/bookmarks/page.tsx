@@ -32,8 +32,14 @@ export default async function BookmarksPage({ searchParams }: { searchParams: Se
     }
   }
 
-  const authors = await profilesByAuthorIds(social, page.items.map((post) => post.authorId));
-  const states = await viewerStateByPostId(posts, page.items.map((post) => post.id));
+  const authors = await profilesByAuthorIds(
+    social,
+    page.items.map((post) => post.authorId),
+  );
+  const states = await viewerStateByPostId(
+    posts,
+    page.items.map((post) => post.id),
+  );
 
   return (
     <Container size="sm" py="xl">

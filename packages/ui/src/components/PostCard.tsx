@@ -87,7 +87,8 @@ export function PostCard({
   href,
 }: PostCardProps) {
   const interactButton = (kind: PostCardInteractionKind, count: number | null, testId: string) => {
-    const active = kind === 'repost' ? viewer?.reposted : kind === 'like' ? viewer?.liked : viewer?.bookmarked;
+    const active =
+      kind === 'repost' ? viewer?.reposted : kind === 'like' ? viewer?.liked : viewer?.bookmarked;
     const color = active ? KIND_COLOR[kind] : 'dimmed';
     // Filled heart/bookmark glyphs read as "active" at a glance; the repeat
     // glyph has no filled variant, so colour + aria-pressed carry the state.

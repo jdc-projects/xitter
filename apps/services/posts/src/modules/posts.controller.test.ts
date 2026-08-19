@@ -67,8 +67,7 @@ const repoStub = {
   authorPosts: () => Promise.resolve({ items: [postRow()], nextCursor: null }),
   replies: () => Promise.resolve({ items: [], nextCursor: null }),
   bookmarks: () => Promise.resolve({ items: [postRow()], nextCursor: null }),
-  interactionsForPosts: () =>
-    Promise.resolve([{ kind: 'like', postId: POST_ID } as const]),
+  interactionsForPosts: () => Promise.resolve([{ kind: 'like', postId: POST_ID } as const]),
   createInteraction: () =>
     Promise.resolve({
       row: {

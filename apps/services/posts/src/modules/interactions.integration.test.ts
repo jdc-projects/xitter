@@ -147,7 +147,9 @@ describe.skipIf(!hasGeneratedClient)('interactions integration (testcontainers)'
     expect((await service.getPost(post.id)).counts.likes).toBe(12);
 
     // Concurrent undos of half of them land exactly 6.
-    await Promise.all(likers.slice(0, 6).map((liker) => service.removeInteraction(liker, post.id, 'like')));
+    await Promise.all(
+      likers.slice(0, 6).map((liker) => service.removeInteraction(liker, post.id, 'like')),
+    );
     expect((await service.getPost(post.id)).counts.likes).toBe(6);
   });
 
@@ -172,9 +174,7 @@ describe.skipIf(!hasGeneratedClient)('interactions integration (testcontainers)'
 
     // Undo stays possible for the blocked user's OWN earlier interactions
     // (cleanup, not engagement) - here there is simply nothing to undo: 204.
-    await expect(
-      service.removeInteraction(blocked, post.id, 'like'),
-    ).resolves.toBeUndefined();
+    await expect(service.removeInteraction(blocked, post.id, 'like')).resolves.toBeUndefined();
   });
 
   it('allows self-interactions (own post) without a social check', async () => {

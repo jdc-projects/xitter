@@ -75,6 +75,47 @@
         },
         "required": ["text"],
         "additionalProperties": false
+      },
+      "CreateInteractionRequest": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["like", "bookmark", "repost"]
+          }
+        },
+        "required": ["kind"],
+        "additionalProperties": false
+      },
+      "ViewerStateResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "postId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                },
+                "liked": {
+                  "type": "boolean"
+                },
+                "reposted": {
+                  "type": "boolean"
+                },
+                "bookmarked": {
+                  "type": "boolean"
+                }
+              },
+              "required": ["postId", "liked", "reposted", "bookmarked"]
+            }
+          }
+        },
+        "required": ["items"],
+        "additionalProperties": false
       }
     },
     "parameters": {}
@@ -939,6 +980,403 @@
           },
           "404": {
             "description": "Parent not found (or deleted)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/posts/{postId}/interactions": {
+      "post": {
+        "tags": ["interactions"],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Like, bookmark or repost a post. Idempotent on (kind, postId, userId). Rejected 403 when the caller is blocked by the post author (either direction). Reposting a repost reposts the original post - reposts are interactions, not posts, so chains cannot form; reposting your own post is allowed. Likes/reposts bump the post counts read-model and (for others’ posts) ping the author over the feed ws channel without creating feed entries.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "b1c2d3e4-0000-4000-8000-000000000002"
+            },
+            "required": true,
+            "name": "postId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInteractionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Interaction (existing row on idempotent repeat)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": ["like", "bookmark", "repost"]
+                    },
+                    "postId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                    },
+                    "userId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": ["kind", "postId", "userId", "createdAt"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Blocked from interacting",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Post not found (or deleted)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/posts/{postId}/interactions/{kind}": {
+      "delete": {
+        "tags": ["interactions"],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Remove the caller’s own interaction (idempotent 204). An undone repost removes its feed entries everywhere.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "b1c2d3e4-0000-4000-8000-000000000002"
+            },
+            "required": true,
+            "name": "postId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["like", "bookmark", "repost"]
+            },
+            "required": true,
+            "name": "kind",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed (or nothing to remove)"
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Post not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bookmarks": {
+      "get": {
+        "tags": ["interactions"],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "The caller's bookmarked posts, newest bookmark first. Private: only the caller's own bookmarks are ever listed. Soft-deleted posts drop out.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": false,
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bookmarks page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                          },
+                          "authorId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                          },
+                          "text": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 512
+                          },
+                          "media": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "format": "uuid"
+                                },
+                                "ownerId": {
+                                  "type": "string",
+                                  "format": "uuid",
+                                  "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                                },
+                                "status": {
+                                  "type": "string",
+                                  "enum": ["pending", "ready", "failed"]
+                                },
+                                "variants": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string",
+                                        "enum": ["original", "thumb"]
+                                      },
+                                      "objectKey": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      },
+                                      "mimeType": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      },
+                                      "bytes": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "exclusiveMinimum": true
+                                      },
+                                      "width": {
+                                        "type": "integer",
+                                        "nullable": true,
+                                        "minimum": 0,
+                                        "exclusiveMinimum": true
+                                      },
+                                      "height": {
+                                        "type": "integer",
+                                        "nullable": true,
+                                        "minimum": 0,
+                                        "exclusiveMinimum": true
+                                      },
+                                      "url": {
+                                        "type": "string",
+                                        "minLength": 1
+                                      }
+                                    },
+                                    "required": [
+                                      "kind",
+                                      "objectKey",
+                                      "mimeType",
+                                      "bytes",
+                                      "width",
+                                      "height",
+                                      "url"
+                                    ]
+                                  }
+                                },
+                                "createdAt": {
+                                  "type": "string",
+                                  "format": "date-time"
+                                }
+                              },
+                              "required": ["id", "ownerId", "status", "variants", "createdAt"]
+                            }
+                          },
+                          "replyToId": {
+                            "type": "string",
+                            "nullable": true,
+                            "format": "uuid",
+                            "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                          },
+                          "repostOfId": {
+                            "type": "string",
+                            "nullable": true,
+                            "format": "uuid",
+                            "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                          },
+                          "counts": {
+                            "type": "object",
+                            "properties": {
+                              "replies": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "likes": {
+                                "type": "integer",
+                                "minimum": 0
+                              },
+                              "reposts": {
+                                "type": "integer",
+                                "minimum": 0
+                              }
+                            },
+                            "required": ["replies", "likes", "reposts"]
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "deletedAt": {
+                            "type": "string",
+                            "nullable": true,
+                            "format": "date-time"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "authorId",
+                          "text",
+                          "media",
+                          "replyToId",
+                          "repostOfId",
+                          "counts",
+                          "createdAt",
+                          "deletedAt"
+                        ]
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": ["items", "nextCursor"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/viewer-state": {
+      "get": {
+        "tags": ["interactions"],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Batched viewer flags for list rendering: the caller's like/repost/bookmark state per post. `postIds` is a single comma-separated query param (1-100 uuids); ids with no interaction are returned with all flags false.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true,
+            "name": "postIds",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Viewer flags per post",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewerStateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error (bad or over-cap postIds)",
             "content": {
               "application/json": {
                 "schema": {

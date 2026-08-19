@@ -1,0 +1,67 @@
+meta {
+  name: Remove interaction
+  seq: 9
+}
+
+docs {
+  Undo pair for interact-with-post: removes the caller's like from the post
+  created there (shared `interactionPostId`), then verifies the counts
+  read-model ticked 1 -> 0 via GET /posts/:id. Idempotent: a repeat still
+  answers 204.
+}
+
+script:pre-request {
+  const tokenUrl = `${bru.getEnvVar("keycloak")}/realms/${bru.getEnvVar("realm")}/protocol/openid-connect/token`;
+  const form =
+    "grant_type=password&client_id=web" +
+    "&username=" + encodeURIComponent(bru.getEnvVar("username") || "demo1") +
+    "&password=" + encodeURIComponent(bru.getEnvVar("password") || "DemoPass123!");
+  const res = await bru.sendRequest({
+    method: "POST",
+    url: tokenUrl,
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    data: form,
+  });
+  const raw =
+    typeof res.data === "string"
+      ? res.data
+      : res.data && typeof res.data === "object" && "byteLength" in res.data
+        ? new TextDecoder().decode(res.data)
+        : typeof res.data === "object" && res.data !== null
+          ? JSON.stringify(res.data)
+          : String(res.data ?? "");
+  bru.setEnvVar("token", JSON.parse(raw).access_token);
+}
+
+post {
+  url: {{seedBase}}/api/posts/v1/posts/{{interactionPostId}}/interactions/like
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+assert {
+  res.status: 204
+}
+
+tests {
+  // The counts read-model reversed with the undo (interaction + counter
+  // share one transaction in the posts service).
+  const postId = bru.getVar("interactionPostId");
+  const res2 = await bru.sendRequest({
+    method: "GET",
+    url: `${bru.getEnvVar("seedBase")}/api/posts/v1/posts/${postId}`,
+    headers: { authorization: `Bearer ${bru.getEnvVar("token")}` },
+  });
+  const raw =
+    typeof res2.data === "string"
+      ? res2.data
+      : res2.data && typeof res2.data === "object" && "byteLength" in res2.data
+        ? new TextDecoder().decode(res2.data)
+        : JSON.stringify(res2.data ?? {});
+  const post = JSON.parse(raw);
+  expect(post.counts.likes).to.equal(0);
+}

@@ -75,7 +75,13 @@ describe.skipIf(!hasGeneratedClient)('posts integration (testcontainers)', () =>
       blockedEitherWay: (a, b) =>
         Promise.resolve(blocks.has(`${a}|${b}`) || blocks.has(`${b}|${a}`)),
     };
-    return new PostsService(repo, events, checker, new NullMediaChecker(), new NullInteractionRealtime());
+    return new PostsService(
+      repo,
+      events,
+      checker,
+      new NullMediaChecker(),
+      new NullInteractionRealtime(),
+    );
   }
 
   it('creates posts with zero-initialised counts', async () => {
@@ -260,7 +266,9 @@ describe.skipIf(!hasGeneratedClient)('posts integration (testcontainers)', () =>
       repo,
       events,
       { blockedEitherWay: () => Promise.resolve(false) },
-      checker, new NullInteractionRealtime());
+      checker,
+      new NullInteractionRealtime(),
+    );
 
     const post = await service.create(uid('f2'), {
       text: 'with media',

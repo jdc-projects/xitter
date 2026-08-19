@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { FeedEntryInput, Post } from '@xitter/api-contracts';
 import { EVENT_TYPES } from '@xitter/events';
-import { BACKFILL_POSTS, entriesForBackfill, entriesForNewPost, entriesForRepost } from './entries.js';
+import {
+  BACKFILL_POSTS,
+  entriesForBackfill,
+  entriesForNewPost,
+  entriesForRepost,
+} from './entries.js';
 import { handleEvent, type FeedApi, type PostsApi, type SocialApi } from './handlers.js';
 
 const AUTHOR = '00000000-0000-4000-8000-0000000000a1';
@@ -54,9 +59,7 @@ describe('entriesForRepost', () => {
   it('derives repost entries for the reposter + their followers, attributed', () => {
     const entries = entriesForRepost(event, [FOLLOWER_2, AUTHOR]);
 
-    expect(entries.map((e) => e.userId).sort()).toEqual(
-      [FOLLOWER_1, FOLLOWER_2, AUTHOR].sort(),
-    );
+    expect(entries.map((e) => e.userId).sort()).toEqual([FOLLOWER_1, FOLLOWER_2, AUTHOR].sort());
     for (const entry of entries) {
       expect(entry).toMatchObject({
         postId,
@@ -263,9 +266,7 @@ describe('handleEvent dispatch', () => {
     // Followers of the REPOSTER (not the original author) get the entry.
     expect(deps.social.internalFollowerIds).toHaveBeenCalledWith(FOLLOWER_1);
     const entries = upserts[0]!;
-    expect(entries.map((e) => e.userId).sort()).toEqual(
-      [FOLLOWER_1, FOLLOWER_2].sort(),
-    );
+    expect(entries.map((e) => e.userId).sort()).toEqual([FOLLOWER_1, FOLLOWER_2].sort());
     expect(entries.every((e) => e.reason === 'repost' && e.repostedById === FOLLOWER_1)).toBe(true);
   });
 

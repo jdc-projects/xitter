@@ -1,4 +1,9 @@
-import type { FeedEntryInput, InteractionCreated, PostCreated, FollowCreated } from '@xitter/api-contracts';
+import type {
+  FeedEntryInput,
+  InteractionCreated,
+  PostCreated,
+  FollowCreated,
+} from '@xitter/api-contracts';
 
 /** Follow backfill window: most recent N posts of the followee (spec 04). */
 export const BACKFILL_POSTS = 20;

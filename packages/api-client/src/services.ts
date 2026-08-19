@@ -259,9 +259,9 @@ export class FeedClient extends ServiceClient {
   /** Internal (fanout worker): drop one reposter's repost entries (undo #8). */
   // fallow-ignore-next-line unused-class-member -- consumed via the fanout worker's FeedApi seam (apps/workers/fanout/src/handlers.ts)
   internalDeleteRepostEntries(postId: string, repostedById: string): Promise<{ deleted: number }> {
-    return this.delete(
-      `${V1}/feed/internal/feed/posts/${postId}/reposts/${repostedById}`,
-    ).then((r) => z.object({ deleted: z.number().int() }).parse(r));
+    return this.delete(`${V1}/feed/internal/feed/posts/${postId}/reposts/${repostedById}`).then(
+      (r) => z.object({ deleted: z.number().int() }).parse(r),
+    );
   }
 
   /** Internal (fanout worker): drop an author's entries from one feed (unfollow). */

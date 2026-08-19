@@ -57,13 +57,15 @@ Acceptance-style catalogue of every user-facing feature area. "Must" = required 
 
 ## 6. Interactions
 
-| #   | Acceptance criteria                                                                                                |
-| --- | ------------------------------------------------------------------------------------------------------------------ |
-| 6.1 | Reply, like, bookmark, and repost — each with an undo (delete).                                                    |
-| 6.2 | Bookmarks are private to the bookmarking user; no other user can see them.                                         |
-| 6.3 | Replies form threads: a post shows its replies, nested viewing follows the conversation.                           |
-| 6.4 | Blocked users cannot interact with the blocker or the blocker's posts: replies, likes, reposts (and follows) fail. |
-| 6.5 | Like/repost/bookmark counts are consistent across post cards, threads, and profiles.                               |
+| #   | Acceptance criteria                                                                                                                                                                                                                                                                                                   |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 6.1 | Reply, like, bookmark, and repost — each with an undo (delete).                                                                                                                                                                                                                                                       |
+| 6.2 | Bookmarks are private to the bookmarking user; no other user can see them. Bookmark counts are never public.                                                                                                                                                                                                          |
+| 6.3 | Replies form threads: a post shows its replies, nested viewing follows the conversation.                                                                                                                                                                                                                              |
+| 6.4 | Blocked users cannot interact with the blocker or the blocker's posts: replies, likes, reposts (and follows) fail. Undoing one's own interaction is always allowed (it removes the caller's footprint, not an engagement).                                                                                            |
+| 6.5 | Like/repost/bookmark counts are consistent across post cards, threads, and profiles.                                                                                                                                                                                                                                  |
+| 6.6 | **Repost rule:** reposting a repost reposts the **original** post — nested repost chains are impossible. Reposting your own post is allowed. A repost surfaces in the reposter's followers' feeds attributed to the reposter ("X reposted"), ordered by the repost time; undoing it removes those entries everywhere. |
+| 6.7 | Authors get a near-real-time hint (websocket notification, no feed entry) when someone likes or reposts their post.                                                                                                                                                                                                   |
 
 ## 7. Relationships
 

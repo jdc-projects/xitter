@@ -66,7 +66,10 @@ export async function loadProfileView(
   });
   const posts = tab === 'posts' ? await postsClient.getUserPosts(profile.id, cursor) : null;
   const viewerFlags = posts
-    ? await viewerStateByPostId(postsClient, posts.items.map((post) => post.id))
+    ? await viewerStateByPostId(
+        postsClient,
+        posts.items.map((post) => post.id),
+      )
     : new Map<string, { liked: boolean; reposted: boolean; bookmarked: boolean }>();
 
   return {

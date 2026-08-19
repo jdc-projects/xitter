@@ -218,7 +218,8 @@ describe('fanout consumption (testcontainers kafka)', () => {
     }[];
     expect(entries.every((e) => e.reason === 'repost' && e.repostedById === AUTHOR)).toBe(true);
 
-    const undone = () => deleteRepostEntries.mock.calls.some(([id, by]) => id === postId && by === AUTHOR);
+    const undone = () =>
+      deleteRepostEntries.mock.calls.some(([id, by]) => id === postId && by === AUTHOR);
     const emitUndo = () =>
       producer.emit('posts', {
         eventType: 'posts.interaction.deleted',

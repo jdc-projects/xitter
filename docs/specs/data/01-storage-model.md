@@ -77,7 +77,7 @@ erDiagram
     }
 ```
 
-Unique: `Interaction(kind, postId, userId)` — one of each kind per user per post. Replies are posts (self-relation); the counts read-model lives on the post row — replies maintain `replyCount` transactionally in the posts service, likes/reposts are maintained by #8's interaction flows. Deleting is soft (`deletedAt` set); deleted posts are excluded from every read path (timelines, threads, lookups) but rows persist for interaction accounting.
+Unique: `Interaction(kind, postId, userId)` — one of each kind per user per post. Replies are posts (self-relation); the counts read-model lives on the post row — replies maintain `replyCount` transactionally in the posts service, likes/reposts move `likeCount`/`repostCount` in the **same transaction** as the interaction row (create + increment or delete + decrement, with `ON CONFLICT DO NOTHING` absorbing concurrent duplicates), so counts cannot drift from the rows. Bookmarks maintain no counter (private annotations). Deleting is soft (`deletedAt` set); deleted posts are excluded from every read path (timelines, threads, lookups, bookmarks) but rows persist for interaction accounting. Undo of any interaction is never block-checked — it removes the caller's own footprint.
 
 ### media
 
@@ -109,13 +109,14 @@ erDiagram
         string postId
         string authorId "hydrated from posts/social at read time"
         string reason "post | repost"
-        string repostedById "nullable - repost entries refine with #8"
+        string repostedById "nullable - set on repost entries"
+        string entryKey "derived: post:{postId} | repost:{postId}:{repostedById}"
         datetime postCreatedAt "ordering key (post/interaction time)"
         datetime insertedAt "materialisation time"
     }
 ```
 
-Unique: `FeedEntry(userId, postId, reason)` — idempotent event application. `repostedById` is deliberately **not** part of the key: Postgres unique indexes treat NULLs as distinct, so a nullable column would defeat the constraint for `reason = 'post'` rows (every replay would insert a duplicate); #8 refines the repost key when reposts land. Entries store ids + ordering columns only — post bodies and author profiles are hydrated server-side from posts/social on read (`GET /v1/feed`). Deleted posts drop out at hydration; blocked authors are filtered at query time (rows persist until the nightly reset, per the block product decision).
+Unique: `FeedEntry(userId, entryKey)` — idempotent event application. `entryKey` is the derived identity of the fanning-out source: `post:{postId}` for post entries, `repost:{postId}:{repostedById}` for repost entries (computed by `feedEntryKey` in `@xitter/api-contracts`, shared by the fanout worker and this service). **Why a derived column instead of keying on `(userId, postId, reason)` + `repostedById`:** a post reposted by two different users fans out to two distinct entries per feed, so the reposter must participate in the key — but `repostedById` is NULL for `reason = 'post'` rows, and Postgres unique indexes treat NULLs as distinct, which would defeat replay idempotency exactly where it matters most. A NOT NULL derived string sidesteps the NULL problem entirely while staying a single-column key member. On repost entries `authorId` is the reposter (the feed-surface author, so unfollow removes their reposts too) and `postCreatedAt` is the repost time — reposts arrive as fresh feed items; the same post may therefore appear twice in one feed (once as a post, once as a repost), which is accepted display behaviour. Undo deletes by `(postId, reason, repostedById)`; post deletion deletes by `postId` (posts and reposts together). Entries store ids + ordering columns only — post bodies and author profiles are hydrated server-side from posts/social on read (`GET /v1/feed`). Deleted posts drop out at hydration; blocked authors are filtered at query time, and reposts whose **original** author is blocked drop out at hydration (rows persist until the nightly reset, per the block product decision).
 
 ### search
 
@@ -148,14 +149,14 @@ Field tables above (types/constraints inline in each ER diagram) are normative. 
 
 ## Index strategy
 
-| Store      | Indexes (beyond PKs/uniques)                                                                         | Serves                                                                          |
-| ---------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| social     | `Follow(followeeId)`, `Block(blockedId)`                                                             | Followers lists; block checks on write paths                                    |
-| posts      | `Post(authorId, createdAt desc)`, `Post(replyToId)`, `Interaction(userId, kind)`                     | Profiles, threads, "my bookmarks/likes"                                         |
-| media      | `MediaAsset(ownerId)`, `MediaAsset(status)`                                                          | Owner lookups (attach validation); pending/failed cleanup                       |
-| feed       | `FeedEntry(userId, postCreatedAt desc, id desc)`, `FeedEntry(postId)`, `FeedEntry(userId, authorId)` | The feed page itself (keyset, newest first); deletion fan-out; unfollow cleanup |
-| search     | checkpoint lookups by consumerKey                                                                    | Resume position                                                                 |
-| OpenSearch | standard text index on posts                                                                         | Full-text search                                                                |
+| Store      | Indexes (beyond PKs/uniques)                                                                         | Serves                                                                                       |
+| ---------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| social     | `Follow(followeeId)`, `Block(blockedId)`                                                             | Followers lists; block checks on write paths                                                 |
+| posts      | `Post(authorId, createdAt desc)`, `Post(replyToId)`, `Interaction(userId, kind)`                     | Profiles, threads, bookmarks list (userId+kind prefix covers the newest-first bookmark walk) |
+| media      | `MediaAsset(ownerId)`, `MediaAsset(status)`                                                          | Owner lookups (attach validation); pending/failed cleanup                                    |
+| feed       | `FeedEntry(userId, postCreatedAt desc, id desc)`, `FeedEntry(postId)`, `FeedEntry(userId, authorId)` | The feed page itself (keyset, newest first); deletion fan-out; unfollow cleanup              |
+| search     | checkpoint lookups by consumerKey                                                                    | Resume position                                                                              |
+| OpenSearch | standard text index on posts                                                                         | Full-text search                                                                             |
 
 Guideline: index for the read patterns in the product flows ([../product/03-user-flows.md](../product/03-user-flows.md)); add indexes with evidence, not speculation.
 

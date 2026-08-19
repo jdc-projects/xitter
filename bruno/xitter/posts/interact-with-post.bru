@@ -1,0 +1,95 @@
+meta {
+  name: Interact with post
+  seq: 8
+}
+
+docs {
+  Like/repost/bookmark a post as the caller (env username). Creates its own
+  target post first (bootstrap profile + compose) so the pair is
+  deterministic standalone, and shares the created id with the undo request
+  via the collection var `interactionPostId`. Idempotent: repeating the same
+  kind still returns 201 with the stored row and does not double-count.
+}
+
+script:pre-request {
+  const tokenUrl = `${bru.getEnvVar("keycloak")}/realms/${bru.getEnvVar("realm")}/protocol/openid-connect/token`;
+
+  async function login(username) {
+    const form =
+      "grant_type=password&client_id=web" +
+      "&username=" + encodeURIComponent(username) +
+      "&password=" + encodeURIComponent(bru.getEnvVar("password") || "DemoPass123!");
+    const res = await bru.sendRequest({
+      method: "POST",
+      url: tokenUrl,
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      data: form,
+    });
+    const raw =
+      typeof res.data === "string"
+        ? res.data
+        : res.data && typeof res.data === "object" && "byteLength" in res.data
+          ? new TextDecoder().decode(res.data)
+          : typeof res.data === "object" && res.data !== null
+            ? JSON.stringify(res.data)
+            : String(res.data ?? "");
+    return JSON.parse(raw).access_token;
+  }
+
+  function subjectOf(accessToken) {
+    return JSON.parse(Buffer.from(accessToken.split(".")[1], "base64").toString()).sub;
+  }
+
+  const token = await login(bru.getEnvVar("username") || "demo1");
+  bru.setEnvVar("token", token);
+  const callerId = subjectOf(token);
+
+  // Bootstrap the profile (idempotent upsert), then the target post.
+  await bru.sendRequest({
+    method: "POST",
+    url: `${bru.getEnvVar("seedBase")}/api/social/v1/profiles/${callerId}`,
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    data: {},
+  });
+
+  const created = await bru.sendRequest({
+    method: "POST",
+    url: `${bru.getEnvVar("seedBase")}/api/posts/v1/posts`,
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    data: { text: "Bruno interaction target " + Date.now() },
+  });
+  const raw =
+    typeof created.data === "string"
+      ? created.data
+      : created.data && typeof created.data === "object" && "byteLength" in created.data
+        ? new TextDecoder().decode(created.data)
+        : JSON.stringify(created.data ?? {});
+  const post = JSON.parse(raw);
+  bru.setVar("interactionPostId", post.id);
+}
+
+post {
+  url: {{seedBase}}/api/posts/v1/posts/{{interactionPostId}}/interactions
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+body:json {
+  {
+    "kind": "like"
+  }
+}
+
+assert {
+  res.status: 201
+}
+
+tests {
+  expect(res.body.kind).to.equal("like");
+  expect(res.body.postId).to.equal(bru.getVar("interactionPostId"));
+  expect(res.body.createdAt).to.be.a("string");
+}

@@ -10,11 +10,7 @@ import { PostInteractions } from '@/components/post-interactions';
 import { PostListItem } from '@/components/post-list-item';
 import { imagesFor } from '@/lib/media/images';
 import { DeletePostButton } from '@/components/delete-post-button';
-import {
-  clientsForSession,
-  profilesByAuthorIds,
-  viewerStateByPostId,
-} from '@/lib/posts/server';
+import { clientsForSession, profilesByAuthorIds, viewerStateByPostId } from '@/lib/posts/server';
 
 export const metadata: Metadata = { title: 'Post' };
 

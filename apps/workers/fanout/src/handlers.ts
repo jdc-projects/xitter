@@ -1,7 +1,12 @@
 import type { FeedEntryInput, Post, PostCreated } from '@xitter/api-contracts';
 import { eventSchemas, EVENT_TYPES, type DomainEvent } from '@xitter/events';
 import { createLogger } from '@xitter/observability';
-import { BACKFILL_POSTS, entriesForBackfill, entriesForNewPost, entriesForRepost } from './entries.js';
+import {
+  BACKFILL_POSTS,
+  entriesForBackfill,
+  entriesForNewPost,
+  entriesForRepost,
+} from './entries.js';
 
 const logger = createLogger({ service: 'fanout-worker' });
 

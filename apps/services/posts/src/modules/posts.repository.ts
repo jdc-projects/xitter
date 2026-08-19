@@ -179,7 +179,10 @@ export class PostsRepository {
       if (input.kind === 'like' || input.kind === 'repost') {
         await tx.post.update({
           where: { id: input.postId },
-          data: input.kind === 'like' ? { likeCount: { increment: 1 } } : { repostCount: { increment: 1 } },
+          data:
+            input.kind === 'like'
+              ? { likeCount: { increment: 1 } }
+              : { repostCount: { increment: 1 } },
         });
       }
       return { row, created: true };

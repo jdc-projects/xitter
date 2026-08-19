@@ -70,10 +70,11 @@ describe('toTimelineEntries', () => {
   });
 
   it('attaches viewer flags per post and defaults empty', () => {
-    const flags = new Map([
-      ['p1', { liked: true, reposted: false, bookmarked: true }],
-    ]);
-    const entries = toTimelineEntries([item('p1', 'a2', 'followed'), item('p2', 'a1', 'me')], flags);
+    const flags = new Map([['p1', { liked: true, reposted: false, bookmarked: true }]]);
+    const entries = toTimelineEntries(
+      [item('p1', 'a2', 'followed'), item('p2', 'a1', 'me')],
+      flags,
+    );
 
     expect(entries[0]!.viewer).toEqual({ liked: true, reposted: false, bookmarked: true });
     expect(entries[1]!.viewer).toEqual({ liked: false, reposted: false, bookmarked: false });

@@ -73,7 +73,7 @@ export function FeedView({ initialEntries, initialCursor, viewerId }: FeedViewPr
         <Alert color="blue" py={6} data-testid="feed-new-items">
           <Group justify="space-between">
             <span>
-              {newCount} new {newCount === 1 ? 'post' : 'posts'}
+              {newCount} new {newCount === 1 ? 'update' : 'updates'}
             </span>
             <Button size="compact-xs" variant="light" onClick={() => void showNew()}>
               Show

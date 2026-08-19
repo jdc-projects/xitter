@@ -489,7 +489,13 @@ describe('FeedService deletes', () => {
       // The post's own entry in OWNER's feed.
       entry({ userId: OWNER, postId, reason: 'post' }),
       // FOLLOWEE's repost visible to OWNER.
-      entry({ userId: OWNER, postId, reason: 'repost', repostedById: FOLLOWEE, authorId: FOLLOWEE }),
+      entry({
+        userId: OWNER,
+        postId,
+        reason: 'repost',
+        repostedById: FOLLOWEE,
+        authorId: FOLLOWEE,
+      }),
       // A different reposter's repost - must survive.
       entry({ userId: OWNER, postId, reason: 'repost', repostedById: BLOCKED, authorId: BLOCKED }),
     ]);

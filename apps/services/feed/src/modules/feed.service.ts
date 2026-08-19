@@ -109,7 +109,9 @@ export class FeedService {
     if (entries.length === 0) return [];
     const posts = await this.content.posts([...new Set(entries.map((entry) => entry.postId))]);
     const authorIds = [
-      ...new Set(entries.flatMap((entry) => [entry.authorId, entry.repostedById ?? entry.authorId])),
+      ...new Set(
+        entries.flatMap((entry) => [entry.authorId, entry.repostedById ?? entry.authorId]),
+      ),
     ];
     const profiles = await this.content.profiles(authorIds);
     const blocked = new Set(blockedAuthorIds);

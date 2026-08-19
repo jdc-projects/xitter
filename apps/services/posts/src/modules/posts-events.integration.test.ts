@@ -67,7 +67,9 @@ describe.skipIf(!hasGeneratedClient)('posts events (testcontainers kafka)', () =
       new PostsRepository(db),
       emitter,
       new NullRelationshipChecker(),
-      new NullMediaChecker(), new NullInteractionRealtime());
+      new NullMediaChecker(),
+      new NullInteractionRealtime(),
+    );
 
     consumer = new Kafka({ clientId: 'posts-events-test', brokers }).consumer({
       groupId: `posts-events-test-${crypto.randomUUID()}`,
