@@ -48,7 +48,10 @@ describe.skipIf(!hasGeneratedClient)('feed integration (testcontainers postgres)
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name)
       .sort()) {
-      const migration = readFileSync(join(process.cwd(), 'prisma/migrations', dir, 'migration.sql'), 'utf8');
+      const migration = readFileSync(
+        join(process.cwd(), 'prisma/migrations', dir, 'migration.sql'),
+        'utf8',
+      );
       for (const statement of migration.split(/;\s*\n/).filter((s) => s.trim().length > 0)) {
         await pool.query(statement);
       }
@@ -63,11 +66,15 @@ describe.skipIf(!hasGeneratedClient)('feed integration (testcontainers postgres)
     const profiles = new Map<string, Profile>();
     const blocked = new Set<string>();
     hydrator = {
-      posts: (ids) => Promise.resolve(new Map(ids.filter((id) => posts.has(id)).map((id) => [id, posts.get(id)!]))),
+      posts: (ids) =>
+        Promise.resolve(
+          new Map(ids.filter((id) => posts.has(id)).map((id) => [id, posts.get(id)!])),
+        ),
       profiles: (ids) =>
-        Promise.resolve(new Map(ids.filter((id) => profiles.has(id)).map((id) => [id, profiles.get(id)!]))),
-      blockedAuthorIds: (userId) =>
-        Promise.resolve(userId === OWNER ? [...blocked] : []),
+        Promise.resolve(
+          new Map(ids.filter((id) => profiles.has(id)).map((id) => [id, profiles.get(id)!])),
+        ),
+      blockedAuthorIds: (userId) => Promise.resolve(userId === OWNER ? [...blocked] : []),
       store: { posts, profiles, blocked },
     };
     notified = [];
@@ -114,7 +121,12 @@ describe.skipIf(!hasGeneratedClient)('feed integration (testcontainers postgres)
     return post;
   }
 
-  function entryInput(userId: string, postId: string, authorId: string, createdAt: Date): FeedEntryInput {
+  function entryInput(
+    userId: string,
+    postId: string,
+    authorId: string,
+    createdAt: Date,
+  ): FeedEntryInput {
     return {
       userId,
       postId,
@@ -184,7 +196,9 @@ describe.skipIf(!hasGeneratedClient)('feed integration (testcontainers postgres)
     expect(page.items.some((item) => item.post.authorId === BLOCKED_AUTHOR)).toBe(false);
     // Blocks are a read-time filter only (product decision, spec 04): the
     // row stays for the nightly reset to reclaim.
-    expect(await db.feedEntry.count({ where: { userId: OWNER, authorId: BLOCKED_AUTHOR } })).toBe(1);
+    expect(await db.feedEntry.count({ where: { userId: OWNER, authorId: BLOCKED_AUTHOR } })).toBe(
+      1,
+    );
   });
 
   it('drops deleted posts during hydration and refills from older entries', async () => {

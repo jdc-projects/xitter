@@ -26,10 +26,7 @@ const item = (postId: string, authorId: string, username: string): HydratedFeedI
 // #7 feed mapping: the service pre-hydrates post + author server-side.
 describe('toTimelineEntries', () => {
   it('maps hydrated items to render entries in service order (newest first)', () => {
-    const entries = toTimelineEntries([
-      item('p2', 'a1', 'me'),
-      item('p1', 'a2', 'followed'),
-    ]);
+    const entries = toTimelineEntries([item('p2', 'a1', 'me'), item('p1', 'a2', 'followed')]);
 
     expect(entries.map((entry) => entry.post.id)).toEqual(['p2', 'p1']);
     expect(entries[0]!.author).toEqual({ id: 'a1', username: 'me', displayName: 'Display me' });

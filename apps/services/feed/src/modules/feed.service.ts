@@ -64,7 +64,9 @@ export class FeedService {
    * notifications only, no payloads).
    */
   async upsertEntries(inputs: FeedEntryInput[]): Promise<{ inserted: number }> {
-    const inserted = await this.repo.upsertEntries(inputs.map((input) => this.repo.toNewEntry(input)));
+    const inserted = await this.repo.upsertEntries(
+      inputs.map((input) => this.repo.toNewEntry(input)),
+    );
     if (inserted > 0) {
       await this.realtime.notify([...new Set(inputs.map((input) => input.userId))]);
     }

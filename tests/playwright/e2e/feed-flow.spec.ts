@@ -133,7 +133,10 @@ test('the feed pages with Load more beyond the first page', async ({ page }) => 
   await login(page, 'demo8');
   const prefix = `t6 pagination ${crypto.randomUUID()}`;
   // 22 posts > the 20-entry page: Load more must surface the tail.
-  await seedPosts(page, Array.from({ length: 22 }, (_, n) => `${prefix} ${String(n).padStart(2, '0')}`));
+  await seedPosts(
+    page,
+    Array.from({ length: 22 }, (_, n) => `${prefix} ${String(n).padStart(2, '0')}`),
+  );
 
   await page.goto('/feed');
   const items = page.locator('[data-testid^="post-item-"]', { hasText: prefix });

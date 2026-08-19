@@ -92,7 +92,10 @@ export function startConsumerLagTracker(
         for (const { partition, high } of end) {
           const position = committedByPartition.get(partition) ?? -1;
           // No commit yet (-1) reads as "nothing consumed": lag = full log.
-          gauge.set({ topic, partition: String(partition) }, Math.max(0, Number(high) - Math.max(0, position)));
+          gauge.set(
+            { topic, partition: String(partition) },
+            Math.max(0, Number(high) - Math.max(0, position)),
+          );
         }
       } catch (err) {
         logger.warn({ err, topic }, 'consumer lag poll failed');
@@ -103,7 +106,10 @@ export function startConsumerLagTracker(
   const timer = setInterval(() => void poll(), intervalMs);
   timer.unref();
   // First reading without waiting a full interval.
-  void admin.connect().then(poll).catch((err: unknown) => logger.warn({ err }, 'lag admin connect failed'));
+  void admin
+    .connect()
+    .then(poll)
+    .catch((err: unknown) => logger.warn({ err }, 'lag admin connect failed'));
 
   return {
     async stop() {

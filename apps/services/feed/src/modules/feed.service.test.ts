@@ -57,7 +57,9 @@ function fakeRepo() {
   ) => {
     let items = [...rows.values()]
       .filter((r) => r.userId === userId && !excludeAuthorIds.includes(r.authorId))
-      .sort((a, b) => b.postCreatedAt.getTime() - a.postCreatedAt.getTime() || (a.id < b.id ? 1 : -1));
+      .sort(
+        (a, b) => b.postCreatedAt.getTime() - a.postCreatedAt.getTime() || (a.id < b.id ? 1 : -1),
+      );
     if (cursor) {
       const decoded = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as {
         createdAt: string;
@@ -87,7 +89,8 @@ function fakeRepo() {
   const repo = {
     page,
     upsertEntries: (entries: FeedEntryRow[]) => {
-      const key = (e: FeedEntryRow) => `${e.userId}|${e.postId}|${e.reason}|${e.repostedById ?? ''}`;
+      const key = (e: FeedEntryRow) =>
+        `${e.userId}|${e.postId}|${e.reason}|${e.repostedById ?? ''}`;
       const existing = new Set([...rows.values()].map(key));
       const fresh = entries.filter((e) => !existing.has(key(e)));
       for (const e of fresh) {
@@ -103,7 +106,8 @@ function fakeRepo() {
     },
     deleteByUserAndAuthor: (userId: string, authorId: string) => {
       const before = rows.size;
-      for (const [key, r] of rows) if (r.userId === userId && r.authorId === authorId) rows.delete(key);
+      for (const [key, r] of rows)
+        if (r.userId === userId && r.authorId === authorId) rows.delete(key);
       return Promise.resolve(before - rows.size);
     },
     deleteByUser: (userId: string) => {
@@ -138,8 +142,10 @@ function fakeHydrator(
 ): ContentHydrator & { store: { posts: Map<string, Post>; profiles: Map<string, Profile> } } {
   const posts = new Map<string, Post>();
   const profiles = new Map<string, Profile>();
-  const byId = <T>(store: Map<string, T>) => (ids: string[]) =>
-    Promise.resolve(new Map(ids.filter((id) => store.has(id)).map((id) => [id, store.get(id)!])));
+  const byId =
+    <T>(store: Map<string, T>) =>
+    (ids: string[]) =>
+      Promise.resolve(new Map(ids.filter((id) => store.has(id)).map((id) => [id, store.get(id)!])));
   return {
     posts: byId(posts),
     profiles: byId(profiles),
@@ -151,15 +157,29 @@ function fakeHydrator(
 
 function spyRealtime(): FeedRealtime & { calls: string[][] } {
   const calls: string[][] = [];
-  return { calls, notify: (userIds) => { calls.push(userIds); return Promise.resolve(); } };
+  return {
+    calls,
+    notify: (userIds) => {
+      calls.push(userIds);
+      return Promise.resolve();
+    },
+  };
 }
 
 describe('FeedService.getFeed', () => {
   it('returns entries newest-first with hydrated post + author', async () => {
     const { repo } = fakeRepo();
     const hydrator = fakeHydrator();
-    const older = entry({ postCreatedAt: new Date('2026-08-16T10:00:00Z'), postId: '00000000-0000-4000-8000-000000000011', authorId: FOLLOWEE });
-    const newer = entry({ postCreatedAt: new Date('2026-08-17T10:00:00Z'), postId: '00000000-0000-4000-8000-000000000012', authorId: OWNER });
+    const older = entry({
+      postCreatedAt: new Date('2026-08-16T10:00:00Z'),
+      postId: '00000000-0000-4000-8000-000000000011',
+      authorId: FOLLOWEE,
+    });
+    const newer = entry({
+      postCreatedAt: new Date('2026-08-17T10:00:00Z'),
+      postId: '00000000-0000-4000-8000-000000000012',
+      authorId: OWNER,
+    });
     await repo.upsertEntries([older, newer]);
     hydrator.store.posts.set(older.postId, post(older.postId, FOLLOWEE, older.postCreatedAt));
     hydrator.store.posts.set(newer.postId, post(newer.postId, OWNER, newer.postCreatedAt));
@@ -180,7 +200,10 @@ describe('FeedService.getFeed', () => {
     const hydrator = fakeHydrator({
       blockedAuthorIds: (userId) => Promise.resolve(userId === OWNER ? [BLOCKED] : []),
     });
-    const blockedEntry = entry({ authorId: BLOCKED, postId: '00000000-0000-4000-8000-000000000021' });
+    const blockedEntry = entry({
+      authorId: BLOCKED,
+      postId: '00000000-0000-4000-8000-000000000021',
+    });
     const fineEntry = entry({ authorId: FOLLOWEE, postId: '00000000-0000-4000-8000-000000000022' });
     await repo.upsertEntries([blockedEntry, fineEntry]);
     for (const e of [blockedEntry, fineEntry]) {
@@ -203,15 +226,24 @@ describe('FeedService.getFeed', () => {
     );
     await repo.upsertEntries(entries);
     // newest post (entries[2]) deleted: absent from the posts lookup
-    hydrator.store.posts.set(entries[0]!.postId, post(entries[0]!.postId, FOLLOWEE, entries[0]!.postCreatedAt));
-    hydrator.store.posts.set(entries[1]!.postId, post(entries[1]!.postId, FOLLOWEE, entries[1]!.postCreatedAt));
+    hydrator.store.posts.set(
+      entries[0]!.postId,
+      post(entries[0]!.postId, FOLLOWEE, entries[0]!.postCreatedAt),
+    );
+    hydrator.store.posts.set(
+      entries[1]!.postId,
+      post(entries[1]!.postId, FOLLOWEE, entries[1]!.postCreatedAt),
+    );
     hydrator.store.profiles.set(FOLLOWEE, profile(FOLLOWEE));
 
     const service = new FeedService(repo, hydrator, spyRealtime());
     const page = await service.getFeed(OWNER, { limit: 2 });
 
     // The deleted newest entry is skipped and the page still fills.
-    expect(page.items.map((item) => item.post.id)).toEqual([entries[1]!.postId, entries[0]!.postId]);
+    expect(page.items.map((item) => item.post.id)).toEqual([
+      entries[1]!.postId,
+      entries[0]!.postId,
+    ]);
   });
 
   it('paginates by cursor without repeating or skipping entries', async () => {
@@ -271,7 +303,11 @@ describe('FeedService.getFeed', () => {
     const page = await service.getFeed(OWNER, { limit: 20 });
 
     const item: HydratedFeedItem = page.items[0]!;
-    expect(item.author).toMatchObject({ id: FOLLOWEE, username: 'unknown', displayName: 'Unknown' });
+    expect(item.author).toMatchObject({
+      id: FOLLOWEE,
+      username: 'unknown',
+      displayName: 'Unknown',
+    });
     expect(typeof item.author.createdAt).toBe('string');
   });
 });
@@ -322,10 +358,15 @@ describe('FeedService deletes', () => {
   it('removes a deleted post from every feed', async () => {
     const { repo } = fakeRepo();
     const e = entry({ postId: '00000000-0000-4000-8000-000000000081', userId: OWNER });
-    await repo.upsertEntries([e, entry({ postId: '00000000-0000-4000-8000-000000000081', userId: FOLLOWEE })]);
+    await repo.upsertEntries([
+      e,
+      entry({ postId: '00000000-0000-4000-8000-000000000081', userId: FOLLOWEE }),
+    ]);
 
     const service = new FeedService(repo, fakeHydrator(), spyRealtime());
-    await expect(service.deletePostEntries('00000000-0000-4000-8000-000000000081')).resolves.toEqual({ deleted: 2 });
+    await expect(
+      service.deletePostEntries('00000000-0000-4000-8000-000000000081'),
+    ).resolves.toEqual({ deleted: 2 });
     expect(repo.all()).toHaveLength(0);
   });
 
@@ -334,7 +375,11 @@ describe('FeedService deletes', () => {
     await repo.upsertEntries([
       entry({ userId: OWNER, authorId: BLOCKED, postId: '00000000-0000-4000-8000-000000000091' }),
       entry({ userId: OWNER, authorId: FOLLOWEE, postId: '00000000-0000-4000-8000-000000000092' }),
-      entry({ userId: FOLLOWEE, authorId: BLOCKED, postId: '00000000-0000-4000-8000-000000000093' }),
+      entry({
+        userId: FOLLOWEE,
+        authorId: BLOCKED,
+        postId: '00000000-0000-4000-8000-000000000093',
+      }),
     ]);
 
     const service = new FeedService(repo, fakeHydrator(), spyRealtime());

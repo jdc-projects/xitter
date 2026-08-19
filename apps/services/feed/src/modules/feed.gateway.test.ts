@@ -32,7 +32,10 @@ function fakeSubscriber(): RedisSubscriber & {
     psubscribe: async (pattern: string) => {
       patterns.push(pattern);
     },
-    on: (_event: 'pmessage', listener: (pattern: string, channel: string, message: string) => void) => {
+    on: (
+      _event: 'pmessage',
+      listener: (pattern: string, channel: string, message: string) => void,
+    ) => {
       listeners.push(listener);
       return subscriber;
     },
@@ -80,7 +83,9 @@ describe('FeedGateway (ws auth + notification relay)', () => {
   }
 
   function nextMessage(ws: WebSocket): Promise<unknown> {
-    return new Promise((resolve) => ws.once('message', (data) => resolve(JSON.parse(String(data)))));
+    return new Promise((resolve) =>
+      ws.once('message', (data) => resolve(JSON.parse(String(data)))),
+    );
   }
 
   it('rejects upgrades without a token (401 before the socket is accepted)', async () => {

@@ -218,8 +218,7 @@ socialApi.registerPath({
   path: '/internal/profiles/lookup',
   tags: ['internal'],
   security: [{ serviceToken: [] }],
-  description:
-    'Bulk profile lookup for server-side hydration (feed #7); missing ids are omitted.',
+  description: 'Bulk profile lookup for server-side hydration (feed #7); missing ids are omitted.',
   request: { body: { content: { 'application/json': { schema: profileLookupRequestSchema } } } },
   responses: {
     200: jsonResponse('Profiles', profileLookupResponseSchema),

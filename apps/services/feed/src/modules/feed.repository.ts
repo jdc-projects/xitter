@@ -50,9 +50,7 @@ export class FeedRepository {
 
   /** Unfollowed: the author's entries leave this one feed. */
   deleteByUserAndAuthor(userId: string, authorId: string): Promise<number> {
-    return this.db.feedEntry
-      .deleteMany({ where: { userId, authorId } })
-      .then((r) => r.count);
+    return this.db.feedEntry.deleteMany({ where: { userId, authorId } }).then((r) => r.count);
   }
 
   /** Feed reset for one user (reset job / support action). */

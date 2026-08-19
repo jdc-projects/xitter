@@ -53,6 +53,13 @@ export class FeedLifecycle implements OnApplicationShutdown {
 
 @Module({
   controllers: [FeedController, InternalFeedController],
-  providers: [prismaProvider, hydratorProvider, realtimeProvider, FeedRepository, FeedService, FeedLifecycle],
+  providers: [
+    prismaProvider,
+    hydratorProvider,
+    realtimeProvider,
+    FeedRepository,
+    FeedService,
+    FeedLifecycle,
+  ],
 })
 export class FeedModule {}

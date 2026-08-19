@@ -51,7 +51,7 @@ feedApi.registerPath({
   tags: ['feed'],
   security: [{ bearerAuth: [] }],
   description:
-    "Materialised home timeline (followed + own posts, newest first), hydrated server-side; deleted posts and blocked authors are excluded.",
+    'Materialised home timeline (followed + own posts, newest first), hydrated server-side; deleted posts and blocked authors are excluded.',
   request: { query: pageQuery },
   responses: {
     200: { description: 'Feed page', content: { 'application/json': { schema: feedPage } } },
@@ -78,7 +78,9 @@ feedApi.registerPath({
   security: [{ serviceToken: [] }],
   description:
     'Bulk idempotent entry upsert (fanout worker); conflicts on the natural key (userId, postId, reason) are skipped. Affected users get a ws notification.',
-  request: { body: { content: { 'application/json': { schema: upsertFeedEntriesRequestSchema } } } },
+  request: {
+    body: { content: { 'application/json': { schema: upsertFeedEntriesRequestSchema } } },
+  },
   responses: {
     200: jsonResponse('Rows actually inserted (replays report 0)', upsertFeedEntriesResponseSchema),
     400: jsonResponse('Validation error', errorSchema),
