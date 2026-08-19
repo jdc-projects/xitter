@@ -114,18 +114,15 @@ export class PostsIndex implements OnModuleInit {
   /** Keyset-paginated full-text search, newest first on (createdAt, postId). */
   async search(options: SearchOptions): Promise<SearchOutcome> {
     const body = buildSearchBody(options);
-    const result = await this.client
-      .search({ index: POSTS_INDEX, body })
-      .catch((err: unknown) => {
-        // A missing index reads as "no results yet" (cold start after a
-        // reset), not as an outage - the boot path or first write recreates it.
-        if (isIndexMissing(err)) return null;
-        throw err;
-      });
+    const result = await this.client.search({ index: POSTS_INDEX, body }).catch((err: unknown) => {
+      // A missing index reads as "no results yet" (cold start after a
+      // reset), not as an outage - the boot path or first write recreates it.
+      if (isIndexMissing(err)) return null;
+      throw err;
+    });
     if (!result) return { hits: [], nextAfter: null };
 
-    const hitsRaw = ((result.body as { hits?: { hits?: unknown[] } }).hits?.hits ??
-      []) as Array<{
+    const hitsRaw = ((result.body as { hits?: { hits?: unknown[] } }).hits?.hits ?? []) as Array<{
       _id: string;
       _source: { authorId: string; createdAt: string };
     }>;

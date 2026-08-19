@@ -48,8 +48,7 @@ describe('search-index consumption (testcontainers kafka + opensearch)', () => {
       const body = {
         query: { terms: { authorId: authors.map((a) => a.authorId) } },
         script: {
-          source:
-            'ctx._source.authorName = params.names[ctx._source.authorId]',
+          source: 'ctx._source.authorName = params.names[ctx._source.authorId]',
           params: { names: Object.fromEntries(authors.map((a) => [a.authorId, a.authorName])) },
         },
       };
@@ -135,7 +134,10 @@ describe('search-index consumption (testcontainers kafka + opensearch)', () => {
         return;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        if (attempt >= 5 || !message.includes('disconnected') && !message.includes('Connection')) {
+        if (
+          attempt >= 5 ||
+          (!message.includes('disconnected') && !message.includes('Connection'))
+        ) {
           throw err;
         }
         await new Promise((r) => setTimeout(r, 500 * attempt));
@@ -144,7 +146,10 @@ describe('search-index consumption (testcontainers kafka + opensearch)', () => {
   }
 
   /** Fresh groups join at the log end; re-emit until consumed (idempotent). */
-  async function emitUntil(emit: () => Promise<void>, predicate: () => Promise<boolean>): Promise<void> {
+  async function emitUntil(
+    emit: () => Promise<void>,
+    predicate: () => Promise<boolean>,
+  ): Promise<void> {
     const deadline = Date.now() + 45_000;
     while (Date.now() < deadline) {
       await emit();
@@ -318,9 +323,12 @@ describe('search-index consumption (testcontainers kafka + opensearch)', () => {
       topics: ['posts', 'social'],
       fromBeginning: true,
     });
-    await resumed.run(async (envelope) => {
-      seenAfterResume.push((envelope as { payload: { text?: string } }).payload?.text ?? '');
-    }, { resumeFrom: positions });
+    await resumed.run(
+      async (envelope) => {
+        seenAfterResume.push((envelope as { payload: { text?: string } }).payload?.text ?? '');
+      },
+      { resumeFrom: positions },
+    );
 
     // Emit one NEW event after the wipe: it must arrive; the pre-checkpoint
     // backlog must NOT be reprocessed.

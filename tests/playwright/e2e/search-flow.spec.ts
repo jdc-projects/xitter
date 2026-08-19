@@ -69,7 +69,11 @@ test('search finds a composed post and deletes remove it from results', async ({
   const deadline = Date.now() + 30_000;
   for (;;) {
     await page.goto(`/search?q=${encodeURIComponent('quokka')}`);
-    const text = (await page.getByTestId('search-results').textContent().catch(() => '')) ?? '';
+    const text =
+      (await page
+        .getByTestId('search-results')
+        .textContent()
+        .catch(() => '')) ?? '';
     if (!text.includes(needle)) break;
     if (Date.now() > deadline) break;
     await page.waitForTimeout(1_000);

@@ -28,11 +28,9 @@ beforeEach(() => {
   searchPosts.mockReset();
   // Constructable mock: `new SearchClient(...)` returns this object (a
   // constructor returning an object replaces the instance).
-  vi.mocked(SearchClient).mockImplementation(
-    function mockSearchClient(this: unknown) {
-      return { searchPosts };
-    } as unknown as () => SearchClient,
-  );
+  vi.mocked(SearchClient).mockImplementation(function mockSearchClient(this: unknown) {
+    return { searchPosts };
+  } as unknown as () => SearchClient);
 });
 
 describe('loadSearch', () => {

@@ -29,7 +29,8 @@ const BLOCKED_AUTHOR = '00000000-0000-4000-8000-00000000d003';
 
 const uid = (n: string) => `00000000-0000-4000-8000-${n.padStart(12, '0')}`;
 // Hours past midnight 2026-08-19T00:00Z; tests use values beyond 24h.
-const at = (h: number) => new Date(Date.parse('2026-08-19T00:00:00.000Z') + h * 3_600_000).toISOString();
+const at = (h: number) =>
+  new Date(Date.parse('2026-08-19T00:00:00.000Z') + h * 3_600_000).toISOString();
 
 describe.skipIf(!hasGeneratedClient)('search integration (testcontainers)', () => {
   let os: Awaited<ReturnType<typeof startOpenSearch>>;
@@ -80,10 +81,11 @@ describe.skipIf(!hasGeneratedClient)('search integration (testcontainers)', () =
         ),
       profiles: (ids) =>
         Promise.resolve(
-          new Map(ids.filter((id) => store.profiles.has(id)).map((id) => [id, store.profiles.get(id)!])),
+          new Map(
+            ids.filter((id) => store.profiles.has(id)).map((id) => [id, store.profiles.get(id)!]),
+          ),
         ),
-      blockedAuthorIds: (userId) =>
-        Promise.resolve(userId === VIEWER ? [...store.blocked] : []),
+      blockedAuthorIds: (userId) => Promise.resolve(userId === VIEWER ? [...store.blocked] : []),
     };
     service = new SearchService(index, content, new CheckpointRepository(db));
   }, 300_000);

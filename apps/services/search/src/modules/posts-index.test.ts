@@ -11,12 +11,17 @@ const opts = (overrides: Partial<Parameters<typeof buildSearchBody>[0]> = {}) =>
 
 describe('buildSearchBody', () => {
   it('matches analysed text OR the exact keyword, newest first', () => {
-    const body = buildSearchBody(opts()) as { size: number; query: { bool: Record<string, unknown> } };
+    const body = buildSearchBody(opts()) as {
+      size: number;
+      query: { bool: Record<string, unknown> };
+    };
 
     expect(body.size).toBe(21); // limit + 1 over-fetch
     const must = body.query.bool.must as { bool: { should: unknown[] } };
     expect(must.bool.should).toHaveLength(2);
-    expect(must.bool.should).toContainEqual({ match: { text: { query: 'hello', operator: 'and' } } });
+    expect(must.bool.should).toContainEqual({
+      match: { text: { query: 'hello', operator: 'and' } },
+    });
     expect(must.bool.should).toContainEqual({ term: { keywords: 'hello' } });
   });
 
@@ -28,9 +33,9 @@ describe('buildSearchBody', () => {
   });
 
   it('filters blocked authors at query level (must_not terms)', () => {
-    const body = buildSearchBody(
-      opts({ excludeAuthorIds: ['a', 'b'] }),
-    ) as unknown as { query: { bool: { must_not: unknown[] } } };
+    const body = buildSearchBody(opts({ excludeAuthorIds: ['a', 'b'] })) as unknown as {
+      query: { bool: { must_not: unknown[] } };
+    };
 
     expect(body.query.bool.must_not).toContainEqual({ terms: { authorId: ['a', 'b'] } });
   });
@@ -42,9 +47,7 @@ describe('buildSearchBody', () => {
 
   it('keyset-paginates strictly after the cursor position', () => {
     const after = { createdAt: '2026-08-19T10:00:00.000Z', postId: 'p1' };
-    const body = buildSearchBody(
-      opts({ after }),
-    ) as unknown as {
+    const body = buildSearchBody(opts({ after })) as unknown as {
       search_after: string[];
       query: { bool: { filter: unknown[] } };
     };

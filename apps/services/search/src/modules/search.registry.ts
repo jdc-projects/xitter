@@ -62,7 +62,10 @@ searchApi.registerPath({
     body: { content: { 'application/json': { schema: upsertSearchDocumentsRequestSchema } } },
   },
   responses: {
-    200: jsonResponse('Documents submitted to the index bulk request', z.object({ indexed: z.number().int() })),
+    200: jsonResponse(
+      'Documents submitted to the index bulk request',
+      z.object({ indexed: z.number().int() }),
+    ),
     400: jsonResponse('Validation error', errorSchema),
   },
 });
@@ -122,6 +125,9 @@ searchApi.registerPath({
   path: '/internal/reseed',
   tags: ['internal'],
   security: [{ serviceToken: [] }],
-  description: 'Truncate search service state - checkpoints (reset job); index docs are cleared separately.',
-  responses: { 200: jsonResponse('Acknowledged', z.object({ ok: z.boolean(), deleted: z.number().int() })) },
+  description:
+    'Truncate search service state - checkpoints (reset job); index docs are cleared separately.',
+  responses: {
+    200: jsonResponse('Acknowledged', z.object({ ok: z.boolean(), deleted: z.number().int() })),
+  },
 });

@@ -54,9 +54,7 @@ export class SearchService {
     // service-kit {createdAt, id} shape (id = postId here).
     let after = (() => {
       const position = page.cursor ? decodeCursor(page.cursor) : null;
-      return position
-        ? { createdAt: position.createdAt, postId: position.id }
-        : null;
+      return position ? { createdAt: position.createdAt, postId: position.id } : null;
     })();
     let nextCursor: string | null = null;
     for (let walk = 0; walk < MAX_WALKS && items.length < limit; walk++) {
@@ -87,7 +85,9 @@ export class SearchService {
   }
 
   /** Internal (search-index worker): keep denormalised author names fresh. */
-  refreshAuthors(authors: { authorId: string; authorName: string }[]): Promise<{ updated: number }> {
+  refreshAuthors(
+    authors: { authorId: string; authorName: string }[],
+  ): Promise<{ updated: number }> {
     return this.refreshAuthorsInBatches(authors);
   }
 

@@ -4,7 +4,11 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { realmUrls } from '@xitter/auth';
 import { env } from '../env.js';
 import { PrismaClient } from '../generated/prisma/client.js';
-import { CheckpointRepository, SEARCH_PRISMA, type SearchPrismaClient } from './checkpoint.repository.js';
+import {
+  CheckpointRepository,
+  SEARCH_PRISMA,
+  type SearchPrismaClient,
+} from './checkpoint.repository.js';
 import { InternalSearchController } from './internal-search.controller.js';
 import { OPENSEARCH, PostsIndex } from './posts-index.js';
 import { SEARCH_CONTENT, ServiceSearchContent } from './search-content.js';

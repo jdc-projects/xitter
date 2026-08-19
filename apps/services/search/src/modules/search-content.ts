@@ -48,8 +48,16 @@ export class ServiceSearchContent implements SearchContentSource {
       clientId: options.clientId,
       clientSecret: options.clientSecret,
     };
-    this.postsClient = new PostsClient({ baseUrl: options.postsUrl, internal, fetchImpl: options.fetchImpl });
-    this.socialClient = new SocialClient({ baseUrl: options.socialUrl, internal, fetchImpl: options.fetchImpl });
+    this.postsClient = new PostsClient({
+      baseUrl: options.postsUrl,
+      internal,
+      fetchImpl: options.fetchImpl,
+    });
+    this.socialClient = new SocialClient({
+      baseUrl: options.socialUrl,
+      internal,
+      fetchImpl: options.fetchImpl,
+    });
   }
 
   async posts(postIds: string[]): Promise<Map<string, Post>> {

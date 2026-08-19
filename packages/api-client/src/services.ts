@@ -319,9 +319,7 @@ export class SearchClient extends ServiceClient {
 
   /** Internal (search-index worker boot): resume positions for a consumer. */
   // fallow-ignore-next-line unused-class-member -- consumed via the search-index worker's checkpoint seam (apps/workers/search-index/src/main.ts)
-  internalGetCheckpoints(
-    consumerKey: string,
-  ): Promise<{ positions: SearchCheckpointPosition[] }> {
+  internalGetCheckpoints(consumerKey: string): Promise<{ positions: SearchCheckpointPosition[] }> {
     return this.get(`${V1}/search/internal/search/checkpoint`, { consumerKey }).then((r) =>
       z.object({ positions: z.array(searchCheckpointPositionSchema) }).parse(r),
     );

@@ -298,7 +298,6 @@ export const searchCheckpointListResponseSchema = z
 
 export type SearchCheckpointPosition = z.infer<typeof searchCheckpointPositionSchema>;
 
-
 export const idParam = (name: 'userId' | 'postId' | 'mediaId' | 'username') =>
   ({
     userId: { name: 'userId', schema: userIdSchema, in: 'path', required: true },

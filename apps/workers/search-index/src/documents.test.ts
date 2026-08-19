@@ -23,10 +23,7 @@ const created = {
 
 describe('keywordsFromText', () => {
   it('extracts hashtags, deduped and lowercased', () => {
-    expect(keywordsFromText('Hello #Search world #search #Foo_Bar')).toEqual([
-      'search',
-      'foo_bar',
-    ]);
+    expect(keywordsFromText('Hello #Search world #search #Foo_Bar')).toEqual(['search', 'foo_bar']);
   });
 
   it('returns empty for plain text', () => {

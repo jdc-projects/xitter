@@ -1,4 +1,9 @@
-import type { PostCreated, PostDeleted, ProfileUpdated, SearchIndexDocument } from '@xitter/api-contracts';
+import type {
+  PostCreated,
+  PostDeleted,
+  ProfileUpdated,
+  SearchIndexDocument,
+} from '@xitter/api-contracts';
 
 /** Hashtag tokens indexed for exact matching (#foo → "foo"), lowercased. */
 export function keywordsFromText(text: string): string[] {
