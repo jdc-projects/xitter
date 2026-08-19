@@ -99,3 +99,44 @@ export async function deletePostAction(formData: FormData): Promise<void> {
   // "//evil.com" through Location.
   if (typeof goTo === 'string' && goTo.startsWith('/') && !goTo.startsWith('//')) redirect(goTo);
 }
+
+export interface InteractResult {
+  ok?: boolean;
+  error?: string;
+}
+
+/**
+ * Like/repost/bookmark (and undo) from any post card (#8). Revalidates the
+ * pages a touched card can appear on so counts and filled states refresh
+ * server-side; the client layer also applies an optimistic flip.
+ */
+export async function interactAction(
+  postId: string,
+  kind: 'like' | 'repost' | 'bookmark',
+  undo: boolean,
+): Promise<InteractResult> {
+  if (!postId || !['like', 'repost', 'bookmark'].includes(kind)) {
+    return { error: 'Unknown interaction.' };
+  }
+
+  const ctx = await postsForSession();
+  if (!ctx) redirect('/login');
+
+  try {
+    if (undo) await ctx.posts.deleteInteraction(postId, kind);
+    else await ctx.posts.createInteraction(postId, kind);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 403) {
+      return { error: 'You cannot interact with this post.' };
+    }
+    if (error instanceof ApiError && error.status === 429) {
+      return { error: 'You are interacting too fast - wait a moment.' };
+    }
+    return { error: 'Could not save that right now. Try again shortly.' };
+  }
+
+  revalidatePath('/feed');
+  revalidatePath(`/post/${postId}`);
+  revalidatePath('/bookmarks');
+  return { ok: true };
+}

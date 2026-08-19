@@ -5,7 +5,7 @@ import {
   SocialClient,
   localServiceUrls,
 } from '@xitter/api-client';
-import type { Profile } from '@xitter/api-contracts';
+import type { Post, PostViewerState, Profile } from '@xitter/api-contracts';
 import { getSession, type Session } from '@/lib/auth/session';
 
 /**
@@ -63,4 +63,26 @@ export async function profilesByAuthorIds(
     }),
   );
   return new Map(entries);
+}
+
+/** Contract cap for the batched viewer-state endpoint. */
+const VIEWER_STATE_MAX = 100;
+
+/**
+ * The viewer's like/repost/bookmark flags for a page of posts (#8),
+ * batched. Best-effort: on failure every post renders with empty flags -
+ * cards stay usable, only filled-state styling is lost.
+ */
+export async function viewerStateByPostId(
+  posts: PostsClient,
+  postIds: string[],
+): Promise<Map<string, PostViewerState>> {
+  const unique = [...new Set(postIds)].slice(0, VIEWER_STATE_MAX);
+  if (unique.length === 0) return new Map();
+  try {
+    const { items } = await posts.getViewerState(unique);
+    return new Map(items.map((state) => [state.postId, state]));
+  } catch {
+    return new Map();
+  }
 }

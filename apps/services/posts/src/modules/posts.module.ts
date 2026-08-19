@@ -4,6 +4,11 @@ import { realmUrls } from '@xitter/auth';
 import { createEventProducer } from '@xitter/events';
 import { env } from '../env.js';
 import { PrismaClient } from '../generated/prisma/client.js';
+import {
+  INTERACTION_REALTIME,
+  ValkeyInteractionRealtime,
+  type InteractionRealtime,
+} from './interaction-realtime.js';
 import { InternalController } from './internal.controller.js';
 import { MEDIA_CHECKER, MediaServiceChecker, type MediaChecker } from './media-checker.js';
 import { KafkaPostsEvents, POSTS_EVENTS, type PostsEvents } from './posts-events.js';
@@ -58,16 +63,24 @@ const mediaCheckerProvider: Provider = {
     }),
 };
 
-/** Disconnect order: stop emitting, then close the DB pool. */
+// Author ws pings (likes/reposts) publish straight to Valkey (#8).
+const interactionRealtimeProvider: Provider = {
+  provide: INTERACTION_REALTIME,
+  useFactory: (): InteractionRealtime => new ValkeyInteractionRealtime(env.VALKEY_URL),
+};
+
+/** Disconnect order: stop emitting + pinging, then close the DB pool. */
 @Injectable()
 export class PostsLifecycle implements OnApplicationShutdown {
   constructor(
     @Inject(POSTS_PRISMA) private readonly db: PostsPrismaClient,
     @Inject(POSTS_EVENTS) private readonly events: PostsEvents,
+    @Inject(INTERACTION_REALTIME) private readonly realtime: InteractionRealtime,
   ) {}
 
   async onApplicationShutdown(): Promise<void> {
     await this.events.shutdown().catch(() => undefined);
+    await this.realtime.stop?.().catch(() => undefined);
     await this.db.$disconnect().catch(() => undefined);
   }
 }
@@ -79,6 +92,7 @@ export class PostsLifecycle implements OnApplicationShutdown {
     eventsProvider,
     relationshipCheckerProvider,
     mediaCheckerProvider,
+    interactionRealtimeProvider,
     PostsRepository,
     PostsService,
     PostsLifecycle,

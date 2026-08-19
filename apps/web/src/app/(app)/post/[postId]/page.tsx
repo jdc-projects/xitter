@@ -6,10 +6,15 @@ import type { Post, Profile } from '@xitter/api-contracts';
 import { ApiError } from '@xitter/api-client';
 import { requireSession } from '@/lib/auth/session';
 import { PostComposer } from '@/components/post-composer';
+import { PostInteractions } from '@/components/post-interactions';
 import { PostListItem } from '@/components/post-list-item';
 import { imagesFor } from '@/lib/media/images';
 import { DeletePostButton } from '@/components/delete-post-button';
-import { clientsForSession, profilesByAuthorIds } from '@/lib/posts/server';
+import {
+  clientsForSession,
+  profilesByAuthorIds,
+  viewerStateByPostId,
+} from '@/lib/posts/server';
 
 export const metadata: Metadata = { title: 'Post' };
 
@@ -58,6 +63,20 @@ export default async function PostDetailPage({
     ...replies.items.map((reply) => reply.authorId),
   ]);
 
+  // Interaction flags for the detail card + the visible replies (#8).
+  const states = await viewerStateByPostId(posts, [
+    post.id,
+    ...replies.items.map((reply) => reply.id),
+  ]);
+  const flagsOf = (id: string) => {
+    const state = states.get(id);
+    return {
+      liked: state?.liked ?? false,
+      reposted: state?.reposted ?? false,
+      bookmarked: state?.bookmarked ?? false,
+    };
+  };
+
   const author = cardAuthor(authors.get(post.authorId), post.authorId);
 
   return (
@@ -77,7 +96,18 @@ export default async function PostDetailPage({
         ) : null}
 
         <div data-testid={`post-detail-${post.id}`}>
-          <PostCard author={author} post={post} images={imagesFor(post, 'original')} />
+          <PostInteractions postId={post.id} viewer={flagsOf(post.id)}>
+            {({ viewer, busyKinds, onInteract }) => (
+              <PostCard
+                author={author}
+                post={post}
+                images={imagesFor(post, 'original')}
+                viewer={viewer}
+                busyKinds={busyKinds}
+                onInteract={onInteract}
+              />
+            )}
+          </PostInteractions>
         </div>
         {post.authorId === session.subject ? (
           <DeletePostButton postId={post.id} username={author.username} goTo="/feed" />
@@ -106,6 +136,7 @@ export default async function PostDetailPage({
                   key={reply.id}
                   post={reply}
                   author={cardAuthor(authors.get(reply.authorId), reply.authorId)}
+                  viewer={flagsOf(reply.id)}
                   canDelete={reply.authorId === session.subject}
                   username={cardAuthor(authors.get(reply.authorId), reply.authorId).username}
                 />

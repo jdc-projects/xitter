@@ -12,10 +12,15 @@ import {
 import type { RequestUser } from '@xitter/auth-nest';
 import { CurrentUser, RateLimit, RateLimitGuard } from '@xitter/auth-nest';
 import {
+  createInteractionRequestSchema,
   createPostRequestSchema,
+  interactionKindSchema,
   postIdSchema,
   userIdSchema,
+  viewerStateQuerySchema,
+  type CreateInteractionRequest,
   type CreatePostRequest,
+  type InteractionKind,
   type Post as PostDto,
 } from '@xitter/api-contracts';
 import { ZodValidationPipe } from '@xitter/service-kit';
@@ -23,6 +28,7 @@ import { z } from 'zod';
 import { PostsService, type PostPage } from './posts.service.js';
 
 const uuidParam = new ZodValidationPipe(postIdSchema);
+const kindParam = new ZodValidationPipe(interactionKindSchema);
 const userParam = new ZodValidationPipe(userIdSchema);
 const pageQuery = new ZodValidationPipe(
   z.object({
@@ -30,6 +36,7 @@ const pageQuery = new ZodValidationPipe(
     limit: z.coerce.number().int().min(1).max(50).default(20),
   }),
 );
+const viewerStateQuery = new ZodValidationPipe(viewerStateQuerySchema);
 
 /**
  * Public posts API (spec 03): create/delete, hydrated reads, author
@@ -83,5 +90,48 @@ export class PostsController {
     @Query(pageQuery) page: { cursor?: string; limit: number },
   ): Promise<PostPage> {
     return this.posts.postReplies(postId, page);
+  }
+
+  /** Like/bookmark/repost: idempotent; blocked callers 403 (#8, product 6.4). */
+  @Post('posts/:postId/interactions')
+  @UseGuards(RateLimitGuard)
+  @RateLimit()
+  interact(
+    @CurrentUser() user: RequestUser,
+    @Param('postId', uuidParam) postId: string,
+    @Body(new ZodValidationPipe(createInteractionRequestSchema)) body: CreateInteractionRequest,
+  ) {
+    return this.posts.interact(user.subject, postId, body.kind);
+  }
+
+  /** Undo an own interaction: idempotent 204. */
+  @Delete('posts/:postId/interactions/:kind')
+  @HttpCode(204)
+  @UseGuards(RateLimitGuard)
+  @RateLimit()
+  removeInteraction(
+    @CurrentUser() user: RequestUser,
+    @Param('postId', uuidParam) postId: string,
+    @Param('kind', kindParam) kind: InteractionKind,
+  ): Promise<void> {
+    return this.posts.removeInteraction(user.subject, postId, kind);
+  }
+
+  /** The caller's private bookmark list, newest first. */
+  @Get('bookmarks')
+  bookmarks(
+    @CurrentUser() user: RequestUser,
+    @Query(pageQuery) page: { cursor?: string; limit: number },
+  ): Promise<PostPage> {
+    return this.posts.bookmarks(user.subject, page);
+  }
+
+  /** Batched viewer flags (like/repost/bookmark) for list rendering (#8). */
+  @Get('viewer-state')
+  viewerState(
+    @CurrentUser() user: RequestUser,
+    @Query(viewerStateQuery) query: { postIds: string[] },
+  ) {
+    return this.posts.viewerState(user.subject, query.postIds).then((items) => ({ items }));
   }
 }

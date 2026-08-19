@@ -7,6 +7,7 @@ import { startPostgres } from '@xitter/testing';
 import { POST_TEXT_MAX } from '@xitter/api-contracts';
 import type { MediaAsset } from '@xitter/api-contracts';
 import { NullMediaChecker, type MediaChecker } from './media-checker.js';
+import { NullInteractionRealtime } from './interaction-realtime.js';
 import { PostsService } from './posts.service.js';
 import { PostsRepository, type PostsPrismaClient } from './posts.repository.js';
 import type { PostsEvents } from './posts-events.js';
@@ -74,7 +75,7 @@ describe.skipIf(!hasGeneratedClient)('posts integration (testcontainers)', () =>
       blockedEitherWay: (a, b) =>
         Promise.resolve(blocks.has(`${a}|${b}`) || blocks.has(`${b}|${a}`)),
     };
-    return new PostsService(repo, events, checker, new NullMediaChecker());
+    return new PostsService(repo, events, checker, new NullMediaChecker(), new NullInteractionRealtime());
   }
 
   it('creates posts with zero-initialised counts', async () => {
@@ -259,8 +260,7 @@ describe.skipIf(!hasGeneratedClient)('posts integration (testcontainers)', () =>
       repo,
       events,
       { blockedEitherWay: () => Promise.resolve(false) },
-      checker,
-    );
+      checker, new NullInteractionRealtime());
 
     const post = await service.create(uid('f2'), {
       text: 'with media',

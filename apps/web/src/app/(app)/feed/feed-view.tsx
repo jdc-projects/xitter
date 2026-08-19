@@ -89,11 +89,13 @@ export function FeedView({ initialEntries, initialCursor, viewerId }: FeedViewPr
       ) : (
         <>
           <Stack gap="md" data-testid="feed-timeline">
-            {entries.map(({ post, author }) => (
+            {entries.map(({ post, author, repostedBy, viewer }) => (
               <PostListItem
                 key={post.id}
                 post={post}
                 author={author}
+                viewer={viewer}
+                repostedBy={repostedBy}
                 canDelete={post.authorId === viewerId}
               />
             ))}

@@ -134,6 +134,14 @@ export const feedEntryReasonSchema = z.enum(['post', 'repost']);
 export type FeedEntryReason = z.infer<typeof feedEntryReasonSchema>;
 
 /**
+ * Valkey pub/sub channel that carries ws notifications for one user's feed
+ * (spec 03). Any service may publish to it - the feed gateway is the only
+ * subscriber (pattern `feed:updates:*`). Canonical here so publishers (feed
+ * fan-out, posts interaction pings) cannot drift on the string.
+ */
+export const feedUpdatesChannel = (userId: string): string => `feed:updates:${userId}`;
+
+/**
  * One materialised feed entry as the fanout worker submits it (internal bulk
  * upsert): ids + ordering columns only - post and author payloads are
  * hydrated on read (spec 03/04).
@@ -150,6 +158,24 @@ export const feedEntryInputSchema = z.object({
 
 export type FeedEntryInput = z.infer<typeof feedEntryInputSchema>;
 
+/**
+ * Stable identity of the fanning-out source for one entry (#8 repost
+ * natural key): a post entry is keyed by its post, a repost entry by
+ * (post, reposter) - a post reposted by two users fans out to two distinct
+ * entries per feed and must not collide. Derived, never stored raw in the
+ * wire contract; feed computes/stores it verbatim. Centralised here so the
+ * fanout worker and the feed service can never drift on the string format.
+ */
+export function feedEntryKey(input: {
+  postId: string;
+  reason: FeedEntryReason;
+  repostedById?: string | null;
+}): string {
+  return input.reason === 'repost' && input.repostedById
+    ? `repost:${input.postId}:${input.repostedById}`
+    : `post:${input.postId}`;
+}
+
 export const feedItemSchema = z.object({
   postId: postIdSchema,
   authorId: userIdSchema,
@@ -164,9 +190,26 @@ export type FeedItem = z.infer<typeof feedItemSchema>;
 export const hydratedFeedItemSchema = z.object({
   post: postSchema,
   author: profileSchema,
+  reason: feedEntryReasonSchema,
+  /** Reposter profile for `reason: repost` entries (attribution); else null. */
+  repostedBy: profileSchema.nullable(),
 });
 
 export type HydratedFeedItem = z.infer<typeof hydratedFeedItemSchema>;
+
+/**
+ * The caller's interaction flags for one post (batched viewer state): which
+ * of like/repost/bookmark the viewer already has. Missing ids in the
+ * response mean "no interactions" and default to false on clients.
+ */
+export const postViewerStateSchema = z.object({
+  postId: postIdSchema,
+  liked: z.boolean(),
+  reposted: z.boolean(),
+  bookmarked: z.boolean(),
+});
+
+export type PostViewerState = z.infer<typeof postViewerStateSchema>;
 
 /** WS notification (spec 03): a hint to refetch, never a data channel. */
 export const feedNewItemsMessageSchema = z.object({

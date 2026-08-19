@@ -1,13 +1,16 @@
 import { OpenAPIRegistry, extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
 import {
+  createInteractionRequestSchema,
   createPostRequestSchema,
   errorSchema,
+  interactionSchema,
   postLookupRequestSchema,
   postLookupResponseSchema,
   postIdSchema,
   postSchema,
   userIdSchema,
+  viewerStateResponseSchema,
 } from '@xitter/api-contracts';
 
 extendZodWithOpenApi(z);
@@ -110,6 +113,73 @@ postsApi.registerPath({
   responses: {
     200: jsonResponse('Replies page', postPage),
     404: jsonResponse('Parent not found (or deleted)', errorSchema),
+  },
+});
+
+postsApi.registerPath({
+  method: 'post',
+  path: '/posts/{postId}/interactions',
+  tags: ['interactions'],
+  security: [{ bearerAuth: [] }],
+  description:
+    'Like, bookmark or repost a post. Idempotent on (kind, postId, userId). Rejected 403 when the caller is blocked by the post author (either direction). Reposting a repost reposts the original post - reposts are interactions, not posts, so chains cannot form; reposting your own post is allowed. Likes/reposts bump the post counts read-model and (for others\u2019 posts) ping the author over the feed ws channel without creating feed entries.',
+  request: {
+    params: postParams,
+    body: { content: { 'application/json': { schema: createInteractionRequestSchema } } },
+  },
+  responses: {
+    201: jsonResponse('Interaction (existing row on idempotent repeat)', interactionSchema),
+    400: jsonResponse('Validation error', errorSchema),
+    403: jsonResponse('Blocked from interacting', errorSchema),
+    404: jsonResponse('Post not found (or deleted)', errorSchema),
+  },
+});
+
+postsApi.registerPath({
+  method: 'delete',
+  path: '/posts/{postId}/interactions/{kind}',
+  tags: ['interactions'],
+  security: [{ bearerAuth: [] }],
+  description:
+    'Remove the caller\u2019s own interaction (idempotent 204). An undone repost removes its feed entries everywhere.',
+  request: {
+    params: z.object({ postId: postIdSchema, kind: z.enum(['like', 'bookmark', 'repost']) }),
+  },
+  responses: {
+    204: { description: 'Removed (or nothing to remove)' },
+    400: jsonResponse('Validation error', errorSchema),
+    404: jsonResponse('Post not found', errorSchema),
+  },
+});
+
+postsApi.registerPath({
+  method: 'get',
+  path: '/bookmarks',
+  tags: ['interactions'],
+  security: [{ bearerAuth: [] }],
+  description:
+    "The caller's bookmarked posts, newest bookmark first. Private: only the caller's own bookmarks are ever listed. Soft-deleted posts drop out.",
+  request: { query: pageQuery },
+  responses: {
+    200: jsonResponse('Bookmarks page', postPage),
+  },
+});
+
+postsApi.registerPath({
+  method: 'get',
+  path: '/viewer-state',
+  tags: ['interactions'],
+  security: [{ bearerAuth: [] }],
+  description:
+    "Batched viewer flags for list rendering: the caller's like/repost/bookmark state per post. `postIds` is a single comma-separated query param (1-100 uuids); ids with no interaction are returned with all flags false.",
+  request: {
+    query: z.object({
+      postIds: z.string().min(1).openapi({ example: 'uuid,uuid' }),
+    }),
+  },
+  responses: {
+    200: jsonResponse('Viewer flags per post', viewerStateResponseSchema),
+    400: jsonResponse('Validation error (bad or over-cap postIds)', errorSchema),
   },
 });
 

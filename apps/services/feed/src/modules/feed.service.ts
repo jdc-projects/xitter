@@ -35,7 +35,8 @@ export class FeedService {
   /**
    * Newest-first page. Soft-deleted posts drop out during hydration; the
    * bounded refill keeps walking so a burst of deletions cannot shrink the
-   * page below the requested size while older entries exist.
+   * page below the requested size while older entries exist. Repost entries
+   * hydrate with the reposter's profile (`repostedBy`) for attribution.
    */
   async getFeed(userId: string, page: FeedPageRequest): Promise<FeedPage> {
     assertValidCursor(page.cursor);
@@ -49,7 +50,7 @@ export class FeedService {
     for (let walk = 0; walk < 4 && items.length < limit; walk++) {
       const space = limit - items.length;
       const result = await this.repo.page(userId, cursor, space, blocked);
-      items.push(...(await this.hydrate(result.items)));
+      items.push(...(await this.hydrate(result.items, blocked)));
       cursor = result.nextCursor ?? undefined;
       nextCursor = result.nextCursor;
       if (!result.nextCursor) break;
@@ -78,6 +79,14 @@ export class FeedService {
     return this.repo.deleteByPost(postId).then((deleted) => ({ deleted }));
   }
 
+  /**
+   * Internal (fanout worker): repost undone - only that reposter's repost
+   * entries for the post go (post entries + other reposters' stay).
+   */
+  deleteRepostEntries(postId: string, repostedById: string): Promise<{ deleted: number }> {
+    return this.repo.deleteRepostEntries(postId, repostedById).then((deleted) => ({ deleted }));
+  }
+
   /** Internal (fanout worker): unfollowed - the author leaves this feed. */
   deleteAuthorEntries(userId: string, authorId: string): Promise<{ deleted: number }> {
     return this.repo.deleteByUserAndAuthor(userId, authorId).then((deleted) => ({ deleted }));
@@ -93,17 +102,35 @@ export class FeedService {
     return this.repo.truncate().then((deleted) => ({ deleted }));
   }
 
-  private async hydrate(entries: FeedEntryRow[]): Promise<HydratedFeedItem[]> {
+  private async hydrate(
+    entries: FeedEntryRow[],
+    blockedAuthorIds: string[],
+  ): Promise<HydratedFeedItem[]> {
     if (entries.length === 0) return [];
     const posts = await this.content.posts([...new Set(entries.map((entry) => entry.postId))]);
-    const authorIds = [...new Set(entries.map((entry) => entry.authorId))];
+    const authorIds = [
+      ...new Set(entries.flatMap((entry) => [entry.authorId, entry.repostedById ?? entry.authorId])),
+    ];
     const profiles = await this.content.profiles(authorIds);
+    const blocked = new Set(blockedAuthorIds);
 
     const items: HydratedFeedItem[] = [];
     for (const entry of entries) {
       const post = posts.get(entry.postId);
       if (!post) continue; // deleted since fanout - dropped, not rendered
-      items.push({ post, author: profileOrPlaceholder(entry.authorId, profiles) });
+      // The query filters the surface author (reposter for repost entries);
+      // the ORIGINAL author is only known after hydration - filter there too
+      // (product 7.6: blocked content hidden where feasible).
+      if (blocked.has(post.authorId)) continue;
+      const repostedBy = entry.repostedById ? profiles.get(entry.repostedById) : undefined;
+      items.push({
+        post,
+        author: profileOrPlaceholder(entry.authorId, profiles),
+        reason: entry.reason === 'repost' ? 'repost' : 'post',
+        repostedBy: entry.repostedById
+          ? (repostedBy ?? profileOrPlaceholder(entry.repostedById, profiles))
+          : null,
+      });
     }
     return items;
   }

@@ -137,6 +137,22 @@ describe.skipIf(!hasGeneratedClient)('feed integration (testcontainers postgres)
     };
   }
 
+  function repostInput(
+    userId: string,
+    postId: string,
+    reposterId: string,
+    createdAt: Date,
+  ): FeedEntryInput {
+    return {
+      userId,
+      postId,
+      authorId: reposterId,
+      reason: 'repost',
+      repostedById: reposterId,
+      postCreatedAt: createdAt.toISOString(),
+    };
+  }
+
   it('materialises entries and notifies the affected users', async () => {
     seedPost(uid('e101'), FOLLOWEE, at(10));
     seedPost(uid('e102'), OWNER, at(11));
@@ -235,6 +251,36 @@ describe.skipIf(!hasGeneratedClient)('feed integration (testcontainers postgres)
 
     expect(result).toEqual({ deleted: 2 });
     expect(await db.feedEntry.count({ where: { postId } })).toBe(0);
+  });
+
+  it('keeps two reposters of one post distinct and replays idempotently (#8 key)', async () => {
+    const postId = uid('e411');
+    seedPost(postId, FOLLOWEE, at(7));
+    await service.upsertEntries([entryInput(OWNER, postId, FOLLOWEE, at(7))]);
+
+    // Two different users repost the same post into OWNER's feed.
+    const first = await service.upsertEntries([repostInput(OWNER, postId, FOLLOWEE, at(8))]);
+    const second = await service.upsertEntries([repostInput(OWNER, postId, BLOCKED_AUTHOR, at(9))]);
+
+    // Both repost entries land - the old (userId, postId, reason) key would
+    // have collided and skip-dropped the second.
+    expect(first).toEqual({ inserted: 1 });
+    expect(second).toEqual({ inserted: 1 });
+    expect(await db.feedEntry.count({ where: { userId: OWNER, postId } })).toBe(3);
+
+    // Event replay converges: nothing new, no spurious notify.
+    const before = notified.length;
+    const replay = await service.upsertEntries([repostInput(OWNER, postId, FOLLOWEE, at(8))]);
+    expect(replay).toEqual({ inserted: 0 });
+    expect(notified.length).toBe(before);
+
+    // Undo removes only that reposter's entry.
+    const undo = await service.deleteRepostEntries(postId, FOLLOWEE);
+    expect(undo).toEqual({ deleted: 1 });
+    expect(await db.feedEntry.count({ where: { userId: OWNER, postId } })).toBe(2);
+    expect(
+      await db.feedEntry.count({ where: { userId: OWNER, postId, repostedById: BLOCKED_AUTHOR } }),
+    ).toBe(1);
   });
 
   it('removes only the unfollowed author from the user feed', async () => {

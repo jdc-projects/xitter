@@ -1,7 +1,7 @@
 import type { FeedEntryInput, Post, PostCreated } from '@xitter/api-contracts';
 import { eventSchemas, EVENT_TYPES, type DomainEvent } from '@xitter/events';
 import { createLogger } from '@xitter/observability';
-import { BACKFILL_POSTS, entriesForBackfill, entriesForNewPost } from './entries.js';
+import { BACKFILL_POSTS, entriesForBackfill, entriesForNewPost, entriesForRepost } from './entries.js';
 
 const logger = createLogger({ service: 'fanout-worker' });
 
@@ -34,6 +34,7 @@ export interface FeedApi {
   internalUpsertEntries(entries: FeedEntryInput[]): Promise<{ inserted: number }>;
   internalDeletePostEntries(postId: string): Promise<{ deleted: number }>;
   internalDeleteAuthorEntries(userId: string, authorId: string): Promise<{ deleted: number }>;
+  internalDeleteRepostEntries(postId: string, repostedById: string): Promise<{ deleted: number }>;
 }
 
 export interface HandlerDeps {
@@ -50,6 +51,11 @@ export interface HandlerDeps {
  *   follower's feed;
  * - `posts.post.deleted` → the post leaves every feed;
  * - `social.follow.deleted` → the followee's entries leave the follower's feed;
+ * - `posts.interaction.created` (kind=repost) → repost entries attributed to
+ *   the reposter land in their followers' feeds (#8);
+ * - `posts.interaction.deleted` (kind=repost) → those entries leave;
+ * - like/bookmark interactions are not feed concerns (the author ws ping is
+ *   published synchronously by the posts service);
  * - block events are not consumed (product decision: history stays).
  *
  * Payloads validate against the shared event schemas at this boundary;
@@ -71,6 +77,26 @@ export async function handleEvent(envelope: unknown, deps: HandlerDeps): Promise
       // would otherwise 400 and the redelivery would stall this partition.
       await upsertInBatches(deps.feed, entriesForNewPost(event, followerIds));
       logger.info({ postId: event.postId, recipients: followerIds.length + 1 }, 'post fanned out');
+      return;
+    }
+    case EVENT_TYPES.interactionCreated: {
+      const event = parseEvent(eventType, payload);
+      if (!event || event.eventType !== EVENT_TYPES.interactionCreated) return;
+      if (event.kind !== 'repost') return; // likes/bookmarks: no feed entries
+      const followerIds = await deps.social.internalFollowerIds(event.userId);
+      await upsertInBatches(deps.feed, entriesForRepost(event, followerIds));
+      logger.info(
+        { postId: event.postId, repostedById: event.userId, recipients: followerIds.length + 1 },
+        'repost fanned out',
+      );
+      return;
+    }
+    case EVENT_TYPES.interactionDeleted: {
+      const event = parseEvent(eventType, payload);
+      if (!event || event.eventType !== EVENT_TYPES.interactionDeleted) return;
+      if (event.kind !== 'repost') return;
+      await deps.feed.internalDeleteRepostEntries(event.postId, event.userId);
+      logger.info({ postId: event.postId, repostedById: event.userId }, 'repost entries removed');
       return;
     }
     case EVENT_TYPES.followCreated: {
@@ -104,7 +130,7 @@ export async function handleEvent(envelope: unknown, deps: HandlerDeps): Promise
       return;
     }
     default:
-      return; // interaction/block/profile events are not feed concerns
+      return; // like/bookmark interactions, blocks, profiles: not feed concerns
   }
 }
 

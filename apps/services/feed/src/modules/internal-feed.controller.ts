@@ -39,6 +39,16 @@ export class InternalFeedController {
     return this.feed.deletePostEntries(postId);
   }
 
+  /** Repost undone: only that reposter's repost entries go (#8). */
+  @Delete('feed/posts/:postId/reposts/:repostedById')
+  @Internal()
+  deleteRepostEntries(
+    @Param('postId', postParam) postId: string,
+    @Param('repostedById', uuidParam) repostedById: string,
+  ) {
+    return this.feed.deleteRepostEntries(postId, repostedById);
+  }
+
   /** Unfollowed: the author's entries leave this one feed. */
   @Delete('feed/users/:userId/authors/:authorId')
   @Internal()

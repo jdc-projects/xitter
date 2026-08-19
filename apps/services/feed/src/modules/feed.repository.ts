@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { FeedEntryInput } from '@xitter/api-contracts';
+import { feedEntryKey, type FeedEntryInput } from '@xitter/api-contracts';
 import { decodeCursor, encodeCursor } from '@xitter/service-kit';
 import type { PrismaClient, Prisma } from '../generated/prisma/client.js';
 
@@ -33,22 +33,36 @@ export class FeedRepository {
 
   /**
    * Bulk idempotent insert (spec 04 natural-key rule): conflicts on
-   * (userId, postId, reason) are skipped, so event replays converge.
-   * repostedById is deliberately NOT part of the key - a nullable member
-   * would defeat idempotency for every reason='post' replay (Postgres
-   * treats NULLs as distinct); schema.prisma documents the #8 refinement.
-   * Returns the number of rows actually inserted.
+   * (userId, entryKey) are skipped, so event replays converge. entryKey is
+   * the derived source identity (`post:{postId}` / `repost:{postId}:
+   * {repostedById}`, api-contracts feedEntryKey) - repostedById cannot join a
+   * unique index directly because it is NULL for reason='post' rows and
+   * Postgres treats NULLs as distinct. Returns the number of rows actually
+   * inserted.
    */
   upsertEntries(entries: NewFeedEntry[]): Promise<number> {
     if (entries.length === 0) return Promise.resolve(0);
     return this.db.feedEntry
-      .createMany({ data: entries, skipDuplicates: true })
+      .createMany({
+        data: entries.map((entry) => ({ ...entry, entryKey: keyOf(entry) })),
+        skipDuplicates: true,
+      })
       .then((result) => result.count);
   }
 
-  /** Post deleted: the post leaves every feed. */
+  /** Post deleted: every entry for the post (posts AND reposts) leaves every feed. */
   deleteByPost(postId: string): Promise<number> {
     return this.db.feedEntry.deleteMany({ where: { postId } }).then((r) => r.count);
+  }
+
+  /**
+   * Repost undone (#8): only that reposter's repost entries for the post go -
+   * the post's own entries and other users' reposts stay.
+   */
+  deleteRepostEntries(postId: string, repostedById: string): Promise<number> {
+    return this.db.feedEntry
+      .deleteMany({ where: { postId, reason: 'repost', repostedById } })
+      .then((r) => r.count);
   }
 
   /** Unfollowed: the author's entries leave this one feed. */
@@ -116,4 +130,12 @@ export class FeedRepository {
       postCreatedAt: new Date(input.postCreatedAt),
     };
   }
+}
+
+function keyOf(entry: Pick<NewFeedEntry, 'postId' | 'reason' | 'repostedById'>): string {
+  return feedEntryKey({
+    postId: entry.postId,
+    reason: entry.reason === 'repost' ? 'repost' : 'post',
+    repostedById: entry.repostedById,
+  });
 }

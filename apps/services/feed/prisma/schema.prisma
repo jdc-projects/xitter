@@ -18,14 +18,21 @@ model FeedEntry {
   authorId      String
   reason        String // post | repost
   repostedById  String?
+  /// Stable identity of the source event for this row: `post:{postId}` or
+  /// `repost:{postId}:{repostedById}`. A post reposted by two users must fan
+  /// out to TWO distinct entries per feed - (userId, postId) alone would
+  /// collide. Derived upstream (api-contracts feedEntryKey) so every writer
+  /// computes the same string; NOT NULL and always set (no NULL-distinct
+  /// unique-index hole).
+  entryKey      String
   postCreatedAt DateTime
   insertedAt    DateTime @default(now())
 
-  // Natural key (spec 04 idempotency): event replays converge. repostedById
-  // is deliberately OUT of the key - Postgres treats NULLs as distinct in
-  // unique indexes, so a nullable column would defeat the constraint for
-  // reason = 'post' rows. #8 refines the repost key when reposts land.
-  @@unique([userId, postId, reason])
+  // Natural key (spec 04 idempotency): event replays converge on the
+  // entryKey. See #25's PR + spec 01: the earlier key (userId, postId,
+  // reason) broke once reposts landed - two different reposters of the same
+  // post collided and the second entry was silently dropped (skipDuplicates).
+  @@unique([userId, entryKey])
   @@index([userId, postCreatedAt(sort: Desc), id(sort: Desc)])
   @@index([postId])
   @@index([userId, authorId])

@@ -19,6 +19,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <Text component="a" href="/feed" size="sm" c="dimmed" inherit>
             Feed
           </Text>
+          {session ? (
+            <Text component="a" href="/bookmarks" size="sm" c="dimmed" inherit>
+              Bookmarks
+            </Text>
+          ) : null}
         </Group>
         {session ? (
           <Group gap="sm">
