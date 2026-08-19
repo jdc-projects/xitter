@@ -13,7 +13,7 @@ interface LandingPageProps {
 export default async function LandingPage({ searchParams }: LandingPageProps) {
   const previewId = await resolvePreviewId(searchParams);
 
-  // Preview renders are per-request (drafts, auth-gated, never cached).
+  // Preview renders are per-request (drafts, uncached - spec 04 exposure).
   if (previewId !== undefined) await connection();
   const entries = await loadLandingContent({ draft: previewId !== undefined });
 

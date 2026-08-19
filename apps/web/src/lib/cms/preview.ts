@@ -2,7 +2,8 @@
  * Shared landing/About preview-param handling (Payload live preview).
  *
  * Both pages accept `?preview=<docId>`: present means render the DRAFT
- * (auth-gated, uncached); absent means the cached published copy. Extracted
+ * (uncached; an accepted-exposure preview link - see spec 04); absent means
+ * the cached published copy. Extracted
  * because the two pages otherwise duplicated the parsing.
  */
 export async function resolvePreviewId(

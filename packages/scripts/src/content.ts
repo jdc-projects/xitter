@@ -94,9 +94,16 @@ async function listExisting(
   collection: 'landing-content' | 'faq',
   token: string,
   fetchImpl: typeof fetch,
+  purpose: 'export' | 'apply',
 ): Promise<Array<{ id: number; slug?: string }>> {
+  // Export must ship published copy only: Payload's main table also holds
+  // never-published rows, and an admin's draft-only save would otherwise be
+  // promoted to every environment (and the nightly reseed) as if published.
+  // Apply deliberately lists drafts too - it PATCHes existing docs whatever
+  // their state rather than duplicating them.
+  const where = purpose === 'export' ? '&where[_status][equals]=published' : '';
   const json = (await api(
-    `/cms/api/${collection}?limit=100&depth=0&sort=order`,
+    `/cms/api/${collection}?limit=100&depth=0&sort=order${where}`,
     {},
     token,
     fetchImpl,
@@ -114,7 +121,7 @@ async function upsertCollection(
   fetchImpl: typeof fetch,
 ): Promise<ContentApplyResult> {
   const existing = new Map(
-    (await listExisting(collection, token, fetchImpl))
+    (await listExisting(collection, token, fetchImpl, 'apply'))
       .filter((doc) => doc.slug)
       .map((doc) => [doc.slug as string, doc.id]),
   );
@@ -196,8 +203,8 @@ export async function exportCmsContent(
   const targetDir = options.targetDir ?? CONTENT_DIR;
   const token = await cmsToken(options.fetchImpl).get();
 
-  const landing = (await listExisting('landing-content', token, doFetch)).slice();
-  const faq = (await listExisting('faq', token, doFetch)).slice();
+  const landing = (await listExisting('landing-content', token, doFetch, 'export')).slice();
+  const faq = (await listExisting('faq', token, doFetch, 'export')).slice();
 
   const landingJson = landing.map((doc) => doc as unknown as ExportDoc);
   const faqJson = faq.map((doc) => doc as unknown as ExportDoc);

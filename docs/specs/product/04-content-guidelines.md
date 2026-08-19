@@ -19,7 +19,7 @@ The web app SSR-fetches landing intro and FAQ entries from the Payload REST API 
 
 - **Hardcoded code fallbacks** whenever the CMS is unreachable, erroring, or empty — the landing and About pages must never fail because the CMS is down (demo resilience beats freshness).
 - **Caching**: published content rides the Next data cache with a short revalidate + tags; draft renders (`?preview=` param, live preview) are per-request and never cached.
-- **Drafts are auth-gated**: published content is world-readable; `?draft=true` requires an authenticated CMS principal (admin browser session or the `cms` service client).
+- **Draft access**: the CMS API itself gates `?draft=true` behind an authenticated CMS principal (admin session or the `cms` service client). The web's preview URL is deliberately **not** further gated (accepted exposure, demo threat model): anyone holding a `?preview=` link can read the current drafts of site copy (pre-publication marketing/FAQ text only — no user data). Never publish sensitive copy through the CMS drafts.
 
 ## Tone
 

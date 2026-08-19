@@ -21,6 +21,35 @@ export const Users: CollectionConfig = {
   auth: {
     depth: 0,
     strategies: [createKeycloakStrategy()],
+    // Payload mounts /first-register on every auth collection; with
+    // overrideAccess it would let an anonymous caller create the first
+    // admin whenever the users table is empty (fresh stack, or nightly
+    // after truncation until reseed). Closed two ways: the sentinel user
+    // seeded by scripts/db-push.ts (its empty-table check then refuses)
+    // and the beforeOperation hook below.
+  },
+  hooks: {
+    beforeOperation: [
+      // Belt to the sentinel user's braces: refuse the registerFirstUser
+      // operation outright (Payload mounts /first-register on every auth
+      // collection regardless of disableSignup; hooks see it as 'create',
+      // but its args lack our bridge's sub/roles shape - the sentinel user
+      // makes the endpoint refuse anyway via its empty-table check).
+      ({ args }) => {
+        const data = (args as { data?: Record<string, unknown> }).data;
+        if (
+          data &&
+          !('sub' in data) &&
+          typeof data.email === 'string' &&
+          'password' in data &&
+          !('roles' in data)
+        ) {
+          // Only the registerFirstUser path can reach a users create
+          // without a sub (the Keycloak bridge always sets one).
+          throw new Error('first-user registration is disabled');
+        }
+      },
+    ],
   },
   access: {
     read: ({ req }) => Boolean(req.user),

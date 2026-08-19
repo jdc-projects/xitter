@@ -16,10 +16,13 @@ const FLOW_COOKIE_PREFIX = 'xitter_cms_oidc_';
 const SESSION_SECONDS = 7200;
 
 function failurePage(origin: string, body: string, status: number): NextResponse {
+  // The origin is request-derived (host/x-forwarded-host) - escape it so a
+  // hostile Host can't inject markup into the error page.
+  const safeOrigin = origin.replace(/[^a-zA-Z0-9.:/-]/g, '');
   return new NextResponse(
     `<!doctype html><html><body style="font-family: system-ui; padding: 2rem;">
       <h1>Sign-in failed</h1><p>${body}</p>
-      <p><a href="${origin}/cms/admin">Try again</a></p>
+      <p><a href="${safeOrigin}/cms/admin">Try again</a></p>
     </body></html>`,
     { status, headers: { 'content-type': 'text/html; charset=utf-8' } },
   );
@@ -116,7 +119,9 @@ export async function GET(request: NextRequest) {
       });
     }
     for (const name of ['state', 'nonce', 'verifier', 'return']) {
-      response.cookies.delete(`${FLOW_COOKIE_PREFIX}${name}`);
+      // Path must match the set cookies (/cms) or the browser keeps them
+      // until their 600s TTL instead of expiring now.
+      response.cookies.delete({ name: `${FLOW_COOKIE_PREFIX}${name}`, path: '/cms' });
     }
     return response;
   } catch (err) {

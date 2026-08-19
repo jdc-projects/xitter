@@ -31,3 +31,8 @@ export function isEphemeralEnv(): boolean {
 if (env.PAYLOAD_SECRET === 'xitter-local-cms-secret' && !isEphemeralEnv()) {
   throw new Error('PAYLOAD_SECRET must be set in deployed environments');
 }
+// Same guard for the OIDC/machine credential: a deployed CMS must not accept
+// the repo-committed local secret as its admin-realm identity.
+if (env.CMS_CLIENT_SECRET === 'cms-local-secret' && !isEphemeralEnv()) {
+  throw new Error('CMS_CLIENT_SECRET must be set in deployed environments');
+}

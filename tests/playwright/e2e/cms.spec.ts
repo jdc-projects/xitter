@@ -107,6 +107,19 @@ test('published CMS content is public; drafts require an admin token', async ({ 
   expect(authedDraft.ok()).toBeTruthy();
 });
 
+test('first-register is permanently closed (no anonymous bootstrap takeover)', async ({
+  request,
+}) => {
+  // Payload mounts /first-register on every auth collection; with no local
+  // auth strategy it must refuse even while the users table is empty
+  // (fresh stack / nightly truncation window).
+  const res = await request.post('/cms/api/users/first-register', {
+    data: { email: 'attacker@example.com', password: 'Takeover123!' },
+  });
+  expect([403, 404]).toContain(res.status());
+  expect(res.status()).not.toBe(200);
+});
+
 test('CMS admin login requires the app-admin role', async ({ page }) => {
   await page.goto('/cms/admin');
   // Middleware redirects unauthenticated visits to the admin realm.

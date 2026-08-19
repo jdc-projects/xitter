@@ -20,6 +20,8 @@ interface FakeDoc {
   answer?: string;
   intro?: string;
   order?: number;
+  /** Draft-only docs (never published) - the export filter must drop them. */
+  _status?: string;
 }
 
 /**
@@ -45,7 +47,16 @@ function fakeCms(docs: Record<'landing-content' | 'faq', FakeDoc[]>) {
       }
       const list = target.match(/\/cms\/api\/(landing-content|faq)(\?|$)/);
       if (list && list[1]) {
-        return new Response(JSON.stringify({ docs: docs[list[1] as 'landing-content'] ?? [] }));
+        const all = docs[list[1] as 'landing-content'] ?? [];
+        // Honour the published-only filter the way Payload does, so tests
+        // can prove draft rows never ride an export.
+        const wantsPublished = decodeURIComponent(target).includes(
+          'where[_status][equals]=published',
+        );
+        const filtered = wantsPublished
+          ? all.filter((doc) => (doc as { _status?: string })._status !== 'draft')
+          : all;
+        return new Response(JSON.stringify({ docs: filtered }));
       }
       // POST/PATCH against collection paths: accept.
       if (method === 'POST' || method === 'PATCH') {
@@ -130,6 +141,35 @@ describe('content promotion', () => {
       const first = readFileSync(join(dir, 'faq.json'), 'utf8');
       await exportCmsContent({ fetchImpl, targetDir: dir });
       expect(readFileSync(join(dir, 'faq.json'), 'utf8')).toBe(first);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('export lists published docs only - a saved draft must not be promoted', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'xitter-content-test-'));
+    try {
+      const { fetchImpl, calls } = fakeCms({
+        'landing-content': [
+          { id: 1, slug: 'a', title: 'A', intro: 'i', order: 0 },
+          // Saved as draft-only: never published, must not ship.
+          { id: 2, slug: 'b', title: 'B draft', intro: 'i', order: 1, _status: 'draft' },
+        ],
+        faq: [],
+      });
+      await exportCmsContent({ fetchImpl, targetDir: dir });
+
+      const landing = JSON.parse(readFileSync(join(dir, 'landing-content.json'), 'utf8')) as Array<{
+        slug: string;
+      }>;
+      expect(landing.map((e) => e.slug)).toEqual(['a']);
+      const listUrls = calls.filter((c) => c.url.includes('/cms/api/')).map((c) => c.url);
+      expect(listUrls.length).toBeGreaterThan(0);
+      expect(
+        listUrls.every((url) =>
+          decodeURIComponent(url).includes('where[_status][equals]=published'),
+        ),
+      ).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

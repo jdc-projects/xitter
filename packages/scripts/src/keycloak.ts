@@ -91,12 +91,15 @@ async function ensureClient(
   const clients = await kc.clients.find({ realm, clientId });
   const existing = clients[0]?.id;
   if (existing) {
-    console.log(`client ${realm}/${clientId}: exists`);
+    // Upsert, not exists: a volume bootstrapped before this config may hold
+    // an older shape (e.g. a cms client without a service account) - a
+    // plain exists-return would leave bootstrap broken for that stack.
+    await kc.clients.update({ realm, id: existing }, clientPayload(realm, clientId, options));
+    console.log(`client ${realm}/${clientId}: exists (synced)`);
     return existing;
   }
 
-  const payload = clientPayload(realm, clientId, options);
-  const created = await kc.clients.create(payload);
+  const created = await kc.clients.create(clientPayload(realm, clientId, options));
   console.log(`client ${realm}/${clientId}: created`);
   return created.id;
 }
