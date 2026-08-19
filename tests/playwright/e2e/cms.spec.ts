@@ -7,21 +7,23 @@ import { envString, findRepoRoot, loadRepoEnv, localPort, localUrl } from '@xitt
  * drafts are auth-gated, and admin-panel login is role-gated (spec 04 + 07).
  */
 
-// Idempotent: upsert the committed content files into the running CMS.
-// The suite's webServer probes the WEB port, which is ready long before the
-// CMS finishes booting - wait for it (bounded) before applying content.
+// Idempotent: upsert the committed content files into the running CMS, then
+// drop the web app's published-content cache (other tests may have rendered
+// the fallback copy first, and the data cache would serve it for 60s).
+// The suite's webServer probes the WEB port, ready long before the CMS
+// finishes booting - wait for it (bounded) before applying content.
 test.beforeAll(async () => {
   loadRepoEnv();
-  const cms = `${envString('XITTER_CMS_URL', localUrl('cms'))}/cms/healthz`;
+  const cmsUrl = envString('XITTER_CMS_URL', localUrl('cms'));
   const deadline = Date.now() + 120_000;
   for (;;) {
     try {
-      const res = await fetch(cms);
+      const res = await fetch(`${cmsUrl}/cms/healthz`);
       if (res.ok) break;
     } catch {
       /* retry */
     }
-    if (Date.now() > deadline) throw new Error(`CMS never became healthy at ${cms}`);
+    if (Date.now() > deadline) throw new Error(`CMS never became healthy at ${cmsUrl}`);
     await new Promise((r) => setTimeout(r, 1_000));
   }
 
@@ -30,6 +32,30 @@ test.beforeAll(async () => {
     cwd: repoRoot,
     stdio: 'pipe',
   });
+
+  // Mint the machine token the revalidate route requires (same principal the
+  // CMS authenticates) and refresh the web app's CMS cache tags.
+  const tokenRes = await fetch(
+    `${envString('XITTER_KEYCLOAK_URL', localUrl('keycloak'))}/realms/${envString(
+      'XITTER_ADMIN_REALM',
+      'xitter-local-admin',
+    )}/protocol/openid-connect/token`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: envString('XITTER_CMS_CLIENT_ID', 'cms'),
+        client_secret: envString('XITTER_CMS_CLIENT_SECRET', 'cms-local-secret'),
+      }),
+    },
+  );
+  const { access_token: accessToken } = (await tokenRes.json()) as { access_token: string };
+  const revalidated = await fetch(
+    `${envString('XITTER_WEB_BASE_URL', localUrl('edge'))}/api/cms/revalidate`,
+    { method: 'POST', headers: { authorization: `Bearer ${accessToken}` } },
+  );
+  expect(revalidated.ok).toBeTruthy();
 });
 
 test('landing page renders CMS copy', async ({ page }) => {

@@ -64,6 +64,13 @@ export function cmsEnv() {
   };
 }
 
+/** Data-cache tags for published CMS content (see /api/cms/revalidate). */
+export const CMS_CACHE_TAGS = ['cms-landing-content', 'cms-faq'] as const;
+
+export function adminRealmIssuer(): string {
+  return `${cmsEnv().keycloakBaseUrl.replace(/\/$/, '')}/realms/${cmsEnv().adminRealm}`;
+}
+
 export interface CmsFetchOptions {
   /** Fetch the latest draft (live preview) instead of published content. */
   draft?: boolean;
@@ -128,8 +135,7 @@ async function fetchDocs(
     signal: AbortSignal.timeout(10_000),
     // Published content rides the Next data cache (ISR-shaped); draft
     // previews are per-request and never cached.
-    ...(options.draft ? {} : { next: { revalidate: 60, tags: [`cms-${collection}`] } }),
-  });
+    ...(options.draft ? {} : { next: { revalidate: 60, tags: [`cms-${collection}`] } }),  });
   if (!res.ok) throw new Error(`CMS ${collection} responded ${res.status}`);
   const json = (await res.json()) as { docs?: PayloadDoc[] };
   return Array.isArray(json.docs) ? json.docs : [];
