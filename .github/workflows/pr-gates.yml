@@ -90,6 +90,7 @@ jobs:
   playwright-web:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
@@ -117,6 +118,7 @@ jobs:
     # specs cover public pages only; grows with each feature ticket.
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup

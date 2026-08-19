@@ -94,7 +94,9 @@ async function ensureClient(
     // Upsert, not exists: a volume bootstrapped before this config may hold
     // an older shape (e.g. a cms client without a service account) - a
     // plain exists-return would leave bootstrap broken for that stack.
-    await kc.clients.update({ realm, id: existing }, clientPayload(realm, clientId, options));
+    // Update rejects realm-in-body (create-only field), so strip it.
+    const { realm: _realm, ...update } = clientPayload(realm, clientId, options);
+    await kc.clients.update({ realm, id: existing }, update);
     console.log(`client ${realm}/${clientId}: exists (synced)`);
     return existing;
   }

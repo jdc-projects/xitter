@@ -33,5 +33,12 @@ runs:
 
     - name: Install Playwright chromium
       if: inputs.playwright == 'true'
-      run: npm run test:install
+      # The --with-deps apt fetch (Google's chrome repo) has stalled for
+      # 30m+ with no output; retry once and hard-cap both attempts. A
+      # failure here fails the job loudly instead of hanging the PR.
+      run: |
+        npm run test:install --if-present && exit 0
+        echo "first install attempt failed - retrying once"
+        npm run test:install
       shell: bash
+      timeout-minutes: 10
