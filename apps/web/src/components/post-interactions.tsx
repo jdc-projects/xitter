@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 import { Alert } from '@mantine/core';
-import { PostCard, type PostCardInteractionKind, type PostCardViewer } from '@xitter/ui';
+import type { PostCardInteractionKind, PostCardViewer } from '@xitter/ui';
 import { interactAction } from '@/lib/posts/actions';
 
 export interface InteractionState {

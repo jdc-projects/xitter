@@ -5,7 +5,7 @@ import {
   SocialClient,
   localServiceUrls,
 } from '@xitter/api-client';
-import type { Post, PostViewerState, Profile } from '@xitter/api-contracts';
+import type { PostViewerState, Profile } from '@xitter/api-contracts';
 import { getSession, type Session } from '@/lib/auth/session';
 
 /**

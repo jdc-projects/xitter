@@ -4,8 +4,6 @@ import {
   errorSchema,
   hydratedFeedItemSchema,
   postIdSchema,
-  postSchema,
-  profileSchema,
   upsertFeedEntriesRequestSchema,
   upsertFeedEntriesResponseSchema,
   userIdSchema,

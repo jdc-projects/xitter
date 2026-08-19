@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { InteractionKind, MediaAsset, Post } from '@xitter/api-contracts';
+import type { InteractionKind, MediaAsset } from '@xitter/api-contracts';
 import { encodeCursor, decodeCursor } from '@xitter/service-kit';
 import type { PrismaClient, Prisma } from '../generated/prisma/client.js';
 
