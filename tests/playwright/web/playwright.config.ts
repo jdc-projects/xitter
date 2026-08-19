@@ -13,6 +13,9 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   use: {
     baseURL,
+    // XITTER_BROWSER_PATH opts out of the Playwright download (CI ships
+    // Chrome preinstalled; the CDN has stalled for hours at a time).
+    executablePath: process.env.XITTER_BROWSER_PATH || undefined,
     // Deterministic clocks where the app supports them; component-level time
     // assertions happen in unit tests.
   },

@@ -7,12 +7,18 @@ loadRepoEnv();
 
 const baseURL = process.env.E2E_BASE_URL ?? `http://localhost:${localPort('edge')}`;
 
+// XITTER_BROWSER_PATH opts out of the Playwright download entirely (CI
+// runners ship Chrome preinstalled; the CDN download has stalled for hours
+// at a time). Same engine family, so test semantics are unchanged.
+const executablePath = process.env.XITTER_BROWSER_PATH || undefined;
+
 export default defineConfig({
   testDir: '.',
   timeout: 60_000,
   retries: process.env.CI ? 1 : 0,
   use: {
     baseURL,
+    executablePath,
     trace: 'retain-on-failure',
     video: 'retain-on-failure',
   },
