@@ -50,7 +50,14 @@ export class SearchService {
     const blocked = await this.content.blockedAuthorIds(userId);
 
     const items: HydratedFeedItem[] = [];
-    let after = decodeCursor(page.cursor);
+    // Cursor position = (createdAt, postId) keyset, carried through the
+    // service-kit {createdAt, id} shape (id = postId here).
+    let after = (() => {
+      const position = page.cursor ? decodeCursor(page.cursor) : null;
+      return position
+        ? { createdAt: position.createdAt, postId: position.id }
+        : null;
+    })();
     let nextCursor: string | null = null;
     for (let walk = 0; walk < MAX_WALKS && items.length < limit; walk++) {
       const space = limit - items.length;
@@ -63,7 +70,10 @@ export class SearchService {
       items.push(...(await this.hydrate(result.hits)));
       after = result.nextAfter;
       nextCursor = result.nextAfter
-        ? encodeCursor({ createdAt: result.nextAfter.createdAt, id: result.nextAfter.postId })
+        ? encodeCursor({
+            createdAt: new Date(result.nextAfter.createdAt),
+            id: result.nextAfter.postId,
+          })
         : null;
       if (!result.nextAfter) break;
     }

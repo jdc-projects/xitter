@@ -73,7 +73,7 @@ searchApi.registerPath({
   tags: ['internal'],
   security: [{ serviceToken: [] }],
   description:
-    'Refresh the denormalised authorName on an author's documents (social.profile.updated keeps the index self-contained).',
+    "Refresh the denormalised authorName on an author's documents (social.profile.updated keeps the index self-contained).",
   request: {
     body: { content: { 'application/json': { schema: refreshSearchAuthorsRequestSchema } } },
   },
@@ -98,7 +98,7 @@ searchApi.registerPath({
   tags: ['internal'],
   security: [{ serviceToken: [] }],
   description:
-    'Persist the worker's last processed Kafka position (durable resume cursor - consumer groups die with the nightly reset).',
+    "Persist the worker's last processed Kafka position (durable resume cursor - consumer groups die with the nightly reset).",
   request: {
     body: { content: { 'application/json': { schema: searchCheckpointPutRequestSchema } } },
   },

@@ -56,11 +56,8 @@ export async function handleEvent(
   raw: EachMessagePayload | undefined,
   deps: HandlerDeps,
 ): Promise<void> {
-  try {
-    await dispatch(envelope, deps);
-  } finally {
-    await checkpoint(envelope, raw, deps);
-  }
+  await dispatch(envelope, deps);
+  await checkpoint(envelope, raw, deps);
 }
 
 async function dispatch(envelope: unknown, deps: HandlerDeps): Promise<void> {
@@ -98,10 +95,11 @@ async function dispatch(envelope: unknown, deps: HandlerDeps): Promise<void> {
 }
 
 /**
- * Durable resume position: written after every processed message (even
- * non-actionable ones - otherwise a wiped group replays noise). On failure
- * the error propagates, the offset never commits and the message
- * redelivers - the checkpoint must never advance past unprocessed work.
+ * Durable resume position: written after the side effect SUCCEEDS (any
+ * message, even non-actionable ones - otherwise a wiped group replays
+ * noise). Any failure propagates: neither the checkpoint nor the Kafka
+ * offset advances, so the message redelivers - the checkpoint must never
+ * point past unprocessed work.
  */
 async function checkpoint(
   envelope: unknown,

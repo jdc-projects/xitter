@@ -58,6 +58,24 @@ export function createEventConsumer(options: EventConsumerOptions): EventConsume
   return {
     consumer,
     async run(handler, runOptions) {
+      if (runOptions?.resumeFrom && runOptions.resumeFrom.size > 0) {
+        // Seeks must land after assignment but before the first fetch.
+        // GROUP_JOIN is emitted inside joinAndSync - before the runner
+        // schedules its fetch manager - so seeks registered here apply to
+        // the very first fetch of each assigned partition. Stale map
+        // entries for partitions we no longer hold are ignored (seeks are
+        // keyed per topic-partition and consumed on first fetch).
+        consumer.on(consumer.events.GROUP_JOIN, (event) => {
+          for (const [topic, partitions] of Object.entries(event.payload.memberAssignment)) {
+            for (const partition of partitions) {
+              const nextOffset = runOptions.resumeFrom?.get(`${topic}:${partition}`);
+              if (nextOffset !== undefined) {
+                consumer.seek({ topic, partition, offset: String(nextOffset) });
+              }
+            }
+          }
+        });
+      }
       await consumer.connect();
       for (const topic of options.topics) {
         await consumer.subscribe({
@@ -81,16 +99,6 @@ export function createEventConsumer(options: EventConsumerOptions): EventConsume
             return;
           }
           await handler(envelope, payload);
-        },
-        // Checkpoint seeks must land after assignment but before the first
-        // fetch of each partition - partitionsAssigned is exactly that hook.
-        partitionsAssigned: async (assignment) => {
-          for (const { topic, partition } of assignment) {
-            const nextOffset = runOptions?.resumeFrom?.get(`${topic}:${partition}`);
-            if (nextOffset !== undefined) {
-              consumer.seek({ topic, partition, offset: String(nextOffset) });
-            }
-          }
         },
       });
     },

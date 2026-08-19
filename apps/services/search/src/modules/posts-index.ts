@@ -105,23 +105,27 @@ export class PostsIndex implements OnModuleInit {
       conflicts: 'proceed',
       refresh: true,
     });
-    return result.body.updated ?? 0;
+    // wait_for_completion=true (default) returns the sync body; the typed
+    // union also allows the async { task } shape, which never occurs here.
+    const body = result.body as { updated?: number };
+    return body.updated ?? 0;
   }
 
   /** Keyset-paginated full-text search, newest first on (createdAt, postId). */
   async search(options: SearchOptions): Promise<SearchOutcome> {
     const body = buildSearchBody(options);
-    let result: Awaited<ReturnType<Client['search']>>;
-    try {
-      result = await this.client.search({ index: POSTS_INDEX, body });
-    } catch (err) {
-      // A missing index reads as "no results yet" (cold start after a
-      // reset), not as an outage - the boot path or first write recreates it.
-      if (isIndexMissing(err)) return { hits: [], nextAfter: null };
-      throw err;
-    }
+    const result = await this.client
+      .search({ index: POSTS_INDEX, body })
+      .catch((err: unknown) => {
+        // A missing index reads as "no results yet" (cold start after a
+        // reset), not as an outage - the boot path or first write recreates it.
+        if (isIndexMissing(err)) return null;
+        throw err;
+      });
+    if (!result) return { hits: [], nextAfter: null };
 
-    const hitsRaw = (result.body.hits?.hits ?? []) as Array<{
+    const hitsRaw = ((result.body as { hits?: { hits?: unknown[] } }).hits?.hits ??
+      []) as Array<{
       _id: string;
       _source: { authorId: string; createdAt: string };
     }>;
@@ -144,7 +148,8 @@ export class PostsIndex implements OnModuleInit {
       body: { query: { match_all: {} } },
       refresh: true,
     });
-    return result.body.deleted ?? 0;
+    const body = result.body as { deleted?: number };
+    return body.deleted ?? 0;
   }
 
   async close(): Promise<void> {

@@ -14,6 +14,7 @@ import {
   profileSchema,
   profileWithCountsSchema,
   relationshipSchema,
+  searchCheckpointPositionSchema,
   type createPostRequestSchema,
   type createProfileRequestSchema,
   type updateProfileRequestSchema,
@@ -317,14 +318,12 @@ export class SearchClient extends ServiceClient {
   }
 
   /** Internal (search-index worker boot): resume positions for a consumer. */
-  // fallow-ignore-next-line unused-class-member -- consumed via the search-index worker's checkpoint seam (apps/workers/search-index/src/checkpoints.ts)
+  // fallow-ignore-next-line unused-class-member -- consumed via the search-index worker's checkpoint seam (apps/workers/search-index/src/main.ts)
   internalGetCheckpoints(
     consumerKey: string,
   ): Promise<{ positions: SearchCheckpointPosition[] }> {
     return this.get(`${V1}/search/internal/search/checkpoint`, { consumerKey }).then((r) =>
-      z.object({ positions: z.array(z.object({ topicPartition: z.string(), offset: z.number() })) })
-        .passthrough()
-        .parse(r),
+      z.object({ positions: z.array(searchCheckpointPositionSchema) }).parse(r),
     );
   }
 }
