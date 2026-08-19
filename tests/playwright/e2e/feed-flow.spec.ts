@@ -89,8 +89,17 @@ test('following an account backfills their recent posts into the feed', async ({
   await expect(page.getByTestId('unfollow-button')).toBeVisible();
 
   // Backfill runs asynchronously (follow event -> fanout worker -> feed).
+  // The notify fires while we were still on /profile - no socket was open,
+  // so nothing pushes the arrival: poll fresh renders like a user who
+  // refreshes, until the backfilled history lands.
   await page.goto('/feed');
-  await waitForFeedItem(page, oldText);
+  const backfilled = page.locator('[data-testid^="post-item-"]', { hasText: oldText });
+  const deadline = Date.now() + 20_000;
+  while (!(await backfilled.isVisible().catch(() => false)) && Date.now() < deadline) {
+    await page.reload();
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  await expect(backfilled.first()).toBeVisible();
 });
 
 test('a followed account new post drives the ws banner and refetches newest-first', async ({
