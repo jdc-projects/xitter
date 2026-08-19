@@ -44,8 +44,16 @@ test('attach image: post shows thumb in feed, original on detail, served from /m
 
   const item = page.locator('[data-testid^="post-item-"]', { hasText: text }).first();
   // Real-stack cycle: slot -> PUT -> complete -> worker variants -> ready ->
-  // submit. Kafka consumer lag + sharp make this multi-second, not instant.
-  await expect(item).toBeVisible({ timeout: 45_000 });
+  // submit. Kafka consumer lag + sharp make this multi-second, not instant -
+  // the ws banner announces arrival, so click through it like a user.
+  const deadline = Date.now() + 45_000;
+  while (!(await item.isVisible().catch(() => false))) {
+    if (Date.now() > deadline) break;
+    const show = page.getByTestId('feed-new-items').getByRole('button');
+    if (await show.isVisible().catch(() => false)) await show.click().catch(() => undefined);
+    await page.waitForTimeout(400);
+  }
+  await expect(item).toBeVisible();
   const postId = (await item.getAttribute('data-testid'))!.replace('post-item-', '');
 
   // Feed cards render the thumb variant through the public /media path.
@@ -78,7 +86,14 @@ test('Enter-key submission uploads attachments too (the button is not the only p
 
   // The post must carry the image - Enter must not bypass the upload flow.
   const item = page.locator('[data-testid^="post-item-"]', { hasText: text }).first();
-  await expect(item).toBeVisible({ timeout: 45_000 });
+  const deadline = Date.now() + 45_000;
+  while (!(await item.isVisible().catch(() => false))) {
+    if (Date.now() > deadline) break;
+    const show = page.getByTestId('feed-new-items').getByRole('button');
+    if (await show.isVisible().catch(() => false)) await show.click().catch(() => undefined);
+    await page.waitForTimeout(400);
+  }
+  await expect(item).toBeVisible();
   const postId = (await item.getAttribute('data-testid'))!.replace('post-item-', '');
   await expect(page.locator(`[data-testid="post-image-${postId}"]`).first()).toBeVisible();
 });

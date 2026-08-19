@@ -1,58 +1,36 @@
-import type { Post, Profile } from '@xitter/api-contracts';
+import { FeedClient, localServiceUrls } from '@xitter/api-client';
+import type { HydratedFeedItem, Post } from '@xitter/api-contracts';
 import type { Session } from '@/lib/auth/session';
-import { clientsForSession } from '@/lib/posts/server';
 
 export interface TimelineEntry {
   post: Post;
   author: { id: string; username: string; displayName: string };
 }
 
-export interface InterimFeed {
-  entries: TimelineEntry[];
-  followedCount: number;
-}
+/** Page size for the web feed (server page 1 and Load more both use it). */
+const FEED_PAGE_SIZE = 20;
 
-/** Pure merge: newest-first across authors, 20-item window, known authors only. */
-export function mergeFeedEntries(
-  pages: { items: Post[] }[],
-  authorById: Map<string, Profile>,
-): TimelineEntry[] {
-  const entries: TimelineEntry[] = pages.flatMap((page) =>
-    page.items
-      .filter((post) => authorById.has(post.authorId))
-      .map((post) => {
-        const author = authorById.get(post.authorId)!;
-        return {
-          post,
-          author: { id: author.id, username: author.username, displayName: author.displayName },
-        };
-      }),
-  );
-  entries.sort((a, b) => b.post.createdAt.localeCompare(a.post.createdAt));
-  return entries.slice(0, 20);
+/** Feed page items → render entries (pure; the service pre-hydrates). */
+export function toTimelineEntries(items: HydratedFeedItem[]): TimelineEntry[] {
+  return items.map(({ post, author }) => ({
+    post,
+    author: { id: author.id, username: author.username, displayName: author.displayName },
+  }));
 }
 
 /**
- * INTERIM (delete when #7 lands): the web assembles "posts from people you
- * follow + your own" by calling social's following list then posts per-user,
- * merging newest-first. The materialised feed service replaces this - no
- * pagination, fixed window, best-effort per-author.
+ * One materialised-feed page (#7): server-side joins (posts + social) come
+ * back with the entries, newest first - the web no longer assembles the
+ * timeline client-of-server side.
  */
-export async function loadInterimFeed(session: Session): Promise<InterimFeed> {
-  const { posts, social } = clientsForSession(session);
-
-  const [following, ownProfile] = await Promise.all([
-    social.getFollowing(session.subject),
-    social.getProfile(session.subject).catch(() => null),
-  ]);
-
-  const authorById = new Map<string, Profile>(following.items.map((p) => [p.id, p]));
-  if (ownProfile) authorById.set(session.subject, ownProfile);
-
-  const authorIds = [session.subject, ...following.items.map((p) => p.id)];
-  const pages = await Promise.all(
-    authorIds.map((id) => posts.getUserPosts(id).catch(() => ({ items: [], nextCursor: null }))),
-  );
-
-  return { entries: mergeFeedEntries(pages, authorById), followedCount: following.items.length };
+export async function loadFeed(
+  session: Session,
+  cursor?: string,
+): Promise<{ entries: TimelineEntry[]; nextCursor: string | null }> {
+  const feed = new FeedClient({
+    baseUrl: localServiceUrls().feed,
+    token: session.accessToken,
+  });
+  const page = await feed.getFeed(cursor, FEED_PAGE_SIZE);
+  return { entries: toTimelineEntries(page.items), nextCursor: page.nextCursor };
 }

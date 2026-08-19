@@ -14,6 +14,13 @@ export interface EmitInput {
   producer: string;
   occurredAt: string;
   payload: unknown;
+  /**
+   * Partition key - the aggregate id (postId, followerId, mediaId, ...).
+   * Same key = same partition = ordered consumption for that aggregate
+   * (spec 04). Omitted keys fall back to the eventType, which orders only
+   * per event type.
+   */
+  key?: string;
 }
 
 export interface EventProducer {
@@ -45,7 +52,7 @@ export function createEventProducer(options: EventProducerOptions): EventProduce
         topic: `${prefix}${TOPICS[topic]}`,
         messages: [
           {
-            key: envelope.eventType,
+            key: event.key ?? envelope.eventType,
             value: JSON.stringify(envelope),
             headers: { eventType: envelope.eventType },
           },

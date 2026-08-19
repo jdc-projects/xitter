@@ -1008,6 +1008,90 @@
         }
       }
     },
+    "/internal/profiles/lookup": {
+      "post": {
+        "tags": ["internal"],
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "Bulk profile lookup for server-side hydration (feed #7); missing ids are omitted.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "userIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                    },
+                    "minItems": 1,
+                    "maxItems": 100
+                  }
+                },
+                "required": ["userIds"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Profiles",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                          },
+                          "username": {
+                            "type": "string",
+                            "minLength": 3,
+                            "maxLength": 20,
+                            "pattern": "^[a-z0-9_]+$"
+                          },
+                          "displayName": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 50
+                          },
+                          "bio": {
+                            "type": "string",
+                            "nullable": true,
+                            "maxLength": 200
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": ["id", "username", "displayName", "bio", "createdAt"]
+                      }
+                    }
+                  },
+                  "required": ["items"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/internal/reseed": {
       "post": {
         "tags": ["internal"],

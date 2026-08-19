@@ -173,7 +173,10 @@ const LOCK_STALE_MS = 60_000;
 
 async function acquireFixedPortLock(port: number): Promise<() => Promise<void>> {
   const lockDir = join(tmpdir(), `xitter-test-port-${port}.lock`);
-  const maxWaitMs = 240_000;
+  // Three Kafka suites (social, posts, fanout) serialise on this lock under
+  // parallel turbo; the last waiter can legitimately queue for several
+  // minutes on loaded runners. Deadlock stays bounded by the mtime steal.
+  const maxWaitMs = 600_000;
   const deadline = Date.now() + maxWaitMs;
   for (;;) {
     try {

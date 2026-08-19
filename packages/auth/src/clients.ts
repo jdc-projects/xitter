@@ -19,7 +19,7 @@ export const SERVICE_CLIENTS = [
  * the reset job hits everything (docs/specs/architecture/03-service-interfaces.md).
  */
 export const WORKER_CLIENTS: readonly { clientId: string; audiences: readonly string[] }[] = [
-  { clientId: 'svc-worker-fanout', audiences: ['svc-social', 'svc-feed'] },
+  { clientId: 'svc-worker-fanout', audiences: ['svc-social', 'svc-posts', 'svc-feed'] },
   { clientId: 'svc-worker-media-process', audiences: ['svc-media'] },
   { clientId: 'svc-worker-search-index', audiences: ['svc-search'] },
   { clientId: 'svc-reset', audiences: [...SERVICE_CLIENTS] },

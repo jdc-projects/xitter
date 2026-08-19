@@ -6,13 +6,18 @@ import {
   internalMediaAssetSchema,
   mediaAssetSchema,
   mediaLookupResponseSchema,
+  postLookupResponseSchema,
+  postPageSchema,
   postSchema,
+  profileLookupResponseSchema,
   profileSchema,
   profileWithCountsSchema,
   relationshipSchema,
   type createPostRequestSchema,
   type createProfileRequestSchema,
   type updateProfileRequestSchema,
+  type FeedEntryInput,
+  type HydratedFeedItem,
   type InteractionKind,
   type InternalMediaAsset,
   type MediaAsset,
@@ -29,9 +34,7 @@ const V1 = '/api';
 
 function paginated<T>(schema: z.ZodType<T>) {
   return z.object({ items: z.array(schema), nextCursor: z.string().nullable() });
-}
-
-/** Base URLs resolved from env-driven local ports; override with env in deployed contexts. */
+} /** Base URLs resolved from env-driven local ports; override with env in deployed contexts. */
 export const localServiceUrls = () => ({
   social: process.env.XITTER_SOCIAL_URL ?? localUrl('social'),
   posts: process.env.XITTER_POSTS_URL ?? localUrl('posts'),
@@ -134,6 +137,15 @@ export class SocialClient extends ServiceClient {
   internalBlockedIds(userId: string): Promise<string[]> {
     return this.get(`${V1}/social/internal/users/${userId}/blocked/ids`);
   }
+
+  /** Internal: bulk profile lookup for server-side hydration (feed #7). */
+  /** Internal (feed #7): bulk profile lookup for feed hydration. */
+  // fallow-ignore-next-line unused-class-member -- consumed via the feed service's hydrator seam (apps/services/feed/src/modules/content-hydrator.ts)
+  internalProfiles(userIds: string[]): Promise<{ items: Profile[] }> {
+    return this.post(`${V1}/social/internal/profiles/lookup`, { userIds }).then(
+      profileLookupResponseSchema.parse,
+    );
+  }
 }
 
 export class PostsClient extends ServiceClient {
@@ -183,14 +195,74 @@ export class PostsClient extends ServiceClient {
       paginated(postSchema).parse(r),
     );
   }
+
+  /** Internal (feed #7): bulk visible-post lookup for feed hydration. */
+  /** Internal (feed #7): bulk visible-post lookup for feed hydration. */
+  // fallow-ignore-next-line unused-class-member -- consumed via the feed service's hydrator seam (apps/services/feed/src/modules/content-hydrator.ts)
+  internalPosts(postIds: string[]): Promise<{ items: Post[] }> {
+    return this.post(`${V1}/posts/internal/posts/lookup`, { postIds }).then(
+      postLookupResponseSchema.parse,
+    );
+  }
+
+  /** Internal (fanout worker #7): author timeline for the follow backfill. */
+  // fallow-ignore-next-line unused-class-member -- consumed via the fanout worker's PostsApi seam (apps/workers/fanout/src/handlers.ts)
+  internalGetAuthorPosts(
+    authorId: string,
+    cursor?: string,
+    limit?: number,
+  ): Promise<{ items: Post[]; nextCursor: string | null }> {
+    return this.post(`${V1}/posts/internal/posts/by-author`, { authorId, cursor, limit }).then(
+      postPageSchema.parse,
+    );
+  }
 }
 
 export class FeedClient extends ServiceClient {
-  getFeed(cursor?: string): Promise<unknown> {
-    return this.get(`${V1}/feed/v1/feed`, cursor ? { cursor } : undefined).then(
-      feedPageSchema.parse,
+  /** Page 1 or cursor walk of the caller's materialised, hydrated feed. */
+  getFeed(cursor?: string, limit?: number): Promise<FeedPage> {
+    const query: Record<string, string> = {};
+    if (cursor) query.cursor = cursor;
+    if (limit !== undefined) query.limit = String(limit);
+    return this.get(`${V1}/feed/v1/feed`, query).then(feedPageSchema.parse);
+  }
+
+  /** Internal (fanout worker): bulk idempotent entry upsert. */
+  // fallow-ignore-next-line unused-class-member -- consumed via the fanout worker's FeedApi seam (apps/workers/fanout/src/handlers.ts)
+  internalUpsertEntries(entries: FeedEntryInput[]): Promise<{ inserted: number }> {
+    return this.post(`${V1}/feed/internal/feed/entries`, { entries }).then((r) =>
+      z.object({ inserted: z.number().int() }).parse(r),
     );
   }
+
+  /** Internal (fanout worker): drop one post from every feed (post deleted). */
+  // fallow-ignore-next-line unused-class-member -- consumed via the fanout worker's FeedApi seam (apps/workers/fanout/src/handlers.ts)
+  internalDeletePostEntries(postId: string): Promise<{ deleted: number }> {
+    return this.delete(`${V1}/feed/internal/feed/posts/${postId}/entries`).then((r) =>
+      z.object({ deleted: z.number().int() }).parse(r),
+    );
+  }
+
+  /** Internal (fanout worker): drop an author's entries from one feed (unfollow). */
+  // fallow-ignore-next-line unused-class-member -- consumed via the fanout worker's FeedApi seam (apps/workers/fanout/src/handlers.ts)
+  internalDeleteAuthorEntries(userId: string, authorId: string): Promise<{ deleted: number }> {
+    return this.delete(`${V1}/feed/internal/feed/users/${userId}/authors/${authorId}`).then((r) =>
+      z.object({ deleted: z.number().int() }).parse(r),
+    );
+  }
+
+  /** Internal (reset job / fanout): wipe one user's feed. */
+  // fallow-ignore-next-line unused-class-member -- consumed by the nightly reset job (#13) per spec 03
+  internalResetUser(userId: string): Promise<{ deleted: number }> {
+    return this.delete(`${V1}/feed/internal/feed/users/${userId}`).then((r) =>
+      z.object({ deleted: z.number().int() }).parse(r),
+    );
+  }
+}
+
+export interface FeedPage {
+  items: HydratedFeedItem[];
+  nextCursor: string | null;
 }
 
 export class SearchClient extends ServiceClient {

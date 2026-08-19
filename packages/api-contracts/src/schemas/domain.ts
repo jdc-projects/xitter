@@ -130,15 +130,51 @@ export const relationshipSchema = z.object({
 
 export type Relationship = z.infer<typeof relationshipSchema>;
 
+export const feedEntryReasonSchema = z.enum(['post', 'repost']);
+export type FeedEntryReason = z.infer<typeof feedEntryReasonSchema>;
+
+/**
+ * One materialised feed entry as the fanout worker submits it (internal bulk
+ * upsert): ids + ordering columns only - post and author payloads are
+ * hydrated on read (spec 03/04).
+ */
+export const feedEntryInputSchema = z.object({
+  userId: userIdSchema,
+  postId: postIdSchema,
+  authorId: userIdSchema,
+  reason: feedEntryReasonSchema,
+  repostedById: userIdSchema.nullable().default(null),
+  /** Post (or, for reposts, interaction) time - the feed ordering key. */
+  postCreatedAt: z.iso.datetime(),
+});
+
+export type FeedEntryInput = z.infer<typeof feedEntryInputSchema>;
+
 export const feedItemSchema = z.object({
   postId: postIdSchema,
   authorId: userIdSchema,
-  reason: z.enum(['post', 'repost']),
+  reason: feedEntryReasonSchema,
   repostedById: userIdSchema.nullable(),
   postCreatedAt: z.iso.datetime(),
 });
 
 export type FeedItem = z.infer<typeof feedItemSchema>;
+
+/** Feed page item as served by `GET /v1/feed`: entry hydrated server-side. */
+export const hydratedFeedItemSchema = z.object({
+  post: postSchema,
+  author: profileSchema,
+});
+
+export type HydratedFeedItem = z.infer<typeof hydratedFeedItemSchema>;
+
+/** WS notification (spec 03): a hint to refetch, never a data channel. */
+export const feedNewItemsMessageSchema = z.object({
+  type: z.literal('feed.new-items'),
+  count: z.number().int().nonnegative(),
+});
+
+export type FeedNewItemsMessage = z.infer<typeof feedNewItemsMessageSchema>;
 
 export const pageMetaSchema = z.object({
   cursor: z.string().nullable(),

@@ -74,14 +74,14 @@ Owns prefix `/api/feed`. Content rule: only posts from followed authors plus the
 
 ### WebSocket contract
 
-| Aspect           | Contract                                                                                                                                              |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| URL              | `wss://{host}/api/feed/v1/ws?token={accessToken}` (token as query param; in-cluster the feed service receives the edge-validated identity on upgrade) |
-| Direction        | Server → client notifications **only**                                                                                                                |
-| Messages         | `{ "type": "feed.new-items", "count": number }` — count of new items since the last delivered notification                                            |
-| Client behaviour | On receipt, refetch `GET /v1/feed`; the server never pushes post payloads over the socket                                                             |
-| Liveness         | Server pings every 30s; clients reconnect with exponential backoff and resubscribe                                                                    |
-| Delivery         | At-most-once per connection; a missed notification is recovered by the next refetch/poll — notifications are a UX hint, not a data channel            |
+| Aspect           | Contract                                                                                                                                                                                                                                                                                                                                                                                   |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| URL              | `wss://{host}/api/feed/v1/ws?token={accessToken}` (token as query param; the feed service itself re-validates the token at upgrade - the edge cannot validate ws upgrades, so the service is the auth boundary). The web brokers that token at `GET /api/ws/feed-token` — under `/api/ws/` because the edge routes `/api/{service}/*` to services, and a web route there would be shadowed |
+| Direction        | Server → client notifications **only**                                                                                                                                                                                                                                                                                                                                                     |
+| Messages         | `{ "type": "feed.new-items", "count": number }` — count of new items since the last delivered notification                                                                                                                                                                                                                                                                                 |
+| Client behaviour | On receipt, refetch `GET /v1/feed`; the server never pushes post payloads over the socket                                                                                                                                                                                                                                                                                                  |
+| Liveness         | Server pings every 30s; clients reconnect with exponential backoff and resubscribe                                                                                                                                                                                                                                                                                                         |
+| Delivery         | At-most-once per connection; a missed notification is recovered by the next refetch/poll — notifications are a UX hint, not a data channel                                                                                                                                                                                                                                                 |
 
 ## search
 
@@ -95,23 +95,28 @@ Owns prefix `/api/search`.
 
 Service-token only (audience = receiving service client id; callers are the `svc-*` services, the `svc-worker-*` worker clients, and `svc-reset`). Never edge-exposed beyond the namespace; see [07-security.md](07-security.md).
 
-| Path                                                        | Caller               | Purpose                                                         |
-| ----------------------------------------------------------- | -------------------- | --------------------------------------------------------------- |
-| `GET /api/social/internal/users/:id/followers/ids`          | fanout worker        | Follower id list for feed fanout                                |
-| `GET /api/social/internal/users/:id/relationships/:otherId` | posts, workers       | Blocked-either-way check for write-path enforcement             |
-| `GET /api/social/internal/users/:id/blocked/ids`            | feed, search         | Blocked-id list for timeline/index filtering                    |
-| `POST /api/posts/internal/reseed`                           | reset job            | Truncate + optional deterministic reseed of posts data          |
-| `POST /api/media/internal/media/lookup`                     | posts                | Resolve media ids for attachment (existence, ownership, ready)  |
-| `GET /api/media/internal/media/:id`                         | media-process worker | Asset incl. storage coordinates (redelivery idempotency checks) |
-| `POST /api/media/internal/media/:id/variants`               | media-process worker | Record processed variants for a media object                    |
-| `POST /api/media/internal/media/:id/failure`                | media-process worker | Record a failed processing attempt (service caps attempts)      |
-| `POST /api/media/internal/reseed`                           | reset job            | Truncate media metadata + trigger bucket wipe support           |
-| `POST /api/feed/internal/feed/entries`                      | fanout worker        | Bulk insert feed entries (idempotent upsert)                    |
-| `DELETE /api/feed/internal/feed/users/:id`                  | reset job / fanout   | Delete all feed entries for a user                              |
-| `POST /api/feed/internal/reseed`                            | reset job            | Truncate feed entries                                           |
-| `POST /api/search/internal/search/index`                    | search-index worker  | Bulk upsert of post documents                                   |
-| `DELETE /api/search/internal/search/index`                  | reset job            | Clear the posts index                                           |
-| `POST /api/search/internal/reseed`                          | reset job            | Truncate search service state                                   |
-| `POST /api/social/internal/reseed`                          | reset job            | Truncate + optional reseed of profiles/graph                    |
+| Path                                                         | Caller               | Purpose                                                                                     |
+| ------------------------------------------------------------ | -------------------- | ------------------------------------------------------------------------------------------- |
+| `GET /api/social/internal/users/:id/followers/ids`           | fanout worker        | Follower id list for feed fanout                                                            |
+| `GET /api/social/internal/users/:id/relationships/:otherId`  | posts, workers       | Blocked-either-way check for write-path enforcement                                         |
+| `GET /api/social/internal/users/:id/blocked/ids`             | feed, search         | Blocked-id list for timeline/index filtering                                                |
+| `POST /api/social/internal/profiles/lookup`                  | feed                 | Bulk profile lookup for feed hydration                                                      |
+| `POST /api/posts/internal/posts/lookup`                      | feed                 | Bulk visible-post lookup for feed hydration                                                 |
+| `POST /api/posts/internal/posts/by-author`                   | fanout worker        | Author timeline page for the follow backfill (workers hold service tokens, not user tokens) |
+| `POST /api/posts/internal/reseed`                            | reset job            | Truncate + optional deterministic reseed of posts data                                      |
+| `POST /api/media/internal/media/lookup`                      | posts                | Resolve media ids for attachment (existence, ownership, ready)                              |
+| `GET /api/media/internal/media/:id`                          | media-process worker | Asset incl. storage coordinates (redelivery idempotency checks)                             |
+| `POST /api/media/internal/media/:id/variants`                | media-process worker | Record processed variants for a media object                                                |
+| `POST /api/media/internal/media/:id/failure`                 | media-process worker | Record a failed processing attempt (service caps attempts)                                  |
+| `POST /api/media/internal/reseed`                            | reset job            | Truncate media metadata + trigger bucket wipe support                                       |
+| `POST /api/feed/internal/feed/entries`                       | fanout worker        | Bulk insert feed entries (idempotent upsert)                                                |
+| `DELETE /api/feed/internal/feed/posts/:id/entries`           | fanout worker        | Post deleted: remove its entries from every feed                                            |
+| `DELETE /api/feed/internal/feed/users/:id/authors/:authorId` | fanout worker        | Unfollowed: remove the author's entries from one feed                                       |
+| `DELETE /api/feed/internal/feed/users/:id`                   | reset job / fanout   | Delete all feed entries for a user                                                          |
+| `POST /api/feed/internal/reseed`                             | reset job            | Truncate feed entries                                                                       |
+| `POST /api/search/internal/search/index`                     | search-index worker  | Bulk upsert of post documents                                                               |
+| `DELETE /api/search/internal/search/index`                   | reset job            | Clear the posts index                                                                       |
+| `POST /api/search/internal/reseed`                           | reset job            | Truncate search service state                                                               |
+| `POST /api/social/internal/reseed`                           | reset job            | Truncate + optional reseed of profiles/graph                                                |
 
 Reset semantics (what "reseed" means, ordering, determinism) are specified in [05-data-platform.md](05-data-platform.md); the runbook lives in the [operations specs](../operations/).

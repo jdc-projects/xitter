@@ -12,7 +12,11 @@ export type SocialEventType =
   | 'social.profile.updated';
 
 export interface SocialEvents {
-  emit(eventType: SocialEventType, payload: Record<string, unknown>): Promise<void>;
+  /**
+   * `key` is the acting user (followerId / blockerId / profileId) so one
+   * user's graph changes stay ordered per partition (spec 04).
+   */
+  emit(eventType: SocialEventType, payload: Record<string, unknown>, key?: string): Promise<void>;
   shutdown(): Promise<void>;
 }
 
@@ -36,12 +40,13 @@ export class KafkaSocialEvents implements SocialEvents {
     private readonly topic: TopicName,
   ) {}
 
-  emit(eventType: SocialEventType, payload: Record<string, unknown>): Promise<void> {
+  emit(eventType: SocialEventType, payload: Record<string, unknown>, key?: string): Promise<void> {
     return this.producer.emit(this.topic, {
       eventType,
       producer: 'social',
       occurredAt: new Date().toISOString(),
       payload,
+      key,
     });
   }
 

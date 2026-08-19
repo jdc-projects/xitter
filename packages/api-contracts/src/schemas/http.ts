@@ -6,6 +6,8 @@ extendZodWithOpenApi(z);
 import {
   POST_MEDIA_MAX,
   POST_TEXT_MAX,
+  feedEntryInputSchema,
+  hydratedFeedItemSchema,
   interactionKindSchema,
   mediaAssetSchema,
   mediaIdSchema,
@@ -17,7 +19,7 @@ import {
   usernameSchema,
 } from './domain.js';
 
-const cursorPagination = (itemSchema: z.ZodType) =>
+const cursorPagination = <T>(itemSchema: z.ZodType<T>) =>
   z.object({
     items: z.array(itemSchema),
     nextCursor: z.string().nullable(),
@@ -128,11 +130,76 @@ export const mediaLookupResponseSchema = z
   })
   .strict();
 
+// Internal (fanout worker → feed): bulk idempotent upsert of feed entries
+// (natural key (userId, postId, reason) - repostedById deliberately
+// excluded, nullable columns break replay idempotency; spec 04).
+export const upsertFeedEntriesRequestSchema = z
+  .object({
+    entries: z.array(feedEntryInputSchema).min(1).max(1000),
+  })
+  .strict()
+  .openapi('UpsertFeedEntriesRequest');
+
+export type UpsertFeedEntriesRequest = z.infer<typeof upsertFeedEntriesRequestSchema>;
+
+export const upsertFeedEntriesResponseSchema = z
+  .object({
+    /** Rows actually inserted (replays conflict-skip; spec 04 idempotency). */
+    inserted: z.number().int().nonnegative(),
+  })
+  .strict();
+
+// Internal (feed → posts): bulk fetch of visible posts for hydration.
+// Deleted/missing ids are omitted from the response.
+export const postLookupRequestSchema = z
+  .object({
+    postIds: z.array(postIdSchema).min(1).max(100),
+  })
+  .strict();
+
+export const postLookupResponseSchema = z
+  .object({
+    items: z.array(postSchema),
+  })
+  .strict();
+
+export type PostLookupRequest = z.infer<typeof postLookupRequestSchema>;
+export type PostLookupResponse = z.infer<typeof postLookupResponseSchema>;
+
+// Internal (fanout worker → posts): the followee's recent posts for the
+// follow backfill (spec 04). Same page shape as the public author timeline.
+export const internalAuthorPostsRequestSchema = z
+  .object({
+    authorId: userIdSchema,
+    cursor: z.string().optional(),
+    limit: z.number().int().min(1).max(50).optional(),
+  })
+  .strict();
+
+export type InternalAuthorPostsRequest = z.infer<typeof internalAuthorPostsRequestSchema>;
+
+// Internal (feed → social): bulk profile lookup for hydration. Missing ids
+// are omitted; callers substitute placeholders.
+export const profileLookupRequestSchema = z
+  .object({
+    userIds: z.array(userIdSchema).min(1).max(100),
+  })
+  .strict();
+
+export const profileLookupResponseSchema = z
+  .object({
+    items: z.array(profileSchema),
+  })
+  .strict();
+
+export type ProfileLookupRequest = z.infer<typeof profileLookupRequestSchema>;
+export type ProfileLookupResponse = z.infer<typeof profileLookupResponseSchema>;
+
 export const postPageSchema = cursorPagination(postSchema).openapi('PostPage');
 
 export const profilePageSchema = cursorPagination(profileSchema).openapi('ProfilePage');
 
-export const feedPageSchema = cursorPagination(z.unknown()).openapi('FeedPage');
+export const feedPageSchema = cursorPagination(hydratedFeedItemSchema).openapi('FeedPage');
 
 export const idParam = (name: 'userId' | 'postId' | 'mediaId' | 'username') =>
   ({

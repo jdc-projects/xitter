@@ -1,6 +1,12 @@
-import { Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
 import { Internal } from '@xitter/auth-nest';
-import { userIdSchema, type Relationship } from '@xitter/api-contracts';
+import {
+  profileLookupRequestSchema,
+  userIdSchema,
+  type Profile,
+  type ProfileLookupRequest,
+  type Relationship,
+} from '@xitter/api-contracts';
 import { ZodValidationPipe } from '@xitter/service-kit';
 import { SocialService } from './social.service.js';
 
@@ -36,6 +42,16 @@ export class InternalController {
   @Internal()
   blockedIds(@Param('userId', uuidParam) userId: string): Promise<string[]> {
     return this.social.blockedIds(userId);
+  }
+
+  /** Bulk profile lookup for server-side hydration (feed #7). */
+  @Post('profiles/lookup')
+  @Internal()
+  @HttpCode(200)
+  lookupProfiles(
+    @Body(new ZodValidationPipe(profileLookupRequestSchema)) body: ProfileLookupRequest,
+  ): Promise<{ items: Profile[] }> {
+    return this.social.profilesByIds(body.userIds).then((items) => ({ items }));
   }
 
   @Post('reseed')

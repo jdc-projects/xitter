@@ -139,7 +139,18 @@ async function fetchDocs(
   });
   if (!res.ok) throw new Error(`CMS ${collection} responded ${res.status}`);
   const json = (await res.json()) as { docs?: PayloadDoc[] };
-  return Array.isArray(json.docs) ? json.docs : [];
+  const docs = Array.isArray(json.docs) ? json.docs : [];
+  if (docs.length > 0 || options.draft) return docs;
+
+  // An EMPTY result means content is not applied yet (suite ordering, or a
+  // reset mid-flight). Caching that empty page for 60s would pin the
+  // fallback copy even after the content lands - the tag revalidate races
+  // whichever parallel render re-caches it. Bypass the data cache for the
+  // empty case so the next render sees the applied content immediately.
+  const fresh = await doFetch(url.toString(), { headers, cache: 'no-store' });
+  if (!fresh.ok) throw new Error(`CMS ${collection} responded ${fresh.status}`);
+  const freshJson = (await fresh.json()) as { docs?: PayloadDoc[] };
+  return Array.isArray(freshJson.docs) ? freshJson.docs : [];
 }
 
 /** Stable CMS-defined ordering: `order` first, slug as tiebreaker. */
@@ -177,7 +188,7 @@ function mapFaq(docs: PayloadDoc[]): FaqEntry[] {
  */
 export async function loadLandingContent(options: CmsFetchOptions = {}): Promise<LandingEntry[]> {
   try {
-    const mapped = mapLanding(await fetchDocs('landing-content', options));
+    const mapped = mapLanding(await fetchDocsWithEmptyRetry('landing-content', options));
     return mapped.length > 0 ? mapped : FALLBACK_LANDING;
   } catch {
     return FALLBACK_LANDING;
@@ -187,9 +198,34 @@ export async function loadLandingContent(options: CmsFetchOptions = {}): Promise
 /** FAQ entries (About page) from the CMS, with the same fallback contract. */
 export async function loadFaq(options: CmsFetchOptions = {}): Promise<FaqEntry[]> {
   try {
-    const mapped = mapFaq(await fetchDocs('faq', options));
+    const mapped = mapFaq(await fetchDocsWithEmptyRetry('faq', options));
     return mapped.length > 0 ? mapped : FALLBACK_FAQ;
   } catch {
     return FALLBACK_FAQ;
   }
+}
+
+/**
+ * An empty CMS result means content is not applied yet (suite ordering,
+ * reset mid-flight). A parallel render racing the tag revalidate can re-pin
+ * that empty data-cache entry for the full 60s TTL - the fallback copy
+ * would then outlive the content - so verify emptiness uncached once. The
+ * extra round-trip only happens on the empty path, absent in steady state.
+ */
+async function fetchDocsWithEmptyRetry(
+  collection: 'landing-content' | 'faq',
+  options: CmsFetchOptions,
+): Promise<PayloadDoc[]> {
+  const docs = await fetchDocs(collection, options);
+  if (docs.length > 0 || options.draft || options.fetchImpl) return docs;
+  const res = await fetch(
+    `${cmsEnv().baseUrl}/cms/api/${collection}?limit=100&depth=0&sort=order`,
+    {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(10_000),
+    },
+  );
+  if (!res.ok) return docs;
+  const json = (await res.json()) as { docs?: PayloadDoc[] };
+  return Array.isArray(json.docs) && json.docs.length > 0 ? json.docs : docs;
 }

@@ -71,9 +71,11 @@ jobs:
     # fallow + react-doctor + mermaid validation; needs the base ref for
     # changed-file attribution and chromium for diagram rendering
     runs-on: ubuntu-latest
-    # the chromium download in setup has hung for >1h before - fail loudly
-    # instead of stalling the PR
     timeout-minutes: 20
+    env:
+      # Runner-shipped Chrome - the Playwright CDN download has stalled for
+      # hours at a time; skip it entirely.
+      XITTER_BROWSER_PATH: /usr/bin/google-chrome
     steps:
       - uses: actions/checkout@v7
         with:
@@ -91,6 +93,10 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      # Runner-shipped Chrome - the Playwright CDN download has stalled for
+      # hours at a time; skip it entirely.
+      XITTER_BROWSER_PATH: /usr/bin/google-chrome
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
@@ -119,6 +125,10 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # Runner-shipped Chrome - the Playwright CDN download has stalled for
+      # hours at a time; skip it entirely.
+      XITTER_BROWSER_PATH: /usr/bin/google-chrome
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup

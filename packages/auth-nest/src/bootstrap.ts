@@ -23,9 +23,13 @@ export interface ApiServiceOptions {
 /**
  * Shared API-service bootstrap: one well-tested startup path for every
  * service (fastify adapter, public prefix with root-level health probes,
- * global auth guard + error envelope, graceful shutdown).
+ * global auth guard + error envelope, graceful shutdown). Returns the
+ * application so callers can reach the underlying HTTP server (e.g. the
+ * feed service attaches its websocket upgrade handler to it).
  */
-export async function bootstrapApiService(options: ApiServiceOptions): Promise<void> {
+export async function bootstrapApiService(
+  options: ApiServiceOptions,
+): Promise<NestFastifyApplication> {
   const logger = createLogger({ service: options.service });
 
   const app = await NestFactory.create<NestFastifyApplication>(
@@ -42,4 +46,5 @@ export async function bootstrapApiService(options: ApiServiceOptions): Promise<v
 
   await app.listen(options.port, '0.0.0.0');
   logger.info(`listening on :${options.port}`);
+  return app;
 }

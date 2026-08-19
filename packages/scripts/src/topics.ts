@@ -30,19 +30,33 @@ try {
       console.log(`topic ${topic}: exists`);
       continue;
     }
-    await admin.createTopics({
-      topics: [
-        {
-          topic,
-          numPartitions: 6,
-          replicationFactor: 1,
-          configEntries: [
-            { name: 'retention.ms', value: String(7 * 24 * 60 * 60 * 1000) },
-            { name: 'cleanup.policy', value: 'delete' },
+    // Back-to-back creates can hit 'does not host this topic-partition':
+    // the controller hasn't propagated the previous topic's metadata yet.
+    // createTopics returning true already settled; transient protocol
+    // errors are retried after a short pause.
+    let created = false;
+    for (let attempt = 1; attempt <= 5 && !created; attempt++) {
+      try {
+        await admin.createTopics({
+          topics: [
+            {
+              topic,
+              numPartitions: 6,
+              replicationFactor: 1,
+              configEntries: [
+                { name: 'retention.ms', value: String(7 * 24 * 60 * 60 * 1000) },
+                { name: 'cleanup.policy', value: 'delete' },
+              ],
+            },
           ],
-        },
-      ],
-    });
+        });
+        created = true;
+      } catch (err) {
+        if (attempt === 5) throw err;
+        console.log(`topic ${topic}: attempt ${attempt} not settled - retrying`);
+        await new Promise((resolve) => setTimeout(resolve, 1_000 * attempt));
+      }
+    }
     console.log(`topic ${topic}: created`);
   }
 } finally {

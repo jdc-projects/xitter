@@ -32,12 +32,12 @@ runs:
         key: playwright-v2-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
     - name: Install Playwright chromium
-      if: inputs.playwright == 'true'
-      # The chromium download has stalled >18m with zero output on multiple
-      # runners. Composite-action steps cannot use timeout-minutes, so bound
-      # it with coreutils `timeout`. A timed-out attempt orphans its apt-get
-      # child holding the dpkg lock - reap it and wait for the lock before
-      # the single retry, or the retry insta-fails with lock contention.
+      # Skipped when the job pins XITTER_BROWSER_PATH to a preinstalled
+      # browser (CI) - the download has stalled >18m with zero output on
+      # multiple runners. When it does run: composite-action steps cannot
+      # use timeout-minutes, so bound it with coreutils `timeout`, and reap
+      # the orphaned apt-get (dpkg lock) before the single retry.
+      if: inputs.playwright == 'true' && env.XITTER_BROWSER_PATH == ''
       run: |
         if timeout 10m npm run test:install; then exit 0; fi
         echo "first install attempt failed or timed out - clearing apt locks and retrying once"

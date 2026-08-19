@@ -31,6 +31,12 @@ export class PostsRepository {
     return this.db.post.findFirst({ where: { id, deletedAt: null } });
   }
 
+  /** Bulk visible-post lookup (internal hydration; order not guaranteed). */
+  visiblePosts(ids: string[]): Promise<PostRow[]> {
+    if (ids.length === 0) return Promise.resolve([]);
+    return this.db.post.findMany({ where: { id: { in: ids }, deletedAt: null } });
+  }
+
   /**
    * Create a post and, for replies, bump the parent's reply counter in one
    * transaction so the counts read-model can never drift from the rows.

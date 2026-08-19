@@ -59,6 +59,15 @@ test('/post/[postId] (detail with reply composer) has no serious axe violations'
   await page.getByTestId('composer-textarea').fill(text);
   await page.getByTestId('composer-submit').click();
   const item = page.locator('[data-testid^="post-item-"]', { hasText: text }).first();
+  // Materialisation is async - the ws banner announces arrival (click through
+  // it like a user; concurrent suites may surface intermediate banners).
+  const deadline = Date.now() + 20_000;
+  while (!(await item.isVisible().catch(() => false))) {
+    if (Date.now() > deadline) break;
+    const show = page.getByTestId('feed-new-items').getByRole('button');
+    if (await show.isVisible().catch(() => false)) await show.click().catch(() => undefined);
+    await page.waitForTimeout(400);
+  }
   await expect(item).toBeVisible();
   const postId = (await item.getAttribute('data-testid'))!.replace('post-item-', '');
   await page.goto(`/post/${postId}`);

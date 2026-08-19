@@ -84,7 +84,12 @@ async function main(): Promise<void> {
   }
 
   const { chromium } = await import('playwright-core');
-  const chromiumPath = chromium.executablePath();
+  // XITTER_BROWSER_PATH opts out of the Playwright download (CI runners
+  // have Chrome preinstalled and the CDN has stalled for hours at a time).
+  const chromiumPath =
+    process.env.XITTER_BROWSER_PATH && existsSync(process.env.XITTER_BROWSER_PATH)
+      ? process.env.XITTER_BROWSER_PATH
+      : chromium.executablePath();
   if (!existsSync(chromiumPath)) {
     console.error('diagrams: Playwright chromium not found - run `npm run test:install` first.');
     process.exit(1);
