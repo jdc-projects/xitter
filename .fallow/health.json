@@ -69,6 +69,11 @@
         "count": 3
       }
     },
+    "apps/web/src/lib/cms/content.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
     "apps/web/src/lib/media/actions.ts": {
       "crap_moderate": {
         "count": 1
