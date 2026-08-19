@@ -91,6 +91,8 @@ Owns prefix `/api/search`.
 | ------ | ------------------ | ---- | --------------------- | ---------------------------------------------- |
 | GET    | `/v1/search/posts` | user | Full-text post search | req `q`, `cursor?`, `limit?` → paginated posts |
 
+Results carry the same hydrated `post` + `author` shape as feed items (server-side joins against posts/social); tombstoned documents and blocked-author posts are excluded for the caller. A query against a not-yet-existing index returns an empty page (cold start after a reset), not an error.
+
 ## Internal endpoints
 
 Service-token only (audience = receiving service client id; callers are the `svc-*` services, the `svc-worker-*` worker clients, and `svc-reset`). Never edge-exposed beyond the namespace; see [07-security.md](07-security.md).
@@ -114,9 +116,12 @@ Service-token only (audience = receiving service client id; callers are the `svc
 | `DELETE /api/feed/internal/feed/users/:id/authors/:authorId` | fanout worker        | Unfollowed: remove the author's entries from one feed                                       |
 | `DELETE /api/feed/internal/feed/users/:id`                   | reset job / fanout   | Delete all feed entries for a user                                                          |
 | `POST /api/feed/internal/reseed`                             | reset job            | Truncate feed entries                                                                       |
-| `POST /api/search/internal/search/index`                     | search-index worker  | Bulk upsert of post documents                                                               |
-| `DELETE /api/search/internal/search/index`                   | reset job            | Clear the posts index                                                                       |
-| `POST /api/search/internal/reseed`                           | reset job            | Truncate search service state                                                               |
+| `POST /api/search/internal/search/index`                     | search-index worker  | Bulk upsert of post documents (tombstones included)                                         |
+| `POST /api/search/internal/search/index/authors`             | search-index worker  | Refresh denormalised author names (`social.profile.updated`)                                |
+| `GET /api/search/internal/search/checkpoint`                 | search-index worker  | Resume positions per topic-partition (worker boot)                                          |
+| `POST /api/search/internal/search/checkpoint`                | search-index worker  | Persist the last processed position (durable resume cursor)                                 |
+| `DELETE /api/search/internal/search/index`                   | reset job            | Clear the posts index (documents only; mapping survives)                                    |
+| `POST /api/search/internal/reseed`                           | reset job            | Truncate search service state (checkpoints)                                                 |
 | `POST /api/social/internal/reseed`                           | reset job            | Truncate + optional reseed of profiles/graph                                                |
 
 Reset semantics (what "reseed" means, ordering, determinism) are specified in [05-data-platform.md](05-data-platform.md); the runbook lives in the [operations specs](../operations/).

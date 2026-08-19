@@ -16,6 +16,9 @@ await run('tsx', ['packages/scripts/src/rustfs.ts']);
 console.log('creating Kafka topics...');
 await run('tsx', ['packages/scripts/src/topics.ts', 'create']);
 
+console.log('ensuring OpenSearch posts index...');
+await run('tsx', ['packages/scripts/src/search-index.ts']);
+
 console.log('initialising Keycloak...');
 await initDemoRealm();
 await initLocalAdminRealm();

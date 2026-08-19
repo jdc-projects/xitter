@@ -26,13 +26,19 @@ locals {
 
   # Cross-service dependencies (namespace-internal, never via the edge).
   # posts calls social's internal relationship endpoint for reply block
-  # enforcement (#5); feed hydrates posts + social server-side (#7); authn
-  # is M2M via KEYCLOAK_CLIENT_ID/SECRET below.
+  # enforcement (#5); feed hydrates posts + social server-side (#7); search
+  # indexes into / queries the OpenSearch cluster (#9); authn is M2M via
+  # KEYCLOAK_CLIENT_ID/SECRET below.
   service_extra_env = {
     posts = [{ name = "XITTER_SOCIAL_URL", value = local.svc_base.social }]
     feed = [
       { name = "XITTER_POSTS_URL", value = local.svc_base.posts },
       { name = "XITTER_SOCIAL_URL", value = local.svc_base.social },
+    ]
+    search = [
+      { name = "XITTER_POSTS_URL", value = local.svc_base.posts },
+      { name = "XITTER_SOCIAL_URL", value = local.svc_base.social },
+      { name = "XITTER_OPENSEARCH_URL", value = "http://opensearch.${local.ns}.svc:9200" },
     ]
     # Media storage (T5): server-side S3 calls hit RustFS in-cluster; the
     # presign endpoint is the edge host because SigV4 signs the host the

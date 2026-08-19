@@ -146,17 +146,22 @@ Unfollow (`social.follow.deleted`) removes the followee's entries from the follo
 ```mermaid
 sequenceDiagram
     participant P as posts
+    participant S as social
     participant K as Kafka
     participant SI as search-index (worker)
     participant SE as search
     participant OS as OpenSearch
 
     P->>K: posts.post.created / posts.post.deleted
-    K->>SI: consume (batch)
-    SI->>SI: batch + dedupe by postId
-    SI->>SE: POST /internal/search/index (upserts) / DELETE docs
-    SE->>OS: _bulk upsert/delete by postId
+    S->>K: social.profile.updated
+    K->>SI: consume (posts.post.*, social.profile.updated)
+    SI->>SE: POST /internal/search/index (documents, tombstones) 
+    SI->>SE: POST /internal/search/index/authors (name refresh)
+    SI->>SE: POST /internal/search/checkpoint (resume position)
+    SE->>OS: _bulk upsert by postId / update_by_query
 ```
+
+Documents are keyed by `postId` (idempotent replays converge); deletes are tombstones (`deletedAt` set) that queries exclude. The worker checkpoints every processed message to the search service (persisted in `SearchCheckpoint`) **after** the index write succeeds, so a lost consumer group resumes exactly after the last processed event — Kafka group offsets die with the nightly reset's group deletion, the checkpoints survive in the search DB. A fresh group (no checkpoints) replays the whole log from the beginning and the index rebuilds. Author display names are resolved from social at index time (bulk profile lookup; placeholder on outage) and kept fresh in place by `social.profile.updated`.
 
 ## Consumer groups
 
@@ -166,7 +171,7 @@ Group ids live in `CONSUMER_GROUPS` (`packages/events/src/topics.ts`); the night
 | ----------------------------- | ------------- | ------------------------------------- | ------------------------------------------------------------------ |
 | `xitter-fanout-worker`        | fanout        | `xitter.posts.v1`, `xitter.social.v1` | Feed materialisation + backfill/removal                            |
 | `xitter-media-process-worker` | media-process | `xitter.media.v1`                     | Only `media.media.uploaded` is actionable                          |
-| `xitter-search-index-worker`  | search-index  | `xitter.posts.v1`                     | Only `posts.post.*` are actionable; batches for `_bulk` efficiency |
+| `xitter-search-index-worker`  | search-index  | `xitter.posts.v1`, `xitter.social.v1` | `posts.post.*` index/tombstone documents; `social.profile.updated` refreshes denormalised author names; checkpoint after every message (SearchCheckpoint) |
 
 Groups (and topic data) are deleted and recreated by the nightly reset — see [05-data-platform.md](05-data-platform.md).
 
