@@ -16,3 +16,11 @@ test('landing page links to login', async ({ page }) => {
   await login.click();
   await expect(page).toHaveURL(/\/login$/);
 });
+
+// This suite runs the web app alone (no CMS) - which is exactly the
+// "CMS unreachable" case: the page must render the hardcoded fallback copy.
+test('landing renders fallback copy when the CMS is down', async ({ page }) => {
+  await page.goto('/');
+
+  await expect(page.getByText(/microservices playground for learning/i)).toBeVisible();
+});

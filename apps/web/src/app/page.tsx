@@ -1,16 +1,38 @@
-import { Button, Container, Group, Stack, Text, Title } from '@mantine/core';
+import { connection } from 'next/server';
+import { Button, Container, Group, Stack, Title } from '@mantine/core';
 import { ResetNotice } from '@xitter/ui';
+import { LandingContentPreview } from '@/components/cms/landing-content-preview';
+import { LandingCopy } from '@/components/cms/landing-copy';
+import { cmsEnv, loadLandingContent } from '@/lib/cms/content';
+import { resolvePreviewId } from '@/lib/cms/preview';
 
-export default function LandingPage() {
+interface LandingPageProps {
+  searchParams: Promise<{ preview?: string | string[] }>;
+}
+
+export default async function LandingPage({ searchParams }: LandingPageProps) {
+  const previewId = await resolvePreviewId(searchParams);
+
+  // Preview renders are per-request (drafts, uncached - spec 04 exposure).
+  if (previewId !== undefined) await connection();
+  const entries = await loadLandingContent({ draft: previewId !== undefined });
+
   return (
     <Container size="sm" py="xl">
       <Stack gap="lg">
         <Title order={1}>xitter</Title>
-        <Text size="lg" c="dimmed">
-          A small Twitter/X-style demo app: posts, follows, replies, likes, bookmarks and reposts -
-          built as a microservices playground for learning and experimentation.
-        </Text>
 
+        {previewId !== undefined ? (
+          <LandingContentPreview
+            entries={entries}
+            previewId={previewId}
+            serverURL={cmsEnv().publicUrl}
+          />
+        ) : (
+          <LandingCopy entries={entries} />
+        )}
+
+        {/* Code-rendered by design (spec 04): never CMS-editable away. */}
         <ResetNotice />
 
         <Group>

@@ -1,5 +1,15 @@
 {
   "finding_counts": {
+    "apps/cms/src/app/(auth)/auth/oidc/callback/route.ts": {
+      "crap_critical": {
+        "count": 1
+      }
+    },
+    "apps/cms/src/proxy.ts": {
+      "crap_high": {
+        "count": 1
+      }
+    },
     "apps/services/posts/src/modules/posts.repository.ts": {
       "crap_moderate": {
         "count": 1
@@ -118,9 +128,14 @@
         "count": 1
       }
     },
+    "packages/scripts/src/content.test.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
     "packages/scripts/src/keycloak.ts": {
       "crap_moderate": {
-        "count": 2
+        "count": 3
       }
     },
     "packages/scripts/src/lib/wait.ts": {
