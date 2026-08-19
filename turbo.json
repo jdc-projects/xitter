@@ -17,6 +17,7 @@
       ]
     },
     "generate": {
+      "dependsOn": ["^build"],
       "inputs": [
         "prisma/**",
         "prisma.config.ts",
