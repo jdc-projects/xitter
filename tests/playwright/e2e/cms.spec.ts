@@ -54,6 +54,9 @@ test('about page renders the CMS-managed FAQ', async ({ page }) => {
 test('published CMS content is public; drafts require an admin token', async ({ request }) => {
   const published = await request.get('/cms/api/landing-content?limit=10');
   expect(published.ok()).toBeTruthy();
+  // Anonymous reads are where-constrained: never-published drafts never leak.
+  const publishedDocs = (await published.json()) as { docs: Array<{ _status?: string }> };
+  expect(publishedDocs.docs.every((doc) => doc._status === 'published')).toBe(true);
 
   const draft = await request.get('/cms/api/landing-content?limit=10&draft=true');
   expect(draft.status()).toBe(403);

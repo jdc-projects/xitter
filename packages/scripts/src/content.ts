@@ -41,6 +41,18 @@ export interface ContentApplyResult {
   updated: number;
 }
 
+/** Shape of a doc coming back from a CMS list endpoint during export. */
+interface ExportDoc {
+  id: number;
+  slug: string;
+  title?: string;
+  intro?: string;
+  question?: string;
+  answer?: string;
+  order?: number;
+  _status?: string;
+}
+
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 export const CONTENT_DIR = resolve(SCRIPT_DIR, '../data/content');
 
@@ -180,8 +192,10 @@ export async function exportCmsContent(
   const landing = (await listExisting('landing-content', token, doFetch)).slice();
   const faq = (await listExisting('faq', token, doFetch)).slice();
 
-  const landingJson = landing.map((doc) => doc as unknown as LandingContentSeed & { order?: number });
-  const faqJson = faq.map((doc) => doc as unknown as FaqSeed & { order?: number });
+  const landingJson = landing.map((doc) => doc as unknown as ExportDoc);
+  const faqJson = faq.map((doc) => doc as unknown as ExportDoc);
+  const byOrder = (a: ExportDoc, b: ExportDoc): number =>
+    (a.order ?? 0) - (b.order ?? 0) || a.slug.localeCompare(b.slug);
   landingJson.sort(byOrder);
   faqJson.sort(byOrder);
 
@@ -203,10 +217,6 @@ export async function exportCmsContent(
     )}\n`,
   );
   console.log(`exported ${landingJson.length} landing entries, ${faqJson.length} faq entries`);
-}
-
-function byOrder(a: { order?: number; slug?: string }, b: { order?: number; slug?: string }): number {
-  return (a.order ?? 0) - (b.order ?? 0) || (a.slug ?? '').localeCompare(b.slug ?? '');
 }
 
 const command = process.argv[2] ?? 'apply';
