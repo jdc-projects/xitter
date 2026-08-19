@@ -33,12 +33,12 @@ runs:
 
     - name: Install Playwright chromium
       if: inputs.playwright == 'true'
-      # The --with-deps apt fetch (Google's chrome repo) has stalled for
-      # 30m+ with no output; retry once and hard-cap both attempts. A
-      # failure here fails the job loudly instead of hanging the PR.
+      # The chromium download has stalled >18m with zero output on multiple
+      # runners. Composite-action steps cannot use timeout-minutes, so bound
+      # it with coreutils `timeout` and retry once; failure fails the job
+      # loudly instead of hanging the PR.
       run: |
-        npm run test:install --if-present && exit 0
-        echo "first install attempt failed - retrying once"
-        npm run test:install
+        if timeout 10m npm run test:install; then exit 0; fi
+        echo "first install attempt failed or timed out - retrying once"
+        timeout 10m npm run test:install
       shell: bash
-      timeout-minutes: 10
