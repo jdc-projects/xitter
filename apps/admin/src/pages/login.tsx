@@ -23,7 +23,8 @@ export function LoginPage() {
             Operator sign-in for moderation and system health. Sign in continues to the admin realm
             (Keycloak) - only the system-admin and app-admin roles may enter.
           </Typography.Paragraph>
-          {typeof window !== 'undefined' && window.location.hash.includes('error=') ? (
+          {typeof window !== 'undefined' &&
+          new URLSearchParams(window.location.search).has('error') ? (
             <Alert
               type="error"
               showIcon

@@ -10,3 +10,11 @@ export const adminOidcConfig = {
   realm: __XITTER_ADMIN_REALM__,
   clientId: 'admin-panel',
 } as const;
+
+/**
+ * The path the panel is served under, through the edge (/admin route, not
+ * stripped) and directly off the dev server (vite base). react-router's
+ * basename, the OIDC redirect URIs, and the vite base must agree - one
+ * constant keeps them in lockstep.
+ */
+export const adminBasePath = '/admin';

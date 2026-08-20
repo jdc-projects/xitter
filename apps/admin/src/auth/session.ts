@@ -1,5 +1,5 @@
 import { UserManager, type User } from 'oidc-client-ts';
-import { adminOidcConfig } from '../env.js';
+import { adminBasePath, adminOidcConfig } from '../env.js';
 
 /**
  * OIDC session for the admin panel: authorization-code + PKCE against the
@@ -22,8 +22,8 @@ function createUserManager(): UserManager {
   return new UserManager({
     authority: base,
     client_id: adminOidcConfig.clientId,
-    redirect_uri: `${origin()}/admin${callbackPath}`,
-    post_logout_redirect_uri: `${origin()}/admin`,
+    redirect_uri: `${origin()}${adminBasePath}${callbackPath}`,
+    post_logout_redirect_uri: `${origin()}${adminBasePath}`,
     response_type: 'code',
     scope: 'openid profile',
     automaticSilentRenew: true,
