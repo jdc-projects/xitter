@@ -104,8 +104,17 @@ test('/bookmarks (own, with interactive post cards) has no serious axe violation
   const postId = (await item.getAttribute('data-testid'))!.replace('post-item-', '');
   await page.getByTestId(`post-${postId}`).getByTestId('count-bookmarks').click();
 
+  // The click returns on the optimistic flip; the server action (and its
+  // revalidate of /bookmarks) is still in flight - poll fresh renders until
+  // the bookmarked post lands on the page.
   await page.goto('/bookmarks');
-  await expect(page.getByTestId('bookmarks-list')).toContainText(text);
+  const bookmarked = page.getByTestId('bookmarks-list');
+  const a11yDeadline = Date.now() + 15_000;
+  while (!(await bookmarked.isVisible().catch(() => false)) && Date.now() < a11yDeadline) {
+    await page.reload();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
+  await expect(bookmarked).toContainText(text);
 
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])

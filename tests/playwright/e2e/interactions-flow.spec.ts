@@ -92,9 +92,16 @@ test('bookmarks are visible only on the bookmarker own bookmarks page', async ({
   await bookmark.click();
   await expect(bookmark).toHaveAttribute('aria-pressed', 'true');
 
-  // Own bookmarks page lists it with the filled state.
+  // Own bookmarks page lists it with the filled state (the click returns on
+  // the optimistic flip; the revalidate may still be in flight - poll).
   await page.goto('/bookmarks');
-  await expect(page.getByTestId('bookmarks-list')).toContainText(text);
+  const bookmarkList = page.getByTestId('bookmarks-list');
+  const listDeadline = Date.now() + 15_000;
+  while (!(await bookmarkList.isVisible().catch(() => false)) && Date.now() < listDeadline) {
+    await page.reload();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
+  await expect(bookmarkList).toContainText(text);
   await expect(page.getByTestId(`post-${postId}`).getByTestId('count-bookmarks')).toHaveAttribute(
     'aria-pressed',
     'true',
@@ -103,7 +110,8 @@ test('bookmarks are visible only on the bookmarker own bookmarks page', async ({
   // Another user's bookmarks page never shows it.
   const demo8 = await loggedInPage(browser, 'demo8');
   await demo8.goto('/bookmarks');
-  await expect(demo8.getByTestId('bookmarks-list')).not.toContainText(text);
+  await expect(demo8.getByTestId('bookmarks-empty')).toBeVisible();
+  await expect(demo8.locator('body')).not.toContainText(text);
   await demo8.close();
 
   // Undo removes it from the page.
@@ -140,7 +148,8 @@ test('reposts appear in followers feeds with attribution and undo removes them',
   await expect(repost).toHaveAttribute('aria-pressed', 'true');
   await expect(repost).toHaveText(/1/);
 
-  // The reposter's own feed shows the post attributed to them.
+  // The reposter's own feed shows the post attributed to them (displayName
+  // line + the reposter as the card's surface author).
   await demo10.goto('/feed');
   const item = demo10.locator('[data-testid^="post-item-"]', { hasText: rootText });
   const deadline = Date.now() + 20_000;
@@ -150,9 +159,8 @@ test('reposts appear in followers feeds with attribution and undo removes them',
     await demo10.waitForTimeout(400);
   }
   await expect(item).toBeVisible();
-  await expect(demo10.getByTestId(`post-repost-attribution-${postId}`)).toContainText(
-    'demo10 reposted',
-  );
+  await expect(demo10.getByTestId(`post-repost-attribution-${postId}`)).toContainText('reposted');
+  await expect(demo10.getByTestId(`post-${postId}`)).toContainText('@demo10');
   await expect(demo10.getByTestId(`post-${postId}`).getByTestId('count-reposts')).toHaveText(/1/);
 
   // The author got a ws ping for the repost of their post (hint only - no
@@ -202,13 +210,16 @@ test('a blocked user cannot like, repost or reply', async ({ page, browser }) =>
   const demo3 = await loggedInPage(browser, 'demo3');
   await demo3.goto(`/post/${targetId}`);
   const card = demo3.getByTestId(`post-${targetId}`);
+  // The error alert renders as a sibling of the card (never inside the
+  // card's own anchor - nested interactives are an a11y violation).
+  const error = demo3.getByTestId(`interact-error-${targetId}`);
 
   await card.getByTestId('count-likes').click();
-  await expect(card.getByTestId(`interact-error-${targetId}`)).toContainText(/cannot interact/i);
+  await expect(error).toContainText(/cannot interact/i);
   await expect(card.getByTestId('count-likes')).toHaveAttribute('aria-pressed', 'false');
 
   await card.getByTestId('count-reposts').click();
-  await expect(card.getByTestId(`interact-error-${targetId}`)).toContainText(/cannot interact/i);
+  await expect(error).toContainText(/cannot interact/i);
 
   await demo3.getByTestId('reply-composer-textarea').fill('blocked reply');
   await demo3.getByTestId('reply-composer-submit').click();
