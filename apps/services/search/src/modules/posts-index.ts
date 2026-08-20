@@ -222,7 +222,7 @@ function isIndexAlreadyExists(err: unknown): boolean {
   return errorBody(err)?.error?.type === 'resource_already_exists_exception';
 }
 
-export function isIndexMissing(err: unknown): boolean {
+function isIndexMissing(err: unknown): boolean {
   const body = errorBody(err);
   return body?.error?.type === 'index_not_found_exception' || body?.status === 404;
 }

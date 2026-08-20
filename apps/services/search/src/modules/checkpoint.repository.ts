@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { SearchCheckpointPosition } from '@xitter/api-contracts';
-import type { PrismaClient, Prisma } from '../generated/prisma/client.js';
+import type { PrismaClient } from '../generated/prisma/client.js';
 
 /** DI token for the service-owned Prisma client (tests provide their own). */
 export const SEARCH_PRISMA = 'SEARCH_PRISMA';
@@ -67,6 +67,3 @@ export class CheckpointRepository {
     return this.db.searchCheckpoint.deleteMany({}).then((r) => r.count);
   }
 }
-
-/** Prisma input type re-export for the module factory. */
-export type { Prisma };
