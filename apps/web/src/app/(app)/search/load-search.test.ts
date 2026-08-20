@@ -3,9 +3,9 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 // The api-client is mocked at the module boundary: loadSearch's contract is
 // the mapping + degradation behaviour, not the HTTP transport.
 vi.mock('@xitter/api-client', async (importOriginal) => {
-  const original = await importOriginal<typeof import('@xitter/api-client')>();
+  const actual = (await importOriginal()) as Record<string, unknown>;
   return {
-    ...original,
+    ...actual,
     SearchClient: vi.fn(),
     localServiceUrls: () => ({ search: 'http://localhost:8105' }),
   };
