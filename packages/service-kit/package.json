@@ -20,14 +20,18 @@
   },
   "peerDependencies": {
     "@nestjs/common": "^11",
+    "@xitter/api-client": "*",
     "@xitter/api-contracts": "*",
+    "@xitter/observability": "*",
     "reflect-metadata": "^0.2",
     "zod": "^3 || ^4"
   },
   "devDependencies": {
     "@nestjs/common": "^11",
+    "@xitter/api-client": "*",
     "@xitter/api-contracts": "*",
     "@xitter/eslint-config": "*",
+    "@xitter/observability": "*",
     "@xitter/tsconfig": "*",
     "reflect-metadata": "^0.2",
     "vitest": "^4",

@@ -71,20 +71,18 @@ test('search finds a composed post and deletes remove it from results', async ({
   await page.getByTestId(`delete-post-${postId}`).click();
   await page.waitForURL(/\/feed$/);
 
-  const deadline = Date.now() + 30_000;
+  // Poll the search API (no page navigation - a mid-navigation locator
+  // count reads undefined) until the index tombstone lands, then assert
+  // on one settled page render.
+  const searchApi = `/api/search/v1/search/posts?q=${encodeURIComponent('quokka')}`;
+  const deadline = Date.now() + 45_000;
   for (;;) {
-    await page.goto(`/search?q=${encodeURIComponent('quokka')}`);
-    const text =
-      (await page
-        .getByTestId('search-results')
-        .textContent()
-        .catch(() => '')) ?? '';
-    if (!text.includes(needle)) break;
+    const res = await page.request.get(searchApi);
+    if (res.ok() && !((await res.text()) ?? '').includes(needle)) break;
     if (Date.now() > deadline) break;
     await page.waitForTimeout(1_000);
   }
-  // Assert on the CURRENT page's DOM (no navigation between poll exit and
-  // assertion - the count can transiently read undefined mid-navigation).
+  await page.goto(`/search?q=${encodeURIComponent('quokka')}`);
   await expect(page.locator('[data-testid^="post-item-"]', { hasText: needle })).toHaveCount(0, {
     timeout: 15_000,
   });

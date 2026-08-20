@@ -8,9 +8,6 @@
     "completeness": "complete"
   },
   "unused_files": [
-    "apps/services/media/vitest.mutation.config.ts",
-    "apps/services/posts/vitest.mutation.config.ts",
-    "apps/services/social/vitest.mutation.config.ts",
     "bruno/xitter/scripts/login.js",
     "packages/scripts/src/rustfs.ts"
   ],
@@ -100,7 +97,10 @@
     "packages/api-client/src/services.ts:MediaClient.internalGetAsset",
     "packages/api-client/src/services.ts:MediaClient.internalRecordVariants",
     "packages/api-client/src/services.ts:MediaClient.internalReportFailure",
-    "packages/api-client/src/services.ts:MediaClient.internalLookup"
+    "packages/api-client/src/services.ts:MediaClient.internalLookup",
+    "packages/service-kit/src/service-content.ts:ServiceContentSource.posts",
+    "packages/service-kit/src/service-content.ts:ServiceContentSource.profiles",
+    "packages/service-kit/src/service-content.ts:ServiceContentSource.blockedAuthorIds"
   ],
   "unused_store_members": [],
   "unprovided_injects": [],
