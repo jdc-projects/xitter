@@ -131,6 +131,16 @@ test('/search (results page, authenticated) has no serious axe violations', asyn
   // Any query exercises the results screen; the empty state is a valid scan
   // target and needs no seeded corpus.
   await page.goto(`/search?q=${encodeURIComponent('feed')}`);
+
+  const results = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+    .analyze();
+  const serious = results.violations.filter((v) =>
+    ['serious', 'critical'].includes(v.impact ?? ''),
+  );
+  expect(serious, JSON.stringify(serious, null, 2)).toEqual([]);
+});
+
 /** Drive the admin realm's Keycloak login (T10 panel). */
 async function loginViaAdminRealm(page: Page, username: string, password: string) {
   await page.goto('/admin/');
