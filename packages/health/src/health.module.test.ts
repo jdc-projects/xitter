@@ -13,7 +13,9 @@ function fakeDb(overrides: Partial<HealthCheckedDb> = {}): HealthCheckedDb {
 
 async function createApp(db: HealthCheckedDb): Promise<NestFastifyApplication> {
   const moduleRef = await Test.createTestingModule({
-    imports: [HealthModule.forRoot({ prismaFactory: () => db })],
+    imports: [
+      HealthModule.forRoot({ prismaFactory: () => db, serviceName: 'posts' }),
+    ],
   }).compile();
   const app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
   await app.init();
@@ -101,5 +103,31 @@ describe('HealthModule', () => {
     await app.close();
 
     expect(disconnect).toHaveBeenCalled();
+  });
+
+  it('serves admin health at internal/admin/health with Terminus detail', async () => {
+    const db = fakeDb();
+    app = await createApp(db);
+
+    const res = await app.inject({ method: 'GET', url: '/internal/admin/health' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      service: 'posts',
+      status: 'ok',
+      checks: { database: { status: 'up' } },
+    });
+    expect(res.json().uptimeSeconds).toBeGreaterThanOrEqual(0);
+    expect(res.json().version).toBe('v1');
+  });
+
+  it('reports an error status in admin health when the database ping fails', async () => {
+    const db = fakeDb({ $queryRawUnsafe: vi.fn().mockRejectedValue(new Error('no db')) });
+    app = await createApp(db);
+
+    // 200 by design (see controller comment): the payload carries the detail.
+    const res = await app.inject({ method: 'GET', url: '/internal/admin/health' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ status: 'error', checks: { database: { status: 'down' } } });
   });
 });

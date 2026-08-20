@@ -28,6 +28,8 @@ import {
   TerminusModule,
   type HealthCheckResult,
 } from '@nestjs/terminus';
+import { Internal } from '@xitter/auth-nest';
+import { API_VERSION } from '@xitter/api-contracts';
 
 /**
  * Structural slice of a Prisma client - each service passes its own generated
@@ -47,6 +49,8 @@ const DB_PING_TIMEOUT_MS = 2_000;
 export interface HealthModuleOptions {
   /** Creates the service's Prisma client (lazily, at module init). */
   prismaFactory: () => HealthCheckedDb;
+  /** Service name reported by the admin health endpoint (defaults to 'api'). */
+  serviceName?: string;
 }
 
 @Injectable()
@@ -100,6 +104,56 @@ export class HealthController {
   }
 }
 
+/** Injection token for the service name the admin health endpoint reports. */
+export const HEALTH_SERVICE_NAME = Symbol('XITTER_HEALTH_SERVICE_NAME');
+
+/**
+ * Health with Terminus detail for the admin dashboard (T10). Sits under the
+ * service's API prefix at `internal/admin/health` - unlike the root probes it
+ * IS part of the API surface, admin-role-gated like every other internal
+ * admin route (the root probes stay unauthenticated for the kubelet).
+ */
+@Controller('internal/admin')
+export class AdminHealthController {
+  constructor(
+    private readonly checks: HealthCheckService,
+    private readonly dbPing: DatabasePingIndicator,
+    @Inject(HEALTH_DB) private readonly db: HealthCheckedDb,
+    @Inject(HEALTH_SERVICE_NAME) private readonly serviceName: string,
+  ) {}
+
+  @Get('health')
+  @Internal({ admin: true })
+  async health(): Promise<{
+    service: string;
+    status: 'ok' | 'error';
+    uptimeSeconds: number;
+    version: string;
+    checks: Record<string, { status: 'up' | 'down'; message?: string }>;
+  }> {
+    // Deliberately NOT wrapped in @HealthCheck(): Terminus translates a down
+    // indicator into a thrown 503 whose body is its own shape. The dashboard
+    // aggregates five services and wants one uniform 200 + adminHealth body
+    // carrying the same detail, with status inside the payload.
+    const indicator = await this.dbPing.pingCheck('database', this.db);
+    const checks: Record<string, { status: 'up' | 'down'; message?: string }> = {};
+    for (const [key, detail] of Object.entries(indicator)) {
+      checks[key] = {
+        status: detail.status === 'down' ? 'down' : 'up',
+        ...(detail.message ? { message: detail.message } : {}),
+      };
+    }
+    const status = Object.values(checks).every((check) => check.status === 'up') ? 'ok' : 'error';
+    return {
+      service: this.serviceName,
+      status,
+      uptimeSeconds: Math.floor(process.uptime()),
+      version: API_VERSION,
+      checks,
+    };
+  }
+}
+
 @Injectable()
 export class DbShutdownHook implements OnApplicationShutdown {
   constructor(@Inject(HEALTH_DB) private readonly db: HealthCheckedDb) {}
@@ -116,8 +170,13 @@ export class HealthModule {
     return {
       module: HealthModule,
       imports: [TerminusModule.forRoot()],
-      controllers: [HealthController],
-      providers: [dbProvider, DatabasePingIndicator, DbShutdownHook],
+      controllers: [HealthController, AdminHealthController],
+      providers: [
+        dbProvider,
+        { provide: HEALTH_SERVICE_NAME, useValue: options.serviceName ?? 'api' },
+        DatabasePingIndicator,
+        DbShutdownHook,
+      ],
     };
   }
 }
