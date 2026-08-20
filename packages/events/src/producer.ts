@@ -38,6 +38,11 @@ export function createEventProducer(options: EventProducerOptions): EventProduce
   // so a broker outage at boot degrades the first emit instead of bricking it.
   producer.connect().catch(() => undefined);
 
+  const send = (
+    topic: TopicName,
+    messages: Array<{ key: string; value: string; headers: { eventType: string } }>,
+  ) => producer.send({ topic: `${prefix}${TOPICS[topic]}`, messages });
+
   return {
     producer,
     async emit(topic: TopicName, event: EmitInput) {
@@ -46,30 +51,35 @@ export function createEventProducer(options: EventProducerOptions): EventProduce
         eventVersion: 1,
         eventId: crypto.randomUUID(),
       });
-      // kafkajs send() connects on demand; a failed eager connect at boot is
-      // retried here, so a broker outage at startup must not brick the
-      // producer. A DROPPED connection is the harder case: send() rejects
-      // with 'The producer is disconnected' and never self-heals, so catch
-      // that one failure, explicitly reconnect, and retry the send once.
-      const envelopeMessages = [
-        {
-          key: event.key ?? envelope.eventType,
-          value: JSON.stringify(envelope),
-          headers: { eventType: envelope.eventType },
-        },
-      ];
+      const messages = [envelopeMessages(event, envelope)];
       try {
-        await producer.send({ topic: `${prefix}${TOPICS[topic]}`, messages: envelopeMessages });
+        await send(topic, messages);
       } catch (err) {
+        // kafkajs send() connects on demand; a failed eager connect at boot
+        // is retried here, so a broker outage at startup must not brick the
+        // producer. A DROPPED connection is the harder case: send() rejects
+        // with 'The producer is disconnected' and never self-heals, so
+        // reconnect and retry once for exactly that failure.
         if (!(err instanceof Error) || !err.message.includes('producer is disconnected')) {
           throw err;
         }
         await producer.connect();
-        await producer.send({ topic: `${prefix}${TOPICS[topic]}`, messages: envelopeMessages });
+        await send(topic, messages);
       }
     },
     async disconnect() {
       await producer.disconnect();
     },
+  };
+}
+
+function envelopeMessages(
+  event: EmitInput,
+  envelope: EventEnvelope,
+): { key: string; value: string; headers: { eventType: string } } {
+  return {
+    key: event.key ?? envelope.eventType,
+    value: JSON.stringify(envelope),
+    headers: { eventType: envelope.eventType },
   };
 }

@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { FeedEntryInput, HydratedFeedItem, Profile } from '@xitter/api-contracts';
-import { assertValidCursor } from '@xitter/service-kit';
+import type { FeedEntryInput, HydratedFeedItem } from '@xitter/api-contracts';
+import { assertValidCursor, profileOrPlaceholder } from '@xitter/service-kit';
 import { CONTENT_HYDRATOR, type ContentHydrator } from './content-hydrator.js';
 import { FEED_REALTIME, type FeedRealtime } from './feed-realtime.js';
 import { FeedRepository, type FeedEntryRow } from './feed.repository.js';
@@ -107,21 +107,4 @@ export class FeedService {
     }
     return items;
   }
-}
-
-/**
- * A post whose author has no profile row (bootstrap race) still renders -
- * the placeholder validates against the profile contract, so clients stay
- * schema-clean. The profile page behind it 404s, which is honest.
- */
-function profileOrPlaceholder(id: string, profiles: Map<string, Profile>): Profile {
-  return (
-    profiles.get(id) ?? {
-      id,
-      username: 'unknown',
-      displayName: 'Unknown',
-      bio: null,
-      createdAt: new Date(0).toISOString(),
-    }
-  );
 }

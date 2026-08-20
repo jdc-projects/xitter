@@ -82,6 +82,10 @@ export async function startOpenSearch(): Promise<OpenSearchHandle> {
       'bootstrap.memory_lock': 'false',
     })
     .withExposedPorts(9200)
+    // The default host-port wait (60s) fires while the JVM is still booting
+    // on CI's shared runners - the container is healthy, just slow. The
+    // HTTP loop below is the real readiness gate; give the bind 5 minutes.
+    .withStartupTimeout(300_000)
     .start();
   const url = `http://${container.getHost()}:${container.getMappedPort(9200)}`;
 

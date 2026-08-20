@@ -20,11 +20,13 @@
   },
   "peerDependencies": {
     "@nestjs/common": "^11",
+    "@xitter/api-contracts": "*",
     "reflect-metadata": "^0.2",
     "zod": "^3 || ^4"
   },
   "devDependencies": {
     "@nestjs/common": "^11",
+    "@xitter/api-contracts": "*",
     "@xitter/eslint-config": "*",
     "@xitter/tsconfig": "*",
     "reflect-metadata": "^0.2",

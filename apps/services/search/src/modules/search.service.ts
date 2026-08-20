@@ -1,6 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { HydratedFeedItem, Profile, SearchIndexDocument } from '@xitter/api-contracts';
-import { assertValidCursor, decodeCursor, encodeCursor } from '@xitter/service-kit';
+import type { HydratedFeedItem, SearchIndexDocument } from '@xitter/api-contracts';
+import {
+  assertValidCursor,
+  decodeCursor,
+  encodeCursor,
+  profileOrPlaceholder,
+} from '@xitter/service-kit';
 import type { PostHit } from './posts-index.js';
 import { PostsIndex } from './posts-index.js';
 import { SEARCH_CONTENT, type SearchContentSource } from './search-content.js';
@@ -134,21 +139,4 @@ export class SearchService {
     }
     return items;
   }
-}
-
-/**
- * An author with no profile row (bootstrap race) still renders - the
- * placeholder validates against the profile contract, so clients stay
- * schema-clean. The profile page behind it 404s, which is honest.
- */
-function profileOrPlaceholder(id: string, profiles: Map<string, Profile>): Profile {
-  return (
-    profiles.get(id) ?? {
-      id,
-      username: 'unknown',
-      displayName: 'Unknown',
-      bio: null,
-      createdAt: new Date(0).toISOString(),
-    }
-  );
 }
