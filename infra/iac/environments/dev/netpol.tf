@@ -500,8 +500,8 @@ resource "kubernetes_network_policy" "allow_kafka_egress" {
 # Valkey users: feed (ws fan-out pub/sub, spec 05) plus the services with
 # spec'd mutation endpoints for the Valkey rate limiter (spec 07: post/reply
 # creation + interactions → posts, follows/blocks → social, upload slots →
-# media). web/cms/admin/search and the workers have no Valkey use; the rate
-# limiter is a service-side concern so web needs no direct access.
+# media). Cap.js (login captcha) and the ws-token broker also live in web
+# and store through Valkey, so web needs egress too - login 500s without it.
 resource "kubernetes_network_policy" "allow_valkey_egress" {
   metadata {
     name      = "xitter-allow-valkey-egress"
@@ -515,7 +515,7 @@ resource "kubernetes_network_policy" "allow_valkey_egress" {
       match_expressions {
         key      = "app.kubernetes.io/name"
         operator = "In"
-        values   = ["feed", "posts", "social", "media"]
+        values   = ["feed", "posts", "social", "media", "web"]
       }
       match_labels = {
         "app.kubernetes.io/instance" = var.environment
