@@ -6,6 +6,7 @@
  * mapping before the first event lands; the service's boot-time ensure and
  * every index write tolerate it already existing.
  */
+// fallow-ignore-file unused-file -- run via bootstrap.ts (tsx), not imported
 import { Client } from '@opensearch-project/opensearch';
 import { loadRepoEnv, opensearchUrl, POSTS_INDEX, postsIndexDefinition } from '@xitter/config';
 

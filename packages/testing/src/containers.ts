@@ -65,8 +65,12 @@ const OPENSEARCH_TEST_LABEL = 'xitter.test.opensearch';
 /**
  * Start a throwaway OpenSearch node, same image + env as the local compose
  * stack (infra/docker/compose.yaml): single node, security plugin disabled.
- * Ephemeral host port; readiness is a plain HTTP retry loop (podman-backed
- * sockets make log-based waits unreliable).
+ * Ephemeral host port; readiness is the plain HTTP retry loop below - the
+ * testcontainers port-bind wait is deliberately absent: under a loaded
+ * podman VM (sibling stacks + parallel CI suites) that check races podman's
+ * port proxy and fails while the JVM is healthy. Heap halved vs compose -
+ * CI runners hold several of these at once and a test corpus needs a
+ * fraction of 512m.
  */
 export async function startOpenSearch(): Promise<OpenSearchHandle> {
   const container = await new GenericContainer('opensearchproject/opensearch:3.8.0')
@@ -74,11 +78,10 @@ export async function startOpenSearch(): Promise<OpenSearchHandle> {
     .withEnvironment({
       'discovery.type': 'single-node',
       DISABLE_SECURITY_PLUGIN: 'true',
-      OPENSEARCH_JAVA_OPTS: '-Xms512m -Xmx512m',
+      OPENSEARCH_JAVA_OPTS: '-Xms256m -Xmx256m',
       'bootstrap.memory_lock': 'false',
     })
     .withExposedPorts(9200)
-    .withWaitStrategy(Wait.forListeningPorts())
     .start();
   const url = `http://${container.getHost()}:${container.getMappedPort(9200)}`;
 
