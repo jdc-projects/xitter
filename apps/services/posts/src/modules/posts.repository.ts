@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { MediaAsset } from '@xitter/api-contracts';
+import type { InteractionKind, MediaAsset } from '@xitter/api-contracts';
 import { encodeCursor, decodeCursor } from '@xitter/service-kit';
 import type { PrismaClient, Prisma } from '../generated/prisma/client.js';
 
@@ -9,6 +9,8 @@ export const POSTS_PRISMA = 'POSTS_PRISMA';
 export type PostsPrismaClient = PrismaClient & { $disconnect(): Promise<void> };
 
 export type PostRow = Prisma.PostGetPayload<Record<string, never>>;
+
+export type InteractionRow = Prisma.InteractionGetPayload<Record<string, never>>;
 
 export type PostsDb = Pick<PrismaClient, 'post' | 'interaction' | '$transaction'>;
 
@@ -148,6 +150,126 @@ export class PostsRepository {
   async truncate(): Promise<void> {
     await this.db.interaction.deleteMany();
     await this.db.post.deleteMany();
+  }
+
+  /**
+   * Idempotent interaction create + count bump in ONE transaction (spec
+   * data/01: the counts read-model never drifts from the rows). The natural
+   * key (kind, postId, userId) absorbs concurrent duplicate creates; the
+   * counter only moves when a row actually lands. Returns the row and
+   * whether it was newly created (repeat creates resolve to the stored row
+   * without re-emitting lifecycle effects).
+   */
+  createInteraction(input: {
+    kind: InteractionKind;
+    postId: string;
+    userId: string;
+  }): Promise<{ row: InteractionRow; created: boolean }> {
+    return this.db.$transaction(async (tx) => {
+      const inserted = await tx.interaction.createMany({
+        data: input,
+        skipDuplicates: true,
+      });
+      const row = await tx.interaction.findUniqueOrThrow({
+        where: { kind_postId_userId: input },
+      });
+      if (inserted.count === 0) return { row, created: false };
+
+      // Bookmarks are private annotations - no public count to maintain.
+      if (input.kind === 'like' || input.kind === 'repost') {
+        await tx.post.update({
+          where: { id: input.postId },
+          data:
+            input.kind === 'like'
+              ? { likeCount: { increment: 1 } }
+              : { repostCount: { increment: 1 } },
+        });
+      }
+      return { row, created: true };
+    });
+  }
+
+  /**
+   * Undo: removes the row and reverses the counter only when a row was
+   * actually removed (idempotent deletes). Returns false when nothing
+   * existed - the service still answers 204.
+   */
+  deleteInteraction(input: {
+    kind: InteractionKind;
+    postId: string;
+    userId: string;
+  }): Promise<boolean> {
+    return this.db.$transaction(async (tx) => {
+      const removed = await tx.interaction.deleteMany({ where: input });
+      if (removed.count === 0) return false;
+
+      if (input.kind === 'like' || input.kind === 'repost') {
+        await tx.post
+          .update({
+            where: { id: input.postId },
+            data:
+              input.kind === 'like'
+                ? { likeCount: { decrement: 1 } }
+                : { repostCount: { decrement: 1 } },
+          })
+          .catch(() => undefined); // hard-deleted parent row: counter is moot
+      }
+      return true;
+    });
+  }
+
+  /**
+   * The caller's bookmark list, newest bookmark first. Soft-deleted posts
+   * drop out here (not at hydration) so bookmarks never resurrect tombstones.
+   * The cursor is the interaction row's keyset position.
+   */
+  async bookmarks(
+    userId: string,
+    cursor: string | undefined,
+    limit: number,
+  ): Promise<{ items: PostRow[]; nextCursor: string | null }> {
+    const position = cursor ? decodeCursor(cursor) : null;
+    const boundary = position ? new Date(position.createdAt) : null;
+    const where: Prisma.InteractionWhereInput = {
+      kind: 'bookmark',
+      userId,
+      post: { deletedAt: null },
+      ...(boundary
+        ? {
+            OR: [
+              { createdAt: { lt: boundary } },
+              { createdAt: boundary, id: { lt: position!.id } },
+            ],
+          }
+        : {}),
+    };
+
+    const rows = await this.db.interaction.findMany({
+      where,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+      include: { post: true },
+    });
+
+    const hasMore = rows.length > limit;
+    const items = hasMore ? rows.slice(0, limit) : rows;
+    const last = items.at(-1);
+    return {
+      items: items.map((row) => row.post),
+      nextCursor: hasMore && last ? encodeCursor(last) : null,
+    };
+  }
+
+  /** The user's interaction rows for a batch of posts (viewer-state input). */
+  interactionsForPosts(
+    userId: string,
+    postIds: string[],
+  ): Promise<Pick<InteractionRow, 'kind' | 'postId'>[]> {
+    if (postIds.length === 0) return Promise.resolve([]);
+    return this.db.interaction.findMany({
+      where: { userId, postId: { in: postIds } },
+      select: { kind: true, postId: true },
+    });
   }
 
   toCounts(row: PostRow): { replies: number; likes: number; reposts: number } {

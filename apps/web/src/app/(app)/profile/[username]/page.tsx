@@ -99,7 +99,7 @@ export default async function ProfilePage({
   const session = await requireSession(`/profile/${username}`);
   const { tab = 'posts', cursor } = await searchParams;
 
-  const { view, profile, counts, listTab, list, posts } = await loadProfileView(
+  const { view, profile, counts, listTab, list, posts, viewerFlags } = await loadProfileView(
     session,
     username,
     tab as ProfileTab,
@@ -181,6 +181,7 @@ export default async function ProfilePage({
                     username: profile.username,
                     displayName: profile.displayName,
                   }}
+                  viewer={viewerFlags.get(post.id)}
                   canDelete={view.isOwnProfile}
                   username={profile.username}
                 />

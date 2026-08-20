@@ -33,6 +33,7 @@ export const postDeleted = z.object({
 
 export const interactionCreated = z.object({
   eventType: z.literal('posts.interaction.created'),
+  interactionId: z.uuid(),
   kind: interactionKindSchema,
   postId: postIdSchema,
   userId: userIdSchema,

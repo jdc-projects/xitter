@@ -34,6 +34,9 @@ describe('fanout consumption (testcontainers kafka)', () => {
   const deleteAuthorEntries = vi.fn((_userId: string, _authorId: string) =>
     Promise.resolve({ deleted: 1 }),
   );
+  const deleteRepostEntries = vi.fn((_postId: string, _repostedById: string) =>
+    Promise.resolve({ deleted: 1 }),
+  );
 
   beforeAll(async () => {
     kafka = await startKafka();
@@ -61,6 +64,7 @@ describe('fanout consumption (testcontainers kafka)', () => {
         internalUpsertEntries: upsertEntries,
         internalDeletePostEntries: deletePostEntries,
         internalDeleteAuthorEntries: deleteAuthorEntries,
+        internalDeleteRepostEntries: deleteRepostEntries,
       } as unknown as FeedApi,
     };
     await consumer.run((envelope) => handleEvent(envelope, deps));
@@ -185,6 +189,48 @@ describe('fanout consumption (testcontainers kafka)', () => {
 
     await emitUntil(emit, done);
   }, 90_000);
+
+  it('fans repost interactions out and undoes them (#8)', async () => {
+    const postId = uid('e00e');
+    const before = upsertEntries.mock.calls.length;
+    const emitted = () => upsertEntries.mock.calls.length > before;
+    const emitRepost = () =>
+      producer.emit('posts', {
+        eventType: 'posts.interaction.created',
+        producer: 'posts',
+        occurredAt: NOW,
+        key: postId,
+        payload: {
+          interactionId: uid('e00f'),
+          kind: 'repost',
+          postId,
+          userId: AUTHOR,
+          createdAt: NOW,
+        },
+      });
+
+    await emitUntil(emitRepost, emitted);
+    expect(followerIds).toHaveBeenCalledWith(AUTHOR); // reposter's followers
+    const entries = upsertEntries.mock.calls.at(-1)![0] as {
+      userId: string;
+      reason: string;
+      repostedById: string;
+    }[];
+    expect(entries.every((e) => e.reason === 'repost' && e.repostedById === AUTHOR)).toBe(true);
+
+    const undone = () =>
+      deleteRepostEntries.mock.calls.some(([id, by]) => id === postId && by === AUTHOR);
+    const emitUndo = () =>
+      producer.emit('posts', {
+        eventType: 'posts.interaction.deleted',
+        producer: 'posts',
+        occurredAt: NOW,
+        key: postId,
+        payload: { kind: 'repost', postId, userId: AUTHOR, deletedAt: NOW },
+      });
+
+    await emitUntil(emitUndo, undone);
+  }, 120_000);
 
   it('keys same-aggregate events to one partition (ordered consumption)', async () => {
     // One shared key emitted repeatedly: every event with that key must

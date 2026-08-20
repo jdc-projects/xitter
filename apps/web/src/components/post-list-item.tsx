@@ -1,14 +1,17 @@
 'use client';
 
-import { Anchor, Stack } from '@mantine/core';
-import { PostCard } from '@xitter/ui';
+import { Stack } from '@mantine/core';
 import type { Post } from '@xitter/api-contracts';
-import { imagesFor } from '@/lib/media/images';
 import { DeletePostButton } from './delete-post-button';
+import { PostInteractions } from './post-interactions';
 
 export interface PostListItemProps {
   post: Pick<Post, 'id' | 'text' | 'createdAt' | 'counts' | 'media'>;
   author: { id: string; username: string; displayName: string };
+  /** Viewer's like/repost/bookmark flags for this post (batched viewer-state). */
+  viewer?: { liked?: boolean; reposted?: boolean; bookmarked?: boolean };
+  /** Repost attribution (feed repost entries). */
+  repostedBy?: { id: string; username: string; displayName: string };
   /** Viewer's own post: render the delete affordance. */
   canDelete?: boolean;
   /** Profile to revalidate after a delete (the card's host page). */
@@ -18,22 +21,33 @@ export interface PostListItemProps {
 }
 
 /**
- * PostCard + navigation to the detail page + (own posts) delete. The delete
- * button sits below the card so it never nests a form inside the anchor.
- * Lists render thumbs; the detail page passes originals via PostCard itself.
+ * Interactive post card + (own posts) delete, for every list surface. The
+ * delete button sits below the card so it never nests a form inside the
+ * card's own anchor. Lists render thumbs; the detail page passes originals.
  */
 export function PostListItem({
   post,
   author,
+  viewer,
+  repostedBy,
   canDelete = false,
   username,
   goTo,
 }: PostListItemProps) {
   return (
-    <Stack gap={4} data-testid={`post-item-${post.id}`}>
-      <Anchor href={`/post/${post.id}`} unstyled style={{ textDecoration: 'none' }}>
-        <PostCard author={author} post={post} images={imagesFor(post, 'thumb')} />
-      </Anchor>
+    <Stack
+      // Disambiguated for the post-appears-twice case (own entry + repost
+      // entry): selectors stay unique per feed row.
+      data-testid={`post-item-${post.id}${repostedBy ? `-repost-${repostedBy.id}` : ''}`}
+    >
+      <PostInteractions
+        post={post}
+        author={author}
+        viewer={viewer ?? {}}
+        repostedBy={repostedBy}
+        variant="thumb"
+        href={`/post/${post.id}`}
+      />
       {canDelete ? <DeletePostButton postId={post.id} username={username} goTo={goTo} /> : null}
     </Stack>
   );

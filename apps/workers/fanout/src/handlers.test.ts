@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { FeedEntryInput, Post } from '@xitter/api-contracts';
 import { EVENT_TYPES } from '@xitter/events';
-import { BACKFILL_POSTS, entriesForBackfill, entriesForNewPost } from './entries.js';
+import {
+  BACKFILL_POSTS,
+  entriesForBackfill,
+  entriesForNewPost,
+  entriesForRepost,
+} from './entries.js';
 import { handleEvent, type FeedApi, type PostsApi, type SocialApi } from './handlers.js';
 
 const AUTHOR = '00000000-0000-4000-8000-0000000000a1';
@@ -47,6 +52,31 @@ describe('entriesForNewPost', () => {
   });
 });
 
+describe('entriesForRepost', () => {
+  const postId = '00000000-0000-4000-8000-0000000000c4';
+  const event = { postId, userId: FOLLOWER_1, createdAt: CREATED_AT };
+
+  it('derives repost entries for the reposter + their followers, attributed', () => {
+    const entries = entriesForRepost(event, [FOLLOWER_2, AUTHOR]);
+
+    expect(entries.map((e) => e.userId).sort()).toEqual([FOLLOWER_1, FOLLOWER_2, AUTHOR].sort());
+    for (const entry of entries) {
+      expect(entry).toMatchObject({
+        postId,
+        authorId: FOLLOWER_1, // reposter is the feed-surface author
+        reason: 'repost',
+        repostedById: FOLLOWER_1,
+        postCreatedAt: CREATED_AT, // repost time orders the feed item
+      });
+    }
+  });
+
+  it('de-duplicates when the reposter appears among their own followers', () => {
+    const entries = entriesForRepost(event, [FOLLOWER_1]);
+    expect(entries).toHaveLength(1);
+  });
+});
+
 describe('entriesForBackfill', () => {
   const follow = { followerId: FOLLOWER_1, followeeId: AUTHOR };
 
@@ -75,6 +105,7 @@ function fakeDeps() {
   const upserts: FeedEntryInput[][] = [];
   const deletedPosts: string[] = [];
   const removedAuthors: { userId: string; authorId: string }[] = [];
+  const removedReposts: { postId: string; repostedById: string }[] = [];
   const deps = {
     social: {
       internalFollowerIds: vi.fn(() => Promise.resolve([FOLLOWER_1, FOLLOWER_2])),
@@ -95,9 +126,13 @@ function fakeDeps() {
         removedAuthors.push({ userId, authorId });
         return Promise.resolve({ deleted: 1 });
       }),
+      internalDeleteRepostEntries: vi.fn((postId: string, repostedById: string) => {
+        removedReposts.push({ postId, repostedById });
+        return Promise.resolve({ deleted: 1 });
+      }),
     } as unknown as FeedApi,
   };
-  return { deps, upserts, deletedPosts, removedAuthors };
+  return { deps, upserts, deletedPosts, removedAuthors, removedReposts };
 }
 
 const postCreatedEnvelope = (payload: object) => ({
@@ -206,14 +241,91 @@ describe('handleEvent dispatch', () => {
     expect(removedAuthors).toEqual([{ userId: FOLLOWER_1, authorId: AUTHOR }]);
   });
 
+  it('fans interaction.created (repost) out to the reposter audience', async () => {
+    const { deps, upserts } = fakeDeps();
+    const postId = '00000000-0000-4000-8000-0000000000a1';
+
+    await handleEvent(
+      {
+        eventId: crypto.randomUUID(),
+        eventType: EVENT_TYPES.interactionCreated,
+        eventVersion: 1,
+        producer: 'posts',
+        occurredAt: CREATED_AT,
+        payload: {
+          interactionId: '00000000-0000-4000-8000-0000000000a2',
+          kind: 'repost',
+          postId,
+          userId: FOLLOWER_1,
+          createdAt: CREATED_AT,
+        },
+      },
+      deps,
+    );
+
+    // Followers of the REPOSTER (not the original author) get the entry.
+    expect(deps.social.internalFollowerIds).toHaveBeenCalledWith(FOLLOWER_1);
+    const entries = upserts[0]!;
+    expect(entries.map((e) => e.userId).sort()).toEqual([FOLLOWER_1, FOLLOWER_2].sort());
+    expect(entries.every((e) => e.reason === 'repost' && e.repostedById === FOLLOWER_1)).toBe(true);
+  });
+
+  it('ignores like/bookmark interaction.created (no feed entries)', async () => {
+    const { deps, upserts } = fakeDeps();
+
+    for (const kind of ['like', 'bookmark'] as const) {
+      await handleEvent(
+        {
+          eventId: crypto.randomUUID(),
+          eventType: EVENT_TYPES.interactionCreated,
+          eventVersion: 1,
+          producer: 'posts',
+          occurredAt: CREATED_AT,
+          payload: {
+            interactionId: '00000000-0000-4000-8000-0000000000b1',
+            kind,
+            postId: '00000000-0000-4000-8000-0000000000b2',
+            userId: FOLLOWER_1,
+            createdAt: CREATED_AT,
+          },
+        },
+        deps,
+      );
+    }
+
+    expect(upserts).toHaveLength(0);
+    expect(deps.social.internalFollowerIds).not.toHaveBeenCalled();
+  });
+
+  it('removes repost entries on interaction.deleted (repost)', async () => {
+    const { deps, removedReposts } = fakeDeps();
+
+    await handleEvent(
+      {
+        eventId: crypto.randomUUID(),
+        eventType: EVENT_TYPES.interactionDeleted,
+        eventVersion: 1,
+        producer: 'posts',
+        occurredAt: CREATED_AT,
+        payload: {
+          kind: 'repost',
+          postId: '00000000-0000-4000-8000-0000000000c1',
+          userId: FOLLOWER_1,
+          deletedAt: CREATED_AT,
+        },
+      },
+      deps,
+    );
+
+    expect(removedReposts).toEqual([
+      { postId: '00000000-0000-4000-8000-0000000000c1', repostedById: FOLLOWER_1 },
+    ]);
+  });
+
   it('ignores block events (history stays - product decision) and unknown types', async () => {
     const { deps, upserts } = fakeDeps();
 
-    for (const eventType of [
-      EVENT_TYPES.blockCreated,
-      EVENT_TYPES.interactionCreated,
-      'nothing.interesting',
-    ]) {
+    for (const eventType of [EVENT_TYPES.blockCreated, 'nothing.interesting']) {
       await handleEvent(
         {
           eventId: crypto.randomUUID(),

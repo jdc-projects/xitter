@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 import { ErrorEnvelopeFilter, RateLimitGuard } from '@xitter/auth-nest';
 import { afterEach, describe, expect, it } from 'vitest';
 import { InternalController } from './internal.controller.js';
+import { NullInteractionRealtime, INTERACTION_REALTIME } from './interaction-realtime.js';
 import { MEDIA_CHECKER, NullMediaChecker } from './media-checker.js';
 import { NullPostsEvents, POSTS_EVENTS } from './posts-events.js';
 import { PostsController } from './posts.controller.js';
@@ -65,6 +66,20 @@ const repoStub = {
   softDelete: () => Promise.resolve(postRow({ deletedAt: new Date() })),
   authorPosts: () => Promise.resolve({ items: [postRow()], nextCursor: null }),
   replies: () => Promise.resolve({ items: [], nextCursor: null }),
+  bookmarks: () => Promise.resolve({ items: [postRow()], nextCursor: null }),
+  interactionsForPosts: () => Promise.resolve([{ kind: 'like', postId: POST_ID } as const]),
+  createInteraction: () =>
+    Promise.resolve({
+      row: {
+        id: '00000000-0000-4000-8000-0000000000f1',
+        kind: 'like',
+        postId: POST_ID,
+        userId: CALLER,
+        createdAt: new Date('2026-08-19T00:00:00Z'),
+      },
+      created: true,
+    }),
+  deleteInteraction: () => Promise.resolve(true),
   truncate: () => Promise.resolve(),
   toCounts: () => ({ replies: 0, likes: 0, reposts: 0 }),
 } as unknown as PostsRepository;
@@ -77,6 +92,7 @@ async function createApp(): Promise<NestFastifyApplication> {
       { provide: POSTS_EVENTS, useValue: new NullPostsEvents() },
       { provide: RELATIONSHIP_CHECKER, useValue: new NullRelationshipChecker() },
       { provide: MEDIA_CHECKER, useValue: new NullMediaChecker() },
+      { provide: INTERACTION_REALTIME, useValue: new NullInteractionRealtime() },
       PostsService,
     ],
   })
@@ -203,5 +219,61 @@ describe('posts HTTP wiring', () => {
 
     const versioned = await app.inject({ method: 'POST', url: '/api/posts/v1/internal/reseed' });
     expect(versioned.statusCode).toBe(404);
+  });
+
+  it('serves interaction create/delete under the versioned prefix', async () => {
+    app = await createApp();
+
+    const created = await app.inject({
+      method: 'POST',
+      url: `/api/posts/v1/posts/${POST_ID}/interactions`,
+      payload: { kind: 'like' },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({ kind: 'like', postId: POST_ID, userId: CALLER });
+
+    const badKind = await app.inject({
+      method: 'POST',
+      url: `/api/posts/v1/posts/${POST_ID}/interactions`,
+      payload: { kind: 'superlike' },
+    });
+    expect(badKind.statusCode).toBe(400);
+    expect(badKind.json()).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
+
+    const removed = await app.inject({
+      method: 'DELETE',
+      url: `/api/posts/v1/posts/${POST_ID}/interactions/like`,
+    });
+    expect(removed.statusCode).toBe(204);
+
+    const badParam = await app.inject({
+      method: 'DELETE',
+      url: `/api/posts/v1/posts/${POST_ID}/interactions/not-a-kind`,
+    });
+    expect(badParam.statusCode).toBe(400);
+  });
+
+  it('serves bookmarks and viewer-state with validation', async () => {
+    app = await createApp();
+
+    const bookmarks = await app.inject({ method: 'GET', url: '/api/posts/v1/bookmarks' });
+    expect(bookmarks.statusCode).toBe(200);
+    expect(bookmarks.json()).toMatchObject({
+      items: [{ id: POST_ID }],
+      nextCursor: null,
+    });
+
+    const state = await app.inject({
+      method: 'GET',
+      url: `/api/posts/v1/viewer-state?postIds=${POST_ID}`,
+    });
+    expect(state.statusCode).toBe(200);
+    expect(state.json()).toEqual({
+      items: [{ postId: POST_ID, liked: true, reposted: false, bookmarked: false }],
+    });
+
+    const badState = await app.inject({ method: 'GET', url: '/api/posts/v1/viewer-state' });
+    expect(badState.statusCode).toBe(400);
+    expect(badState.json()).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
   });
 });

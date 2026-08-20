@@ -50,8 +50,7 @@ Every message is JSON with a single envelope; consumers validate it at the bound
 | `posts.post.created`        | `xitter.posts.v1`  | `postId`, `authorId`, `text`, `mediaIds[]`, `replyToId?`, `repostOfId?`, `createdAt`                | Post created (top-level or reply)                                                    |
 | `posts.post.deleted`        | `xitter.posts.v1`  | `postId`, `authorId`, `deletedAt`                                                                   | Post deleted by author                                                               |
 | `posts.interaction.created` | `xitter.posts.v1`  | `interactionId`, `postId`, `userId`, `kind`, `createdAt`                                            | like/bookmark/repost added                                                           |
-| `posts.interaction.deleted` | `xitter.posts.v1`  | `postId`, `userId`, `kind`, `deletedAt`                                                             | Interaction removed                                                                  |
-| `social.follow.created`     | `xitter.social.v1` | `followerId`, `followeeId`, `createdAt`                                                             | Follow established                                                                   |
+| `posts.interaction.deleted` | `xitter.posts.v1`  | `postId`, `userId`, `kind`, `deletedAt`                                                             | Interaction removed                                                                  |     | `social.follow.created` | `xitter.social.v1` | `followerId`, `followeeId`, `createdAt` | Follow established |
 | `social.follow.deleted`     | `xitter.social.v1` | `followerId`, `followeeId`, `deletedAt`                                                             | Unfollowed                                                                           |
 | `social.block.created`      | `xitter.social.v1` | `blockerId`, `blockedId`, `createdAt`                                                               | Block established                                                                    |
 | `social.block.deleted`      | `xitter.social.v1` | `blockerId`, `blockedId`, `deletedAt`                                                               | Block removed                                                                        |
@@ -141,6 +140,44 @@ sequenceDiagram
 
 Unfollow (`social.follow.deleted`) removes the followee's entries from the follower's feed via the feed internal API (`DELETE /internal/feed/users/:followerId/authors/:followeeId`). Follow backfill copies the followee's **20 most recent posts** (`POST /api/posts/internal/posts/by-author` — workers hold service tokens, the public timeline requires a user token; bounded window; a full historical rebuild is a reset concern, not a runtime one). **Blocks are different — explicit product decision:** `social.block.*` prevents _future_ interactions (likes, reposts, replies, follows on the blocker's content, enforced at write time); **historical feed entries are not rewritten and remain until the nightly reset.** Block events therefore have no feed consumer; blocked authors are filtered at feed read time instead.
 
+### Interactions → counts, author ping, repost fanout
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant W as web
+    participant P as posts
+    participant V as Valkey
+    participant K as Kafka
+    participant F as fanout (worker)
+    participant S as social
+    participant FD as feed
+
+    B->>W: like / bookmark / repost
+    W->>P: POST /api/posts/v1/posts/:id/interactions
+    P->>P: block check (social internal) + insert (natural key) + count bump (one tx)
+    P-->>W: 201 interaction
+    P->>K: posts.interaction.created
+    alt like or repost (not own post)
+        P->>V: PUBLISH feed:updates:{authorId}
+        V-->>B: ws push {type:"feed.new-items"} (author's socket - refetch hint, no entries)
+    end
+    alt repost
+        K->>F: consume (kind = repost only)
+        F->>S: GET /internal/users/:reposterId/followers/ids
+        S-->>F: follower ids
+        F->>FD: POST /internal/feed/entries (reason: repost, repostedById, reposter-time ordering)
+        FD->>V: PUBLISH feed:updates:{userId} per affected user
+    end
+```
+
+Design notes:
+
+- **Author ping is synchronous, fanout is not.** The ping publishes from the posts service straight to Valkey on the interaction's commit path (a like should light up for the author within the request, not behind consumer lag); the repost's _feed entries_ go through Kafka like every other materialisation. The channel name lives in `@xitter/api-contracts` (`feedUpdatesChannel`) so the two publishers cannot drift.
+- **Bookmarks never ping** — the author must not learn who bookmarked (product 6.2 privacy); the fanout worker also ignores `kind: bookmark|like` entirely.
+- **Repost entries are attributed to the reposter**: `authorId`/`repostedById` = reposter, `postCreatedAt` = repost time (a repost arrives as a fresh feed item), `postId` = the original post. Reposts fan out to the **reposter's** followers, not the original author's audience. Reposting a repost is impossible by construction — reposts are interactions on posts, not posts, so no chain can form.
+- **Undo** (`posts.interaction.deleted`, kind=repost) removes exactly that reposter's entries (`DELETE /internal/feed/posts/:postId/reposts/:repostedById`); the post's own entries and other reposters' survive. Undo of any kind is never block-checked — it removes the caller's own footprint.
+
 ### Search indexing
 
 ```mermaid
@@ -181,7 +218,7 @@ At-least-once delivery means every flow below must tolerate redelivery:
 
 1. **eventId dedupe** — each worker persists processed `eventId`s (store with retention ≥ topic retention, 7d) and skips already-seen events before doing side-effectful work.
 2. **Natural-key upserts** — all writes are idempotent on business keys, so a replay after a crash converges:
-   - feed entries: unique `(userId, postId, reason)` — insert on conflict do nothing (repostedById is excluded because Postgres treats NULLs as distinct in unique indexes)
+   - feed entries: unique `(userId, entryKey)` where `entryKey` is the derived source identity (`post:{postId}` or `repost:{postId}:{repostedById}`) — insert on conflict do nothing. `repostedById` itself cannot join a unique index because it is NULL for `reason = 'post'` rows and Postgres treats NULLs as distinct; the derived key is computed by `feedEntryKey` in `@xitter/api-contracts` so the fanout worker and the feed service cannot disagree on the format
    - search documents: upsert keyed by `postId`; deletes are tombstones (`deletedAt`)
    - media variants: variant writes keyed by `(mediaId, kind)` — regeneration overwrites
-3. **No read-modify-write races** — counters and variant state use atomic upserts; consumers never rely on event ordering across partitions.
+3. **No read-modify-write races** — counters and variant state use atomic upserts; consumers never rely on event ordering across partitions. Interaction counts move in the same DB transaction as the interaction row (posts service), so concurrent duplicate likes land exactly one increment.

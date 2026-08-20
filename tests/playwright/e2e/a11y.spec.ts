@@ -81,6 +81,49 @@ test('/post/[postId] (detail with reply composer) has no serious axe violations'
   expect(serious, JSON.stringify(serious, null, 2)).toEqual([]);
 });
 
+test('/bookmarks (own, with interactive post cards) has no serious axe violations', async ({
+  page,
+}) => {
+  await loginViaKeycloak(page, 'demo1', 'DemoPass123!');
+  await page.waitForURL(/\/feed$/);
+
+  // Bookmark a post through the real button so the page renders a card with
+  // the interactive action row, then scan.
+  const text = `a11y bookmark page ${crypto.randomUUID()}`;
+  await page.getByTestId('composer-textarea').fill(text);
+  await page.getByTestId('composer-submit').click();
+  const item = page.locator('[data-testid^="post-item-"]', { hasText: text }).first();
+  const deadline = Date.now() + 20_000;
+  while (!(await item.isVisible().catch(() => false))) {
+    if (Date.now() > deadline) break;
+    const show = page.getByTestId('feed-new-items').getByRole('button');
+    if (await show.isVisible().catch(() => false)) await show.click().catch(() => undefined);
+    await page.waitForTimeout(400);
+  }
+  await expect(item).toBeVisible();
+  const postId = (await item.getAttribute('data-testid'))!.replace('post-item-', '');
+  await page.getByTestId(`post-${postId}`).getByTestId('count-bookmarks').click();
+
+  // The click returns on the optimistic flip; the server action (and its
+  // revalidate of /bookmarks) is still in flight - poll fresh renders until
+  // THIS post lands on the page (the list may already show older bookmarks,
+  // so mere visibility of the list is not arrival).
+  await page.goto('/bookmarks');
+  const bookmarked = page.getByTestId('bookmarks-list');
+  const a11yDeadline = Date.now() + 15_000;
+  while (
+    !(await bookmarked
+      .getByText(text)
+      .isVisible()
+      .catch(() => false))
+  ) {
+    if (Date.now() > a11yDeadline) break;
+    await page.reload();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  }
+  await expect(bookmarked).toContainText(text);
+});
+
 test('/search (results page, authenticated) has no serious axe violations', async ({ page }) => {
   await loginViaKeycloak(page, 'demo1', 'DemoPass123!');
   await page.waitForURL(/\/feed$/);

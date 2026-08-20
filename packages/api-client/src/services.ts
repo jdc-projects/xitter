@@ -4,6 +4,7 @@ import {
   createMediaUploadResponseSchema,
   feedPageSchema,
   hydratedFeedItemSchema,
+  interactionSchema,
   internalMediaAssetSchema,
   mediaAssetSchema,
   mediaLookupResponseSchema,
@@ -15,6 +16,7 @@ import {
   profileWithCountsSchema,
   relationshipSchema,
   searchCheckpointPositionSchema,
+  viewerStateResponseSchema,
   type createPostRequestSchema,
   type createProfileRequestSchema,
   type updateProfileRequestSchema,
@@ -25,6 +27,7 @@ import {
   type MediaAsset,
   type MediaVariantCore,
   type Post,
+  type PostViewerState,
   type Profile,
   type ProfileWithCounts,
   type Relationship,
@@ -184,11 +187,14 @@ export class PostsClient extends ServiceClient {
     );
   }
 
-  createInteraction(postId: string, kind: InteractionKind): Promise<void> {
+  createInteraction(
+    postId: string,
+    kind: InteractionKind,
+  ): Promise<z.infer<typeof interactionSchema>> {
     return this.post(
       `${V1}/posts/v1/posts/${postId}/interactions`,
       createInteractionRequestSchema.parse({ kind }),
-    );
+    ).then(interactionSchema.parse);
   }
 
   deleteInteraction(postId: string, kind: InteractionKind): Promise<void> {
@@ -198,6 +204,14 @@ export class PostsClient extends ServiceClient {
   getBookmarks(cursor?: string): Promise<{ items: Post[]; nextCursor: string | null }> {
     return this.get(`${V1}/posts/v1/bookmarks`, cursor ? { cursor } : undefined).then((r) =>
       paginated(postSchema).parse(r),
+    );
+  }
+
+  /** Batched viewer flags (like/repost/bookmark) for list rendering (#8). */
+  // fallow-ignore-next-line unused-class-member -- consumed by the web feed/detail/profile/bookmarks loaders (apps/web/src/lib/posts/server.ts, apps/web/src/app/(app)/feed/load-feed.ts)
+  getViewerState(postIds: string[]): Promise<{ items: PostViewerState[] }> {
+    return this.get(`${V1}/posts/v1/viewer-state`, { postIds: postIds.join(',') }).then(
+      viewerStateResponseSchema.parse,
     );
   }
 
@@ -245,6 +259,14 @@ export class FeedClient extends ServiceClient {
   internalDeletePostEntries(postId: string): Promise<{ deleted: number }> {
     return this.delete(`${V1}/feed/internal/feed/posts/${postId}/entries`).then((r) =>
       z.object({ deleted: z.number().int() }).parse(r),
+    );
+  }
+
+  /** Internal (fanout worker): drop one reposter's repost entries (undo #8). */
+  // fallow-ignore-next-line unused-class-member -- consumed via the fanout worker's FeedApi seam (apps/workers/fanout/src/handlers.ts)
+  internalDeleteRepostEntries(postId: string, repostedById: string): Promise<{ deleted: number }> {
+    return this.delete(`${V1}/feed/internal/feed/posts/${postId}/reposts/${repostedById}`).then(
+      (r) => z.object({ deleted: z.number().int() }).parse(r),
     );
   }
 

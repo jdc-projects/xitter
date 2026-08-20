@@ -135,7 +135,14 @@ export class SearchService {
     for (const hit of hits) {
       const post = posts.get(hit.postId);
       if (!post) continue; // deleted since indexed - dropped, not rendered
-      items.push({ post, author: profileOrPlaceholder(hit.authorId, profiles) });
+      // Search results are plain posts - not feed entries - so the entry
+      // metadata the shared type now carries is fixed here.
+      items.push({
+        post,
+        author: profileOrPlaceholder(hit.authorId, profiles),
+        reason: 'post',
+        repostedBy: null,
+      });
     }
     return items;
   }

@@ -1,12 +1,20 @@
 import type { EventProducer, TopicName } from '@xitter/events';
 
-/** Domain events posts emits on xitter.posts.v1 (spec 04 catalogue). */
-export type PostsEventType = 'posts.post.created' | 'posts.post.deleted';
+/**
+ * Domain events posts emits on xitter.posts.v1 (spec 04 catalogue). All are
+ * keyed by postId: a post's lifecycle (and its interactions) stay ordered on
+ * one partition.
+ */
+export type PostsEventType =
+  | 'posts.post.created'
+  | 'posts.post.deleted'
+  | 'posts.interaction.created'
+  | 'posts.interaction.deleted';
 
 export interface PostsEvents {
   /**
    * `key` is the aggregate id (postId): same post = same partition = ordered
-   * lifecycle (create before delete), per spec 04.
+   * lifecycle (create before delete, interactions after creation), per spec 04.
    */
   emit(eventType: PostsEventType, payload: Record<string, unknown>, key?: string): Promise<void>;
   shutdown(): Promise<void>;

@@ -108,7 +108,7 @@
             "bearerAuth": []
           }
         ],
-        "description": "Materialised home timeline (followed + own posts, newest first), hydrated server-side; deleted posts and blocked authors are excluded.",
+        "description": "Materialised home timeline (followed + own posts and reposts, newest first), hydrated server-side; deleted posts and blocked authors are excluded. Repost entries carry the reposter profile (`repostedBy`) for attribution.",
         "parameters": [
           {
             "schema": {
@@ -320,9 +320,45 @@
                               }
                             },
                             "required": ["id", "username", "displayName", "bio", "createdAt"]
+                          },
+                          "reason": {
+                            "type": "string",
+                            "enum": ["post", "repost"]
+                          },
+                          "repostedBy": {
+                            "type": "object",
+                            "nullable": true,
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                              },
+                              "username": {
+                                "type": "string",
+                                "minLength": 3,
+                                "maxLength": 20,
+                                "pattern": "^[a-z0-9_]+$"
+                              },
+                              "displayName": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 50
+                              },
+                              "bio": {
+                                "type": "string",
+                                "nullable": true,
+                                "maxLength": 200
+                              },
+                              "createdAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            },
+                            "required": ["id", "username", "displayName", "bio", "createdAt"]
                           }
                         },
-                        "required": ["post", "author"]
+                        "required": ["post", "author", "reason", "repostedBy"]
                       }
                     },
                     "nextCursor": {
@@ -374,7 +410,7 @@
             "serviceToken": []
           }
         ],
-        "description": "Bulk idempotent entry upsert (fanout worker); conflicts on the natural key (userId, postId, reason) are skipped. Affected users get a ws notification.",
+        "description": "Bulk idempotent entry upsert (fanout worker); conflicts on the natural key (userId, entryKey - derived per source: `post:{postId}` / `repost:{postId}:{repostedById}`) are skipped. Affected users get a ws notification.",
         "requestBody": {
           "content": {
             "application/json": {
@@ -434,6 +470,57 @@
             },
             "required": true,
             "name": "postId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rows deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deleted": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["deleted"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/feed/posts/{postId}/reposts/{repostedById}": {
+      "delete": {
+        "tags": ["internal"],
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "Repost undone (#8): only that reposter’s repost entries for the post go - the post’s own entries and other reposters’ stay.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "b1c2d3e4-0000-4000-8000-000000000002"
+            },
+            "required": true,
+            "name": "postId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "b1c2d3e4-0000-4000-8000-000000000001"
+            },
+            "required": true,
+            "name": "repostedById",
             "in": "path"
           }
         ],

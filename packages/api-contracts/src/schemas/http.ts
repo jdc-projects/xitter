@@ -14,6 +14,7 @@ import {
   mediaVariantCoreSchema,
   postIdSchema,
   postSchema,
+  postViewerStateSchema,
   profileSchema,
   userIdSchema,
   usernameSchema,
@@ -73,7 +74,41 @@ export const createInteractionRequestSchema = z
   .object({
     kind: interactionKindSchema,
   })
+  .strict()
   .openapi('CreateInteractionRequest');
+
+export type CreateInteractionRequest = z.infer<typeof createInteractionRequestSchema>;
+
+// Batched viewer state for lists (`GET /v1/posts/viewer-state`): postIds ride
+// the query string as a single comma-separated list (URL-friendly; max 100).
+export const viewerStateQuerySchema = z
+  .object({
+    postIds: z
+      .string()
+      .min(1)
+      .transform((raw, ctx) => {
+        const ids = raw
+          .split(',')
+          .map((id) => id.trim())
+          .filter(Boolean);
+        const parsed = z.array(postIdSchema).max(100).safeParse(ids);
+        if (!parsed.success) {
+          ctx.addIssue({ code: 'custom', message: 'postIds must be 1-100 comma-separated uuids' });
+          return z.NEVER;
+        }
+        return parsed.data;
+      }),
+  })
+  .openapi('ViewerStateQuery');
+
+export const viewerStateResponseSchema = z
+  .object({
+    items: z.array(postViewerStateSchema),
+  })
+  .strict()
+  .openapi('ViewerStateResponse');
+
+export type ViewerStateResponse = z.infer<typeof viewerStateResponseSchema>;
 
 // Shape-only: the mime allowlist (415) and 5MB cap (413) are enforced by the
 // media service with their spec-03 codes, not folded into the 400s this pipe
@@ -130,9 +165,11 @@ export const mediaLookupResponseSchema = z
   })
   .strict();
 
-// Internal (fanout worker → feed): bulk idempotent upsert of feed entries
-// (natural key (userId, postId, reason) - repostedById deliberately
-// excluded, nullable columns break replay idempotency; spec 04).
+// Internal (fanout worker → feed): bulk idempotent upsert of feed entries.
+// Idempotency is the feed-owned dedupe key derived per entry (`post:{postId}`
+// or `repost:{postId}:{repostedById}`) - repostedById itself cannot join a
+// unique index directly (Postgres treats NULLs as distinct, and it is NULL
+// for reason='post' rows); spec 04.
 export const upsertFeedEntriesRequestSchema = z
   .object({
     entries: z.array(feedEntryInputSchema).min(1).max(1000),

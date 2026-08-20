@@ -4,6 +4,7 @@ import {
   createPostRequestSchema,
   searchCheckpointPutRequestSchema,
   searchIndexDocumentSchema,
+  viewerStateQuerySchema,
 } from './http.js';
 
 const basePost = {
@@ -49,6 +50,23 @@ describe('createPostRequestSchema', () => {
     const parsed = createPostRequestSchema.parse({ text: 'hi' });
     expect(parsed.mediaIds).toEqual([]);
     expect(parsed.replyToId).toBeNull();
+  });
+});
+
+describe('viewerStateQuerySchema', () => {
+  const id = (n: number) => `9e8a7b6c-1234-4abc-9def-00112233${String(n).padStart(4, '0')}`;
+
+  it('splits the comma-separated postIds list', () => {
+    expect(viewerStateQuerySchema.parse({ postIds: `${id(1)},${id(2)}` }).postIds).toEqual([
+      id(1),
+      id(2),
+    ]);
+  });
+
+  it('rejects non-uuid entries and over-cap lists', () => {
+    expect(viewerStateQuerySchema.safeParse({ postIds: 'not-a-uuid' }).success).toBe(false);
+    const tooMany = Array.from({ length: 101 }, (_, n) => id(n % 10)).join(',');
+    expect(viewerStateQuerySchema.safeParse({ postIds: tooMany }).success).toBe(false);
   });
 });
 

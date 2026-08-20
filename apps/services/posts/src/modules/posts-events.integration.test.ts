@@ -11,6 +11,7 @@ import { PostsService } from './posts.service.js';
 import { PostsRepository, type PostsPrismaClient } from './posts.repository.js';
 import { NullRelationshipChecker } from './relationship-checker.js';
 import { NullMediaChecker } from './media-checker.js';
+import { NullInteractionRealtime } from './interaction-realtime.js';
 
 /**
  * Event emission contract: post create/delete produce spec-04 events on
@@ -67,6 +68,7 @@ describe.skipIf(!hasGeneratedClient)('posts events (testcontainers kafka)', () =
       emitter,
       new NullRelationshipChecker(),
       new NullMediaChecker(),
+      new NullInteractionRealtime(),
     );
 
     consumer = new Kafka({ clientId: 'posts-events-test', brokers }).consumer({

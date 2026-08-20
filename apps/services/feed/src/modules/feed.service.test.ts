@@ -9,17 +9,25 @@ const OWNER = '00000000-0000-4000-8000-000000000001';
 const FOLLOWEE = '00000000-0000-4000-8000-000000000002';
 const BLOCKED = '00000000-0000-4000-8000-000000000003';
 
-const entry = (overrides: Partial<FeedEntryRow> = {}): FeedEntryRow => ({
-  id: overrides.id ?? crypto.randomUUID(),
-  userId: OWNER,
-  postId: overrides.postId ?? crypto.randomUUID(),
-  authorId: overrides.authorId ?? FOLLOWEE,
-  reason: 'post',
-  repostedById: null,
-  postCreatedAt: overrides.postCreatedAt ?? new Date(),
-  insertedAt: new Date(),
-  ...overrides,
-});
+const entry = (overrides: Partial<FeedEntryRow> = {}): FeedEntryRow => {
+  const merged: FeedEntryRow = {
+    id: overrides.id ?? crypto.randomUUID(),
+    userId: OWNER,
+    postId: overrides.postId ?? crypto.randomUUID(),
+    authorId: overrides.authorId ?? FOLLOWEE,
+    reason: 'post',
+    repostedById: null,
+    postCreatedAt: overrides.postCreatedAt ?? new Date(),
+    insertedAt: new Date(),
+    ...overrides,
+    entryKey: '',
+  };
+  merged.entryKey =
+    merged.reason === 'repost' && merged.repostedById
+      ? `repost:${merged.postId}:${merged.repostedById}`
+      : `post:${merged.postId}`;
+  return merged;
+};
 
 const post = (id: string, authorId: string, createdAt: Date): Post => ({
   id,
@@ -89,15 +97,21 @@ function fakeRepo() {
   const repo = {
     page,
     upsertEntries: (entries: FeedEntryRow[]) => {
-      const key = (e: FeedEntryRow) =>
-        `${e.userId}|${e.postId}|${e.reason}|${e.repostedById ?? ''}`;
-      const existing = new Set([...rows.values()].map(key));
-      const fresh = entries.filter((e) => !existing.has(key(e)));
+      // Same natural key as the migration: (userId, entryKey).
+      const existing = new Set([...rows.values()].map((e) => `${e.userId}|${e.entryKey}`));
+      const fresh = entries.filter((e) => !existing.has(`${e.userId}|${e.entryKey}`));
       for (const e of fresh) {
-        rows.set(key(e), e);
+        rows.set(`${e.userId}|${e.entryKey}`, e);
         inserted++;
       }
       return Promise.resolve(fresh.length);
+    },
+    deleteRepostEntries: (postId: string, repostedById: string) => {
+      const before = rows.size;
+      for (const [key, r] of rows)
+        if (r.postId === postId && r.reason === 'repost' && r.repostedById === repostedById)
+          rows.delete(key);
+      return Promise.resolve(before - rows.size);
     },
     deleteByPost: (postId: string) => {
       const before = rows.size;
@@ -119,14 +133,22 @@ function fakeRepo() {
       rows.clear();
       return Promise.resolve(0);
     },
-    toNewEntry: (input: FeedEntryInput) => ({
-      userId: input.userId,
-      postId: input.postId,
-      authorId: input.authorId,
-      reason: input.reason,
-      repostedById: input.repostedById ?? null,
-      postCreatedAt: new Date(input.postCreatedAt),
-    }),
+    toNewEntry: (input: FeedEntryInput) => {
+      const reason = input.reason;
+      const repostedById = input.repostedById ?? null;
+      return {
+        userId: input.userId,
+        postId: input.postId,
+        authorId: input.authorId,
+        reason,
+        repostedById,
+        entryKey:
+          reason === 'repost' && repostedById
+            ? `repost:${input.postId}:${repostedById}`
+            : `post:${input.postId}`,
+        postCreatedAt: new Date(input.postCreatedAt),
+      } as FeedEntryRow;
+    },
     // exposed for assertions
     all: () => [...rows.values()],
     insertedCount: () => inserted,
@@ -310,6 +332,55 @@ describe('FeedService.getFeed', () => {
     });
     expect(typeof item.author.createdAt).toBe('string');
   });
+
+  it('renders repost entries with attribution to the reposter', async () => {
+    const { repo } = fakeRepo();
+    const hydrator = fakeHydrator();
+    const at = new Date('2026-08-18T12:00:00Z');
+    const repost = entry({
+      postId: '00000000-0000-4000-8000-000000000052',
+      authorId: FOLLOWEE, // reposter is the feed-surface author
+      reason: 'repost',
+      repostedById: FOLLOWEE,
+      postCreatedAt: at,
+    });
+    await repo.upsertEntries([repost]);
+    // The ORIGINAL author differs from the surface author.
+    hydrator.store.posts.set(repost.postId, post(repost.postId, BLOCKED, at));
+    hydrator.store.profiles.set(FOLLOWEE, profile(FOLLOWEE));
+
+    const service = new FeedService(repo, hydrator, spyRealtime());
+    const page = await service.getFeed(OWNER, { limit: 20 });
+
+    const item = page.items[0]!;
+    expect(item.reason).toBe('repost');
+    expect(item.repostedBy?.id).toBe(FOLLOWEE);
+    // Attribution comes from the entry, not the post's own author.
+    expect(item.author.id).toBe(FOLLOWEE);
+    expect(item.post.authorId).toBe(BLOCKED);
+  });
+
+  it('drops reposts whose ORIGINAL author the viewer blocked (hydration filter)', async () => {
+    const { repo } = fakeRepo();
+    const hydrator = fakeHydrator({
+      blockedAuthorIds: (userId) => Promise.resolve(userId === OWNER ? [BLOCKED] : []),
+    });
+    const at = new Date('2026-08-18T12:00:00Z');
+    const repost = entry({
+      postId: '00000000-0000-4000-8000-000000000053',
+      authorId: FOLLOWEE,
+      reason: 'repost',
+      repostedById: FOLLOWEE,
+      postCreatedAt: at,
+    });
+    await repo.upsertEntries([repost]);
+    hydrator.store.posts.set(repost.postId, post(repost.postId, BLOCKED, at)); // original author blocked
+
+    const service = new FeedService(repo, hydrator, spyRealtime());
+    const page = await service.getFeed(OWNER, { limit: 20 });
+
+    expect(page.items).toHaveLength(0);
+  });
 });
 
 describe('FeedService.upsertEntries', () => {
@@ -352,6 +423,47 @@ describe('FeedService.upsertEntries', () => {
     expect(second).toEqual({ inserted: 0 });
     expect(repo.all()).toHaveLength(1);
   });
+
+  it('keeps two different reposters of the same post distinct (#8 key)', async () => {
+    const { repo } = fakeRepo();
+    const service = new FeedService(repo, fakeHydrator(), spyRealtime());
+    const postId = '00000000-0000-4000-8000-000000000072';
+    const repost = (reposter: string): FeedEntryInput => ({
+      userId: OWNER,
+      postId,
+      authorId: reposter,
+      reason: 'repost',
+      repostedById: reposter,
+      postCreatedAt: '2026-08-18T09:00:00.000Z',
+    });
+
+    await service.upsertEntries([repost(FOLLOWEE)]);
+    const second = await service.upsertEntries([repost(BLOCKED)]);
+
+    // The second reposter's entry lands too - (userId, postId, reason) would
+    // have collided and silently dropped it.
+    expect(second).toEqual({ inserted: 1 });
+    expect(repo.all()).toHaveLength(2);
+  });
+
+  it('replays the same repost idempotently', async () => {
+    const { repo } = fakeRepo();
+    const service = new FeedService(repo, fakeHydrator(), spyRealtime());
+    const input: FeedEntryInput = {
+      userId: OWNER,
+      postId: '00000000-0000-4000-8000-000000000073',
+      authorId: FOLLOWEE,
+      reason: 'repost',
+      repostedById: FOLLOWEE,
+      postCreatedAt: '2026-08-18T09:00:00.000Z',
+    };
+
+    await service.upsertEntries([input]);
+    const replay = await service.upsertEntries([input]);
+
+    expect(replay).toEqual({ inserted: 0 });
+    expect(repo.all()).toHaveLength(1);
+  });
 });
 
 describe('FeedService deletes', () => {
@@ -368,6 +480,30 @@ describe('FeedService deletes', () => {
       service.deletePostEntries('00000000-0000-4000-8000-000000000081'),
     ).resolves.toEqual({ deleted: 2 });
     expect(repo.all()).toHaveLength(0);
+  });
+
+  it('removes only the undone reposter repost entries (post entries stay)', async () => {
+    const { repo } = fakeRepo();
+    const postId = '00000000-0000-4000-8000-000000000082';
+    await repo.upsertEntries([
+      // The post's own entry in OWNER's feed.
+      entry({ userId: OWNER, postId, reason: 'post' }),
+      // FOLLOWEE's repost visible to OWNER.
+      entry({
+        userId: OWNER,
+        postId,
+        reason: 'repost',
+        repostedById: FOLLOWEE,
+        authorId: FOLLOWEE,
+      }),
+      // A different reposter's repost - must survive.
+      entry({ userId: OWNER, postId, reason: 'repost', repostedById: BLOCKED, authorId: BLOCKED }),
+    ]);
+
+    const service = new FeedService(repo, fakeHydrator(), spyRealtime());
+    await expect(service.deleteRepostEntries(postId, FOLLOWEE)).resolves.toEqual({ deleted: 1 });
+    expect(repo.all()).toHaveLength(2);
+    expect(repo.all().some((r) => r.repostedById === FOLLOWEE)).toBe(false);
   });
 
   it('removes only the unfollowed author from the user feed', async () => {

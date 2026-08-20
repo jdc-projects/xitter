@@ -3,6 +3,7 @@ import { ApiError, PostsClient, SocialClient, localServiceUrls } from '@xitter/a
 import type { Post } from '@xitter/api-contracts';
 import { profileViewState } from '@/lib/social/view-model';
 import type { Session } from '@/lib/auth/session';
+import { viewerStateByPostId } from '@/lib/posts/server';
 
 export type ProfileTab = 'posts' | 'following' | 'followers';
 
@@ -17,6 +18,8 @@ export interface ProfileViewData {
   } | null;
   /** Posts tab: the author's posts page (own-profile delete affordance). */
   posts: { items: Post[]; nextCursor: string | null } | null;
+  /** Posts tab: viewer interaction flags per post id (#8, best-effort). */
+  viewerFlags: Map<string, { liked: boolean; reposted: boolean; bookmarked: boolean }>;
 }
 
 /**
@@ -62,6 +65,12 @@ export async function loadProfileView(
     token: session.accessToken,
   });
   const posts = tab === 'posts' ? await postsClient.getUserPosts(profile.id, cursor) : null;
+  const viewerFlags = posts
+    ? await viewerStateByPostId(
+        postsClient,
+        posts.items.map((post) => post.id),
+      )
+    : new Map<string, { liked: boolean; reposted: boolean; bookmarked: boolean }>();
 
   return {
     view: profileViewState(session.subject, withCounts, relationship),
@@ -75,5 +84,6 @@ export async function loadProfileView(
     listTab,
     list,
     posts,
+    viewerFlags,
   };
 }

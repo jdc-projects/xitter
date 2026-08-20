@@ -2,15 +2,20 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   createPostRequestSchema,
   type CreatePostRequest,
+  type Interaction,
+  type InteractionKind,
   type MediaAsset,
   type Post,
+  type PostViewerState,
 } from '@xitter/api-contracts';
 import { createLogger } from '@xitter/observability';
 import { assertValidCursor, badRequest, forbidden, notFound } from '@xitter/service-kit';
+import { INTERACTION_REALTIME, type InteractionRealtime } from './interaction-realtime.js';
 import { MEDIA_CHECKER, type MediaChecker } from './media-checker.js';
 import { POSTS_EVENTS, type PostsEvents } from './posts-events.js';
 import { PostsRepository, type PostRow } from './posts.repository.js';
 import { RELATIONSHIP_CHECKER, type RelationshipChecker } from './relationship-checker.js';
+import { deriveViewerState } from './viewer-state.js';
 
 const logger = createLogger({ service: 'posts' });
 
@@ -45,6 +50,7 @@ export class PostsService {
     @Inject(POSTS_EVENTS) private readonly events: PostsEvents,
     @Inject(RELATIONSHIP_CHECKER) private readonly relationships: RelationshipChecker,
     @Inject(MEDIA_CHECKER) private readonly media: MediaChecker,
+    @Inject(INTERACTION_REALTIME) private readonly realtime: InteractionRealtime,
   ) {}
 
   async create(authorId: string, input: CreatePostRequest): Promise<Post> {
@@ -138,6 +144,93 @@ export class PostsService {
   async lookupPosts(postIds: string[]): Promise<Post[]> {
     const rows = await this.repo.visiblePosts(postIds);
     return rows.map((row) => this.toPost(row));
+  }
+
+  /**
+   * Interact with a post (#8, product 6). Idempotent: a repeat create
+   * resolves to the stored interaction without re-counting or re-emitting.
+   * Blocked users cannot interact with the blocker's posts (any kind) -
+   * same either-direction check as replies. Reposting your own post is
+   * allowed; reposts target posts, never other reposts (reposts are
+   * interactions, not posts - chains are structurally impossible).
+   */
+  async interact(callerId: string, postId: string, kind: InteractionKind): Promise<Interaction> {
+    const post = await this.repo.findVisiblePost(postId);
+    if (!post) throw notFound('Post not found');
+
+    if (post.authorId !== callerId) {
+      const blocked = await this.relationships.blockedEitherWay(callerId, post.authorId);
+      if (blocked) {
+        throw forbidden('Cannot interact: a block exists between these accounts');
+      }
+    }
+
+    const { row, created } = await this.repo.createInteraction({
+      kind,
+      postId,
+      userId: callerId,
+    });
+
+    if (created) {
+      await this.emitSafe(
+        'posts.interaction.created',
+        {
+          interactionId: row.id,
+          kind,
+          postId,
+          userId: callerId,
+          createdAt: row.createdAt.toISOString(),
+        },
+        postId,
+      );
+      // The author's ws ping (product 5.5): likes/reposts light up for the
+      // author without creating feed entries. Self-interactions and private
+      // bookmarks never ping (a self-ping is noise; bookmark privacy).
+      if ((kind === 'like' || kind === 'repost') && post.authorId !== callerId) {
+        await this.realtime.notifyAuthor(post.authorId);
+      }
+    }
+
+    return {
+      kind,
+      postId,
+      userId: callerId,
+      createdAt: row.createdAt.toISOString(),
+    };
+  }
+
+  /**
+   * Undo an interaction (own rows only; idempotent 204 when absent). Block
+   * checks are deliberately NOT applied - undo removes the caller's own
+   * footprint and must always be possible.
+   */
+  async removeInteraction(callerId: string, postId: string, kind: InteractionKind): Promise<void> {
+    // findPost (not findVisiblePost): undoing a repost/like of a since-
+    // soft-deleted post is legitimate cleanup, indistinguishable from 204.
+    const post = await this.repo.findPost(postId);
+    if (!post) throw notFound('Post not found');
+
+    const removed = await this.repo.deleteInteraction({ kind, postId, userId: callerId });
+    if (removed) {
+      await this.emitSafe(
+        'posts.interaction.deleted',
+        { kind, postId, userId: callerId, deletedAt: new Date().toISOString() },
+        postId,
+      );
+    }
+  }
+
+  /** The caller's private bookmark list, newest first (product 6.2). */
+  async bookmarks(callerId: string, page: PageRequest): Promise<PostPage> {
+    assertValidCursor(page.cursor);
+    const result = await this.repo.bookmarks(callerId, page.cursor, page.limit);
+    return { items: result.items.map((row) => this.toPost(row)), nextCursor: result.nextCursor };
+  }
+
+  /** The caller's like/repost/bookmark flags for a batch of posts. */
+  async viewerState(callerId: string, postIds: string[]): Promise<PostViewerState[]> {
+    const rows = await this.repo.interactionsForPosts(callerId, postIds);
+    return deriveViewerState(postIds, rows);
   }
 
   /** Internal (reset job): wipe posts + interactions; reseed via seed script. */

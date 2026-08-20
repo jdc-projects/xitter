@@ -2,9 +2,8 @@ import { OpenAPIRegistry, extendZodWithOpenApi } from '@asteasolutions/zod-to-op
 import { z } from 'zod';
 import {
   errorSchema,
+  hydratedFeedItemSchema,
   postIdSchema,
-  postSchema,
-  profileSchema,
   upsertFeedEntriesRequestSchema,
   upsertFeedEntriesResponseSchema,
   userIdSchema,
@@ -13,7 +12,7 @@ import {
 extendZodWithOpenApi(z);
 
 const feedPage = z.object({
-  items: z.array(z.object({ post: postSchema, author: profileSchema })),
+  items: z.array(hydratedFeedItemSchema),
   nextCursor: z.string().nullable(),
 });
 
@@ -51,7 +50,7 @@ feedApi.registerPath({
   tags: ['feed'],
   security: [{ bearerAuth: [] }],
   description:
-    'Materialised home timeline (followed + own posts, newest first), hydrated server-side; deleted posts and blocked authors are excluded.',
+    'Materialised home timeline (followed + own posts and reposts, newest first), hydrated server-side; deleted posts and blocked authors are excluded. Repost entries carry the reposter profile (`repostedBy`) for attribution.',
   request: { query: pageQuery },
   responses: {
     200: { description: 'Feed page', content: { 'application/json': { schema: feedPage } } },
@@ -77,7 +76,7 @@ feedApi.registerPath({
   tags: ['internal'],
   security: [{ serviceToken: [] }],
   description:
-    'Bulk idempotent entry upsert (fanout worker); conflicts on the natural key (userId, postId, reason) are skipped. Affected users get a ws notification.',
+    'Bulk idempotent entry upsert (fanout worker); conflicts on the natural key (userId, entryKey - derived per source: `post:{postId}` / `repost:{postId}:{repostedById}`) are skipped. Affected users get a ws notification.',
   request: {
     body: { content: { 'application/json': { schema: upsertFeedEntriesRequestSchema } } },
   },
@@ -94,6 +93,17 @@ feedApi.registerPath({
   security: [{ serviceToken: [] }],
   description: 'Post deleted: entries for the post leave every feed (fanout worker).',
   request: { params: postParams },
+  responses: { 200: jsonResponse('Rows deleted', z.object({ deleted: z.number().int() })) },
+});
+
+feedApi.registerPath({
+  method: 'delete',
+  path: '/internal/feed/posts/{postId}/reposts/{repostedById}',
+  tags: ['internal'],
+  security: [{ serviceToken: [] }],
+  description:
+    'Repost undone (#8): only that reposter\u2019s repost entries for the post go - the post\u2019s own entries and other reposters\u2019 stay.',
+  request: { params: z.object({ postId: postIdSchema, repostedById: userIdSchema }) },
   responses: { 200: jsonResponse('Rows deleted', z.object({ deleted: z.number().int() })) },
 });
 
