@@ -224,8 +224,9 @@ test('a blocked user cannot like, repost or reply', async ({ page, browser }) =>
   await demo3.getByTestId('reply-composer-textarea').fill('blocked reply');
   await demo3.getByTestId('reply-composer-submit').click();
   await expect(demo3.getByTestId('reply-composer-error')).toContainText(/cannot reply/i);
-  // No thread renders at all when a post has zero replies - the draft text
-  // must not appear anywhere on the page.
-  await expect(demo3.locator('body')).not.toContainText('blocked reply');
+  // No thread renders for a zero-reply post, and the rejected draft never
+  // becomes a reply - it stays in the composer (draft-preserved behaviour).
+  await expect(demo3.getByTestId('replies-empty')).toBeVisible();
+  await expect(demo3.locator('[data-testid^="post-item-"]')).toHaveCount(0);
   await demo3.close();
 });
