@@ -39,21 +39,22 @@ export function CallbackPage() {
 
   if (error) {
     return (
-      <Result
-        status="403"
-        title="Not an admin"
-        subTitle={error}
-        data-testid="admin-callback-rejected"
-        extra={
-          <Button
-            type="primary"
-            onClick={() => navigate('/login')}
-            data-testid="admin-back-to-login"
-          >
-            Back to login
-          </Button>
-        }
-      />
+      <div data-testid="admin-callback-rejected" role="alert">
+        <Result
+          status="403"
+          title="Not an admin"
+          subTitle={error}
+          extra={
+            <Button
+              type="primary"
+              onClick={() => navigate('/login')}
+              data-testid="admin-back-to-login"
+            >
+              Back to login
+            </Button>
+          }
+        />
+      </div>
     );
   }
 

@@ -70,7 +70,7 @@ test('admin soft-delete removes a post for users; audit log records it', async (
   const row = page.locator('[data-testid="posts-table"] tbody tr', { hasText: text }).first();
   await expect(row).toBeVisible({ timeout: 20_000 });
   await row.getByTestId(`delete-post-${postId}`).click();
-  await page.getByRole('button', { name: 'Delete' }).click();
+  await page.locator('.ant-modal-confirm').getByRole('button', { name: 'Delete' }).click();
   // The row flips to a restorable tombstone (soft delete, spec 03).
   await expect(row.getByTestId(`restore-post-${postId}`)).toBeVisible({ timeout: 20_000 });
 
@@ -85,7 +85,15 @@ test('admin soft-delete removes a post for users; audit log records it', async (
   await context.close();
 });
 
-test('users list + follow graph are inspectable (read-only)', async ({ page }) => {
+test('users list + follow graph are inspectable (read-only)', async ({ page, browser }) => {
+  // Profiles are created lazily on first web login - provision demo1 first
+  // so the test is order-independent of the other suites.
+  const context = await browser.newContext();
+  const user = await context.newPage();
+  await loginViaKeycloak(user, 'demo1', 'DemoPass123!');
+  await user.waitForURL(/\/feed$/);
+  await context.close();
+
   await loginViaAdminRealm(page, 'localadmin', ADMIN_PASSWORD);
   await page.waitForURL(/\/admin\/health$/);
 
