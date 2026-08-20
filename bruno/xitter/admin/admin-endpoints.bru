@@ -1,0 +1,47 @@
+meta {
+  name: Admin endpoints (service token)
+  seq: 1
+}
+
+docs {
+  The svc-admin machine client (demo realm, ADR 0006) carries system-admin on
+  its service account, so its client-credentials token satisfies the
+  `@Internal({ admin: true })` gate on the services' internal admin
+  endpoints. This is the non-browser moderation path (scripts/tooling); the
+  panel uses an admin-realm user token instead. Asserts the posts admin list
+  responds with the cursor page shape.
+}
+
+script:pre-request {
+  const form =
+    "grant_type=client_credentials&client_id=svc-admin" +
+    "&client_secret=" +
+    encodeURIComponent(bru.getEnvVar("adminClientSecret") || "svc-admin-local-secret");
+  const res = await bru.sendRequest({
+    method: "POST",
+    url: `${bru.getEnvVar("keycloak")}/realms/${bru.getEnvVar("realm")}/protocol/openid-connect/token`,
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    data: form,
+  });
+  const json = typeof res.data === "string" ? JSON.parse(res.data) : res.data;
+  bru.setEnvVar("adminToken", json.access_token);
+}
+
+get {
+  url: {{seedBase}}/api/posts/internal/admin/posts?limit=5
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{adminToken}}
+}
+
+assert {
+  res.status: 200
+}
+
+tests {
+  expect(res.body.items).to.be.an("array");
+  expect(res.body).to.have.property("nextCursor").that.satisfies((v) => v === null || typeof v === "string");
+}
