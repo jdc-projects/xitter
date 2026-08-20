@@ -91,7 +91,11 @@ export function FeedView({ initialEntries, initialCursor, viewerId }: FeedViewPr
           <Stack gap="md" data-testid="feed-timeline">
             {entries.map(({ post, author, repostedBy, viewer }) => (
               <PostListItem
-                key={post.id}
+                // The same post can appear twice in one feed (as itself and
+                // as a repost) - keying on post.id alone duplicates React
+                // keys and mis-binds per-card interaction state on
+                // re-renders. Entry identity is (post, kind).
+                key={`${post.id}:${repostedBy?.id ?? 'post'}`}
                 post={post}
                 author={author}
                 viewer={viewer}

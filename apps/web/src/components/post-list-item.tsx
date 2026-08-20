@@ -35,7 +35,11 @@ export function PostListItem({
   goTo,
 }: PostListItemProps) {
   return (
-    <Stack gap={4} data-testid={`post-item-${post.id}`}>
+    <Stack
+      // Disambiguated for the post-appears-twice case (own entry + repost
+      // entry): selectors stay unique per feed row.
+      data-testid={`post-item-${post.id}${repostedBy ? `-repost-${repostedBy.id}` : ''}`}
+    >
       <PostInteractions
         post={post}
         author={author}
