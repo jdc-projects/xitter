@@ -309,6 +309,43 @@ export class SocialService {
     await this.repo.truncate();
   }
 
+  // -- Admin inspection (T10). Read-only by design: the panel may look at
+  // users and their graph, never mutate user content (AC 11.3).
+
+  /** Moderation user list (username filter, username-ascending pages). */
+  async adminUsers(query: { username?: string; cursor?: string; limit: number }) {
+    assertValidCursor(query.cursor);
+    const result = await this.repo.adminProfiles(query.username, query.cursor, query.limit);
+    return {
+      items: await Promise.all(
+        result.items.map(async (row) => ({
+          ...this.repo.toProfile(row),
+          counts: await this.repo.counts(row.id),
+        })),
+      ),
+      nextCursor: result.nextCursor,
+    };
+  }
+
+  /** One user + both directions of their follow graph (first pages). */
+  async adminFollowGraph(
+    userId: string,
+    edgeLimit = 50,
+  ): Promise<{ profile: Profile & { counts: { following: number; followers: number } }; followers: Profile[]; following: Profile[] }> {
+    const row = await this.repo.adminProfile(userId);
+    if (!row) throw notFound('User not found');
+    const [counts, followers, following] = await Promise.all([
+      this.repo.counts(userId),
+      this.repo.followPage('followers', userId, undefined, edgeLimit),
+      this.repo.followPage('following', userId, undefined, edgeLimit),
+    ]);
+    return {
+      profile: { ...this.repo.toProfile(row), counts },
+      followers: followers.items.map((follower) => this.repo.toProfile(follower)),
+      following: following.items.map((followee) => this.repo.toProfile(followee)),
+    };
+  }
+
   private rejectSelf(viewerId: string, targetId: string, action: string): void {
     if (viewerId === targetId) throw badRequest(`Cannot ${action} yourself`);
   }

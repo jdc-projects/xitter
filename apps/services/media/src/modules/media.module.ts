@@ -3,6 +3,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { createEventProducer } from '@xitter/events';
 import { env } from '../env.js';
 import { PrismaClient } from '../generated/prisma/client.js';
+import { AdminController } from './admin.controller.js';
 import { InternalController } from './internal.controller.js';
 import { KafkaMediaEvents, MEDIA_EVENTS, type MediaEvents } from './media-events.js';
 import { MediaController } from './media.controller.js';
@@ -58,7 +59,7 @@ export class MediaLifecycle implements OnApplicationShutdown {
 }
 
 @Module({
-  controllers: [MediaController, InternalController],
+  controllers: [MediaController, InternalController, AdminController],
   providers: [
     prismaProvider,
     eventsProvider,

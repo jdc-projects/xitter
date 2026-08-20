@@ -16,9 +16,11 @@ import { PrismaClient } from './generated/prisma/client.js';
       audience: 'svc-feed',
       redisUrl: env.VALKEY_URL,
       trustEdgeHeaders: env.AUTH_TRUST_EDGE_HEADERS,
+      adminIssuer: realmUrls(env.KEYCLOAK_BASE_URL, env.ADMIN_REALM).issuer,
     }),
     FeedModule,
     HealthModule.forRoot({
+      serviceName: 'feed',
       prismaFactory: () =>
         new PrismaClient({
           adapter: new PrismaPg({

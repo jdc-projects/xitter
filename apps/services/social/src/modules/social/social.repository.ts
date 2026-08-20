@@ -182,6 +182,42 @@ export class SocialRepository {
     await this.db.profile.deleteMany();
   }
 
+  // -- Admin inspection (T10). Read-only: user content stays owned by users.
+
+  /** Moderation user list, username-ascending (stable for inspection). */
+  async adminProfiles(
+    username: string | undefined,
+    cursor: string | undefined,
+    limit: number,
+  ): Promise<{ items: ProfileRow[]; nextCursor: string | null }> {
+    const position = cursor ? decodeCursor(cursor) : null;
+    // Cursor key = username: it is unique (so no tiebreak needed) and it is
+    // the column the panel lists by. The shared (createdAt, id) cursor shape
+    // carries it in `id`; cursors are opaque to callers.
+    const boundary = position?.id;
+    const rows = await this.db.profile.findMany({
+      where: {
+        ...(username ? { username: { contains: username, mode: 'insensitive' } } : {}),
+        ...(boundary ? { username: { gt: boundary } } : {}),
+      },
+      orderBy: [{ username: 'asc' }],
+      take: limit + 1,
+    });
+    const hasMore = rows.length > limit;
+    const items = hasMore ? rows.slice(0, limit) : rows;
+    const last = items.at(-1);
+    return {
+      items,
+      nextCursor:
+        hasMore && last ? encodeCursor({ createdAt: last.createdAt, id: last.username }) : null,
+    };
+  }
+
+  /** Profile + graph counts (admin users view). */
+  adminProfile(id: string): Promise<ProfileRow | null> {
+    return this.db.profile.findUnique({ where: { id } });
+  }
+
   toProfile(row: ProfileRow): Profile {
     return {
       id: row.id,
