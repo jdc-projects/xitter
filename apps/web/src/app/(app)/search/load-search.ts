@@ -1,4 +1,4 @@
-import { SearchClient, localServiceUrls } from '@xitter/api-client';
+import { PostsClient, SearchClient, localServiceUrls } from '@xitter/api-client';
 import type { Session } from '@/lib/auth/session';
 import { toTimelineEntries, type TimelineEntry } from '../feed/load-feed';
 
@@ -27,9 +27,20 @@ export async function loadSearch(
     baseUrl: localServiceUrls().search,
     token: session.accessToken,
   });
+  const posts = new PostsClient({ baseUrl: localServiceUrls().posts, token: session.accessToken });
   try {
     const page = await search.searchPosts(q, cursor, SEARCH_PAGE_SIZE);
-    return { status: 'ok', entries: toTimelineEntries(page.items), nextCursor: page.nextCursor };
+    // Best-effort viewer flags, same as the feed loader: without them the
+    // cards render un-filled but usable.
+    const flags = await posts
+      .getViewerState(page.items.map((item) => item.post.id))
+      .then(({ items }) => new Map(items.map((s) => [s.postId, s])))
+      .catch(() => new Map<string, { liked: boolean; reposted: boolean; bookmarked: boolean }>());
+    return {
+      status: 'ok',
+      entries: toTimelineEntries(page.items, flags),
+      nextCursor: page.nextCursor,
+    };
   } catch {
     return { status: 'degraded', entries: [], nextCursor: null };
   }

@@ -49,6 +49,8 @@ function ResultBody({
             key={post.id}
             post={post}
             author={author}
+            // Plain search result: no repost context (component omits the
+            // attribution when undefined).
             canDelete={post.authorId === viewerId}
           />
         ))}
