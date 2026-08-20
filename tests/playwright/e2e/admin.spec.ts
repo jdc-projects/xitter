@@ -70,7 +70,14 @@ test('admin soft-delete removes a post for users; audit log records it', async (
   const row = page.locator('[data-testid="posts-table"] tbody tr', { hasText: text }).first();
   await expect(row).toBeVisible({ timeout: 20_000 });
   await row.getByTestId(`delete-post-${postId}`).click();
-  await page.locator('.ant-modal-confirm').getByRole('button', { name: 'Delete' }).click();
+  // Modal.confirm (static): antd v5 renders .ant-modal-root; the OK button
+  // is disambiguated from row actions by exact name.
+  const confirmOk = page.locator('.ant-modal-root').getByRole('button', {
+    name: 'Delete',
+    exact: true,
+  });
+  await expect(confirmOk).toBeVisible({ timeout: 10_000 });
+  await confirmOk.click();
   // The row flips to a restorable tombstone (soft delete, spec 03).
   await expect(row.getByTestId(`restore-post-${postId}`)).toBeVisible({ timeout: 20_000 });
 
@@ -100,7 +107,9 @@ test('users list + follow graph are inspectable (read-only)', async ({ page, bro
   await page.goto('/admin/users');
   await expect(page.getByTestId('users-table')).toContainText('@demo1');
   await page.getByTestId('show-user-demo1').click();
-  await expect(page.getByTestId('users-show-profile')).toContainText('demo1');
+  // The graph view keys on the username in the title (the profile card
+  // itself shows the display name + id).
+  await expect(page.getByTestId('users-show-title')).toContainText('@demo1');
   // Both graph directions render (cards exist even when a list is empty).
   await expect(page.getByTestId('users-show-followers')).toBeVisible();
   await expect(page.getByTestId('users-show-following')).toBeVisible();

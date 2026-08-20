@@ -1,4 +1,4 @@
-import { Button, Image, Modal, Space, Table, Tag, Typography } from 'antd';
+import { Button, Image, Space, Table, Tag, Typography, App as AntApp } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import { useCustomMutation } from '@refinedev/core';
 import { useTable } from '@refinedev/antd';
@@ -12,6 +12,9 @@ import { filterValueOf } from '../../data/data-provider.js';
  */
 export function MediaListPage() {
   const { mutate: custom } = useCustomMutation();
+  // Hook-based modal (see posts/list.tsx): antd v5 static confirm needs
+  // the <App> context; the hook form is the reliable path.
+  const { modal } = AntApp.useApp();
   const { tableProps, tableQuery, filters, setFilters } = useTable<InternalMediaAsset>({
     resource: 'media',
     filters: {
@@ -34,7 +37,7 @@ export function MediaListPage() {
   };
 
   const remove = (asset: InternalMediaAsset) => {
-    Modal.confirm({
+    modal.confirm({
       title: 'Delete this image?',
       content: 'The metadata row and every stored object (original + variants) are removed.',
       okButtonProps: { danger: true },

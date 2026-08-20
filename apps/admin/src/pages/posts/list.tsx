@@ -1,4 +1,4 @@
-import { Button, Modal, Space, Table, Tag, Typography } from 'antd';
+import { Button, Space, Table, Tag, Typography, App as AntApp } from 'antd';
 import { DeleteOutlined, EyeOutlined, RedoOutlined } from '@ant-design/icons';
 import { useCustomMutation } from '@refinedev/core';
 import { useTable } from '@refinedev/antd';
@@ -16,6 +16,9 @@ import { filterValueOf } from '../../data/data-provider.js';
 export function PostsListPage() {
   const navigate = useNavigate();
   const { mutate: custom } = useCustomMutation();
+  // Hook-based modal: antd v5's static Modal.confirm needs the <App>
+  // wrapper context, and the hook form renders reliably either way.
+  const { modal } = AntApp.useApp();
 
   const { tableProps, tableQuery, filters, setFilters } = useTable<Post>({
     resource: 'posts',
@@ -57,7 +60,7 @@ export function PostsListPage() {
   };
 
   const confirmDelete = (post: Post, hard: boolean) => {
-    Modal.confirm({
+    modal.confirm({
       title: hard ? 'Hard-delete this post?' : 'Soft-delete this post?',
       content: hard
         ? 'The row and its interactions are removed permanently. This cannot be undone.'

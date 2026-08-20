@@ -26,7 +26,9 @@ export function App() {
       <Route path="/callback" element={<CallbackPage />} />
       <Route
         element={
-          <Authenticated fallback={<CatchAllNavigate to="/login" />}>
+          // refine's AuthenticatedProps declares key as required (their
+          // convention for same-level instances); a static key is neutral.
+          <Authenticated key="panel" fallback={<CatchAllNavigate to="/login" />}>
             <PanelLayout />
           </Authenticated>
         }
