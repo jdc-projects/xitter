@@ -16,9 +16,11 @@ import { PrismaClient } from './generated/prisma/client.js';
       audience: 'svc-posts',
       redisUrl: env.VALKEY_URL,
       trustEdgeHeaders: env.AUTH_TRUST_EDGE_HEADERS,
+      adminIssuer: realmUrls(env.KEYCLOAK_BASE_URL, env.ADMIN_REALM).issuer,
     }),
     PostsModule,
     HealthModule.forRoot({
+      serviceName: 'posts',
       prismaFactory: () =>
         new PrismaClient({
           adapter: new PrismaPg({

@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   createPostRequestSchema,
+  type AdminPostsListQuery,
   type CreatePostRequest,
   type Interaction,
   type InteractionKind,
@@ -27,6 +28,12 @@ export interface PageRequest {
 export interface PostPage {
   items: Post[];
   nextCursor: string | null;
+}
+
+/** Admin principal as the audit trail records it (who/what/when). */
+export interface AdminActor {
+  actorId: string;
+  actorName: string;
 }
 
 /**
@@ -236,6 +243,86 @@ export class PostsService {
   /** Internal (reset job): wipe posts + interactions; reseed via seed script. */
   async reseed(): Promise<void> {
     await this.repo.truncate();
+  }
+
+  // -- Admin moderation (T10). Guard already established the actor carries
+  // an admin role; the audit row is the accountability record.
+
+  /** Filtered moderation list (tombstones included unless filtered out). */
+  async adminListPosts(query: AdminPostsListQuery): Promise<PostPage> {
+    assertValidCursor(query.cursor);
+    const { authorId, text, deleted } = query;
+    const result = await this.repo.adminPosts({ authorId, text, deleted }, query.cursor, query.limit);
+    return { items: result.items.map((row) => this.toPost(row)), nextCursor: result.nextCursor };
+  }
+
+  /** Any post, deleted or not (moderation must see tombstones). */
+  async adminGetPost(postId: string): Promise<Post> {
+    const row = await this.repo.findPost(postId);
+    if (!row) throw notFound('Post not found');
+    return this.toPost(row);
+  }
+
+  /**
+   * Moderation delete. Both modes emit `posts.post.deleted` so feeds (and
+   * any index) drop the post exactly like an author delete (AC 11.5).
+   */
+  async adminRemovePost(actor: AdminActor, postId: string, hard: boolean): Promise<void> {
+    const deleted = hard
+      ? await this.repo.adminHardDelete(postId, this.audit(actor, 'post.hard-delete'))
+      : await this.repo.adminSoftDelete(postId, this.audit(actor, 'post.soft-delete'));
+    if (!deleted) throw notFound('Post not found');
+
+    await this.emitSafe(
+      'posts.post.deleted',
+      {
+        postId,
+        authorId: deleted.authorId,
+        deletedAt: new Date().toISOString(),
+      },
+      postId,
+    );
+  }
+
+  /**
+   * Moderation restore: the post becomes visible again on every read path,
+   * and re-emitting `posts.post.created` re-materialises feed entries at the
+   * post's original chronological position (fanout upserts are idempotent).
+   */
+  async adminRestorePost(actor: AdminActor, postId: string): Promise<Post> {
+    const restored = await this.repo.adminRestore(postId, this.audit(actor, 'post.restore'));
+    if (!restored) throw notFound('Post not found (or not deleted)');
+    const post = this.toPost(restored);
+
+    await this.emitSafe(
+      'posts.post.created',
+      {
+        postId: restored.id,
+        authorId: restored.authorId,
+        text: restored.text,
+        mediaIds: restored.mediaIds,
+        replyToId: restored.replyToId,
+        repostOfId: restored.repostOfId,
+        createdAt: restored.createdAt.toISOString(),
+      },
+      restored.id,
+    );
+    return post;
+  }
+
+  /** Moderation audit trail (who deleted/restored what, when). */
+  async adminAudit(page: PageRequest) {
+    assertValidCursor(page.cursor);
+    return this.repo.adminAudit(page.cursor, page.limit);
+  }
+
+  private audit(actor: AdminActor, action: string) {
+    return {
+      actorId: actor.actorId,
+      actorName: actor.actorName,
+      action,
+      targetId: '', // filled by the repository with the concrete row id
+    };
   }
 
   /**
