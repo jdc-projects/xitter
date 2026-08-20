@@ -5,4 +5,6 @@
 import type { StrykerOptions } from '@stryker-mutator/core';
 import { createStrykerConfig } from '@xitter/testing';
 
-export default createStrykerConfig('service-search') satisfies StrykerOptions;
+export default createStrykerConfig('service-search', {
+  excludeIntegrationTests: true,
+}) satisfies StrykerOptions;

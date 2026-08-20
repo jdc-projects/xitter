@@ -80,3 +80,20 @@ test('/post/[postId] (detail with reply composer) has no serious axe violations'
   );
   expect(serious, JSON.stringify(serious, null, 2)).toEqual([]);
 });
+
+test('/search (results page, authenticated) has no serious axe violations', async ({ page }) => {
+  await loginViaKeycloak(page, 'demo1', 'DemoPass123!');
+  await page.waitForURL(/\/feed$/);
+
+  // Any query exercises the results screen; the empty state is a valid scan
+  // target and needs no seeded corpus.
+  await page.goto(`/search?q=${encodeURIComponent('feed')}`);
+
+  const results = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+    .analyze();
+  const serious = results.violations.filter((v) =>
+    ['serious', 'critical'].includes(v.impact ?? ''),
+  );
+  expect(serious, JSON.stringify(serious, null, 2)).toEqual([]);
+});

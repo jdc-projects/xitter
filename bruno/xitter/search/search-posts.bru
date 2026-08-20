@@ -15,4 +15,24 @@ auth:bearer {
 
 assert {
   res.status: 200
+  res.body.items !== undefined
+  res.body.nextCursor !== undefined
+}
+
+script:post-response {
+  // Page items are hydrated (post + author) per spec 03 - the search
+  // contract mirrors the feed page shape.
+  const item = res.body.items && res.body.items[0];
+  if (item) {
+    bru.test('items are hydrated post+author pairs', () => {
+      bru.expect(item.post).to.be.an('object');
+      bru.expect(item.post.id).to.be.a('string');
+      bru.expect(item.author).to.be.an('object');
+      bru.expect(item.author.username).to.be.a('string');
+    });
+  } else {
+    bru.test('empty page is a valid result', () => {
+      bru.expect(res.body.items).to.be.an('array');
+    });
+  }
 }

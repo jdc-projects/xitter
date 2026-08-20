@@ -123,14 +123,16 @@ Unique: `FeedEntry(userId, postId, reason)` — idempotent event application. `r
 erDiagram
     SearchCheckpoint {
         string id PK
-        string consumerKey UK "per consumer"
+        string consumerKey "consumer group id"
         string topicPartition "topic:partition"
-        string offset
+        bigint lastOffset "last processed Kafka offset"
+        string lastEventId "idempotency trail"
+        datetime lastEventAt
         datetime updatedAt
     }
 ```
 
-The OpenSearch `posts` index is derived data, fully rebuildable from `posts` events.
+Unique: `SearchCheckpoint(consumerKey, topicPartition)` — one resume position per consumer per partition, upserted after every processed message (the write only lands once the index side effect has, so the cursor never points past unprocessed work). Postgres holds only these checkpoints; the OpenSearch `posts` index is derived data, fully rebuildable from the `posts`/`social` event log (a fresh consumer group replays from the beginning).
 
 ### cms
 
@@ -154,7 +156,7 @@ Field tables above (types/constraints inline in each ER diagram) are normative. 
 | posts      | `Post(authorId, createdAt desc)`, `Post(replyToId)`, `Interaction(userId, kind)`                     | Profiles, threads, "my bookmarks/likes"                                         |
 | media      | `MediaAsset(ownerId)`, `MediaAsset(status)`                                                          | Owner lookups (attach validation); pending/failed cleanup                       |
 | feed       | `FeedEntry(userId, postCreatedAt desc, id desc)`, `FeedEntry(postId)`, `FeedEntry(userId, authorId)` | The feed page itself (keyset, newest first); deletion fan-out; unfollow cleanup |
-| search     | checkpoint lookups by consumerKey                                                                    | Resume position                                                                 |
+| search     | `SearchCheckpoint(consumerKey, topicPartition)` unique                                               | Resume position                                                                 |
 | OpenSearch | standard text index on posts                                                                         | Full-text search                                                                |
 
 Guideline: index for the read patterns in the product flows ([../product/03-user-flows.md](../product/03-user-flows.md)); add indexes with evidence, not speculation.

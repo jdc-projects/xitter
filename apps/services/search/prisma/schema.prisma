@@ -9,10 +9,18 @@ datasource db {
   provider = "postgresql"
 }
 
+/// Durable resume cursor for the search-index worker: one row per
+/// (consumer, topic-partition). Kafka group offsets die with the nightly
+/// reset's consumer-group deletion; these survive in the search DB (the
+/// index owner) and reposition the worker on partition assignment.
 model SearchCheckpoint {
-  id             String   @id @default(uuid())
-  consumerGroup  String   @unique
+  id             String    @id @default(uuid())
+  consumerKey    String
+  topicPartition String
+  lastOffset     BigInt
   lastEventId    String?
   lastEventAt    DateTime?
-  updatedAt      DateTime @updatedAt
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([consumerKey, topicPartition])
 }

@@ -62,6 +62,61 @@ export interface RustFsHandle extends Disposable {
   secretKey: string;
 }
 
+export interface OpenSearchHandle extends Disposable {
+  /** Cluster URL reachable from the host (HTTP, security disabled like compose). */
+  url: string;
+}
+
+// Ephemeral host port (no fixed-port lock needed), labelled so crashed-run
+// orphans can be swept by hand - same pattern as the RustFS container.
+const OPENSEARCH_TEST_LABEL = 'xitter.test.opensearch';
+
+/**
+ * Start a throwaway OpenSearch node, same image + env as the local compose
+ * stack (infra/docker/compose.yaml): single node, security plugin disabled.
+ * Ephemeral host port; readiness is the plain HTTP retry loop below - the
+ * testcontainers port-bind wait is deliberately absent: under a loaded
+ * podman VM (sibling stacks + parallel CI suites) that check races podman's
+ * port proxy and fails while the JVM is healthy. Heap halved vs compose -
+ * CI runners hold several of these at once and a test corpus needs a
+ * fraction of 512m.
+ */
+export async function startOpenSearch(): Promise<OpenSearchHandle> {
+  const container = await new GenericContainer('opensearchproject/opensearch:3.8.0')
+    .withLabels({ [OPENSEARCH_TEST_LABEL]: 'true' })
+    .withEnvironment({
+      'discovery.type': 'single-node',
+      DISABLE_SECURITY_PLUGIN: 'true',
+      OPENSEARCH_JAVA_OPTS: '-Xms256m -Xmx256m',
+      'bootstrap.memory_lock': 'false',
+    })
+    .withExposedPorts(9200)
+    // The default host-port wait (60s) fires while the JVM is still booting
+    // on CI's shared runners - the container is healthy, just slow. The
+    // HTTP loop below is the real readiness gate; give the bind 5 minutes.
+    .withStartupTimeout(300_000)
+    .start();
+  const url = `http://${container.getHost()}:${container.getMappedPort(9200)}`;
+
+  // The HTTP layer boots a few seconds after the port listens.
+  const deadline = Date.now() + 120_000;
+  for (;;) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) break;
+    } catch {
+      /* not up yet */
+    }
+    if (Date.now() > deadline) {
+      await container.stop().catch(() => undefined);
+      throw new Error('OpenSearch testcontainer did not become healthy in 120s');
+    }
+    await new Promise((r) => setTimeout(r, 1_500));
+  }
+
+  return { url, stop: () => container.stop() };
+}
+
 // Ephemeral host port, so no fixed-port lock is needed - but label the
 // container so crashed-run orphans can be identified and swept by hand.
 const RUSTFS_TEST_LABEL = 'xitter.test.rustfs';
