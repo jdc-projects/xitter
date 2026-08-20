@@ -19,6 +19,54 @@ export interface PostgresHandle extends Disposable {
 process.env.TESTCONTAINERS_RYUK_DISABLED ??= 'true';
 
 /**
+ * With Ryuk disabled there is no reaper backstop, so every started
+ * container is tracked here and `resilientStop` retries a failed stop once
+ * (podman's socket intermittently drops stop calls even on green runs -
+ * that is how orphans accumulate). `sweepAllTracked` is wired as vitest
+ * globalTeardown: at end-of-run every remaining tracked container is by
+ * definition orphaned.
+ */
+const tracked = new Set<StartedTestContainer>();
+
+async function resilientStop(container: StartedTestContainer): Promise<unknown> {
+  try {
+    return await container.stop();
+  } catch (err) {
+    process.stderr.write(
+      `[test-containers] stop failed for a test container - retrying once\n`,
+    );
+    try {
+      return await container.stop({ timeout: 10_000 });
+    } catch (retryErr) {
+      process.stderr.write(
+        `[test-containers] stop retry failed - container left for the next startPostgres sweep\n`,
+      );
+      throw retryErr ?? err;
+    }
+  }
+}
+
+function track(container: StartedTestContainer): StartedTestContainer {
+  tracked.add(container);
+  return container;
+}
+
+function untrack(container: StartedTestContainer): void {
+  tracked.delete(container);
+}
+
+/** End-of-run cleanup: stop anything still tracked (vitest globalTeardown). */
+export async function stopAllTestContainers(): Promise<void> {
+  const leftovers = [...tracked];
+  if (leftovers.length === 0) return;
+  process.stderr.write(
+    `[test-containers] teardown stopping ${leftovers.length} leftover container(s)\n`,
+  );
+  await Promise.allSettled(leftovers.map((c) => resilientStop(c)));
+  tracked.clear();
+}
+
+/**
  * Start a throwaway Postgres with one database + user, mirroring the local
  * "shared instance, database per service" topology.
  */
@@ -40,9 +88,13 @@ export async function startPostgres(
     .withPassword(dbPassword)
     .withLabels({ [POSTGRES_TEST_LABEL]: 'true' })
     .start();
+  track(container);
   return {
     connectionString: container.getConnectionUri(),
-    stop: () => container.stop(),
+    stop: () => {
+      untrack(container);
+      return resilientStop(container);
+    },
   };
 }
 
@@ -114,7 +166,14 @@ export async function startOpenSearch(): Promise<OpenSearchHandle> {
     await new Promise((r) => setTimeout(r, 1_500));
   }
 
-  return { url, stop: () => container.stop() };
+  track(container);
+  return {
+    url,
+    stop: () => {
+      untrack(container);
+      return resilientStop(container);
+    },
+  };
 }
 
 // Ephemeral host port, so no fixed-port lock is needed - but label the
@@ -145,11 +204,15 @@ export async function startRustfs(
     .start();
   const port = container.getMappedPort(9000);
   const host = container.getHost();
+  track(container);
   return {
     endpoint: `http://${host}:${port}`,
     accessKey,
     secretKey,
-    stop: () => container.stop(),
+    stop: () => {
+      untrack(container);
+      return resilientStop(container);
+    },
   };
 }
 
@@ -384,11 +447,13 @@ export async function startKafka(): Promise<KafkaHandle> {
       await new Promise((r) => setTimeout(r, 1_000 * attempt));
     }
   }
+  track(container);
   return {
     bootstrapServers: `${container.getHost()}:${hostPort}`,
     stop: async () => {
       try {
-        await container.stop();
+        untrack(container);
+        await resilientStop(container);
       } finally {
         await releaseLock();
       }
