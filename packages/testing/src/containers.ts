@@ -32,9 +32,7 @@ async function resilientStop(container: StartedTestContainer): Promise<unknown> 
   try {
     return await container.stop();
   } catch (err) {
-    process.stderr.write(
-      `[test-containers] stop failed for a test container - retrying once\n`,
-    );
+    process.stderr.write(`[test-containers] stop failed for a test container - retrying once\n`);
     try {
       return await container.stop({ timeout: 10_000 });
     } catch (retryErr) {
