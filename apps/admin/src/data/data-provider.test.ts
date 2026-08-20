@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CrudFilters } from '@refinedev/core';
+import type { CrudFilters, DataProvider } from '@refinedev/core';
 
 /**
  * Provider mapping tests: Refine filters -> internal admin query params,
@@ -10,13 +10,20 @@ import type { CrudFilters } from '@refinedev/core';
 const adminFetch = vi.fn();
 vi.mock('./admin-fetch.js', () => ({ adminFetch: (...args: unknown[]) => adminFetch(...args) }));
 
-const page = <T,>(items: T[], nextCursor: string | null = null) => ({ items, nextCursor });
+const page = <T>(items: T[], nextCursor: string | null = null) => ({ items, nextCursor });
 const post = (id: string) => ({ id, counts: { replies: 0, likes: 0, reposts: 0 } });
 
-type Provider = typeof import('./data-provider.js');
+interface ProviderModule {
+  dataProvider: DataProvider;
+  listQuery: (
+    resource: string,
+    filters: CrudFilters | undefined,
+  ) => Record<string, string | undefined>;
+  logical: (filters: CrudFilters | undefined) => { field: string }[];
+}
 
 /** Fresh module per test: the cursor cache is module state. */
-async function fresh(): Promise<Provider> {
+async function fresh(): Promise<ProviderModule> {
   vi.resetModules();
   adminFetch.mockReset();
   return import('./data-provider.js');
@@ -46,9 +53,9 @@ describe('listQuery: Refine filters -> admin query params', () => {
         { field: 'status', operator: 'eq', value: 'ready' },
       ]),
     ).toEqual({ ownerId: 'u1', status: 'ready' });
-    expect(listQuery('users', [{ field: 'username', operator: 'contains', value: 'demo' }])).toEqual(
-      { username: 'demo' },
-    );
+    expect(
+      listQuery('users', [{ field: 'username', operator: 'contains', value: 'demo' }]),
+    ).toEqual({ username: 'demo' });
   });
 
   it('ignores non-logical (or/and) filter nodes', async () => {

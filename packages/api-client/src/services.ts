@@ -5,7 +5,6 @@ import {
   adminHealthSchema,
   adminMediaPageSchema,
   adminPostPageSchema,
-  adminPostsListQuerySchema,
   adminUserPageSchema,
   createInteractionRequestSchema,
   createMediaUploadResponseSchema,
@@ -479,7 +478,7 @@ export class MediaClient extends ServiceClient {
 
   /** Admin: delete an asset (row + RustFS objects cascade). */
   internalAdminDeleteMedia(mediaId: string): Promise<void> {
-    return this.delete(`${V1}/media/internal/media/${mediaId}`);
+    return this.delete(`${V1}/media/internal/admin/media/${mediaId}`);
   }
 
   /** Admin: moderation audit trail (media data). */

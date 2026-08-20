@@ -373,9 +373,7 @@ describe('AuthGuard (@Internal({ clients: [...] }) routes)', () => {
   it('rejects an otherwise-valid internal client outside the per-route allowlist', async () => {
     const guard = makeGuard({ azp: 'web' }, { azp: 'svc-reset' });
     const err = await guard
-      .canActivate(
-        createContext({ headers: { authorization: 'Bearer m2m' } }, 'scoped-internal'),
-      )
+      .canActivate(createContext({ headers: { authorization: 'Bearer m2m' } }, 'scoped-internal'))
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(HttpException);
     expect((err as HttpException).getStatus()).toBe(401);

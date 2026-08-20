@@ -20,7 +20,11 @@ export function PostsShowPage() {
       <Card>
         <Descriptions column={1} bordered size="small" data-testid="posts-show-details">
           <Descriptions.Item label="State">
-            {post.deletedAt ? <Tag color="red">deleted {post.deletedAt}</Tag> : <Tag color="green">live</Tag>}
+            {post.deletedAt ? (
+              <Tag color="red">deleted {post.deletedAt}</Tag>
+            ) : (
+              <Tag color="green">live</Tag>
+            )}
           </Descriptions.Item>
           <Descriptions.Item label="Author">{post.authorId}</Descriptions.Item>
           <Descriptions.Item label="Text">
@@ -30,7 +34,8 @@ export function PostsShowPage() {
           </Descriptions.Item>
           <Descriptions.Item label="Created">{post.createdAt}</Descriptions.Item>
           <Descriptions.Item label="Counts">
-            replies {post.counts.replies} · likes {post.counts.likes} · reposts {post.counts.reposts}
+            replies {post.counts.replies} · likes {post.counts.likes} · reposts{' '}
+            {post.counts.reposts}
           </Descriptions.Item>
           <Descriptions.Item label="Reply to">{post.replyToId ?? '—'}</Descriptions.Item>
           <Descriptions.Item label="Repost of">{post.repostOfId ?? '—'}</Descriptions.Item>

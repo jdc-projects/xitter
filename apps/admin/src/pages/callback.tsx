@@ -45,7 +45,11 @@ export function CallbackPage() {
         subTitle={error}
         data-testid="admin-callback-rejected"
         extra={
-          <Button type="primary" onClick={() => navigate('/login')} data-testid="admin-back-to-login">
+          <Button
+            type="primary"
+            onClick={() => navigate('/login')}
+            data-testid="admin-back-to-login"
+          >
             Back to login
           </Button>
         }
@@ -55,7 +59,12 @@ export function CallbackPage() {
 
   return (
     <div
-      style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
       role="status"
       aria-label="Completing sign-in"
     >

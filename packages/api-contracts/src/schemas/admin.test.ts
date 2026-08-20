@@ -96,7 +96,7 @@ describe('adminHealthSchema', () => {
       version: '1.0.0',
       checks: { database: { status: 'up' } },
     };
-    expect(adminHealthSchema.parse(health).checks.database.status).toBe('up');
+    expect(adminHealthSchema.parse(health).checks.database?.status).toBe('up');
   });
 
   it('keeps a down check message', () => {

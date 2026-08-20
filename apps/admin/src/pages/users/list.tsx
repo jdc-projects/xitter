@@ -14,9 +14,8 @@ export function UsersListPage() {
   });
 
   const valueOf = (field: string): string => {
-    const found = (filters ?? []).find(
-      (entry) => 'field' in entry && entry.field === field,
-    ) as { value?: string } | undefined;
+    const found = (filters ?? []).find((entry) => 'field' in entry && entry.field === field) as
+      { value?: string } | undefined;
     return found?.value ?? '';
   };
 
@@ -41,7 +40,12 @@ export function UsersListPage() {
         rowKey="id"
         data-testid="users-table"
         columns={[
-          { title: 'Username', dataIndex: 'username', key: 'username', render: (u: string) => `@${u}` },
+          {
+            title: 'Username',
+            dataIndex: 'username',
+            key: 'username',
+            render: (u: string) => `@${u}`,
+          },
           { title: 'Display name', dataIndex: 'displayName', key: 'displayName' },
           {
             title: 'Following',

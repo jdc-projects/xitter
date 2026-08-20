@@ -17,6 +17,11 @@
         "scheme": "bearer",
         "bearerFormat": "JWT"
       },
+      "adminToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Admin principal: an admin-realm user token (admin-panel client, ADMIN_ROLES realm role) or a svc-admin service token carrying an admin role."
+      },
       "serviceToken": {
         "type": "http",
         "scheme": "bearer",
@@ -123,6 +128,184 @@
           }
         },
         "required": ["items", "nextCursor"]
+      },
+      "AdminUserPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                },
+                "username": {
+                  "type": "string",
+                  "minLength": 3,
+                  "maxLength": 20,
+                  "pattern": "^[a-z0-9_]+$"
+                },
+                "displayName": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 50
+                },
+                "bio": {
+                  "type": "string",
+                  "nullable": true,
+                  "maxLength": 200
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "counts": {
+                  "type": "object",
+                  "properties": {
+                    "following": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "followers": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": ["following", "followers"]
+                }
+              },
+              "required": ["id", "username", "displayName", "bio", "createdAt", "counts"]
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": ["items", "nextCursor"]
+      },
+      "AdminFollowGraph": {
+        "type": "object",
+        "properties": {
+          "profile": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "example": "b1c2d3e4-0000-4000-8000-000000000001"
+              },
+              "username": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 20,
+                "pattern": "^[a-z0-9_]+$"
+              },
+              "displayName": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 50
+              },
+              "bio": {
+                "type": "string",
+                "nullable": true,
+                "maxLength": 200
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "counts": {
+                "type": "object",
+                "properties": {
+                  "following": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "followers": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": ["following", "followers"]
+              }
+            },
+            "required": ["id", "username", "displayName", "bio", "createdAt", "counts"]
+          },
+          "followers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                },
+                "username": {
+                  "type": "string",
+                  "minLength": 3,
+                  "maxLength": 20,
+                  "pattern": "^[a-z0-9_]+$"
+                },
+                "displayName": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 50
+                },
+                "bio": {
+                  "type": "string",
+                  "nullable": true,
+                  "maxLength": 200
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": ["id", "username", "displayName", "bio", "createdAt"]
+            }
+          },
+          "following": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                },
+                "username": {
+                  "type": "string",
+                  "minLength": 3,
+                  "maxLength": 20,
+                  "pattern": "^[a-z0-9_]+$"
+                },
+                "displayName": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 50
+                },
+                "bio": {
+                  "type": "string",
+                  "nullable": true,
+                  "maxLength": 200
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": ["id", "username", "displayName", "bio", "createdAt"]
+            }
+          }
+        },
+        "required": ["profile", "followers", "following"],
+        "additionalProperties": false
       }
     },
     "parameters": {}
@@ -1114,6 +1297,123 @@
                     }
                   },
                   "required": ["ok"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/admin/users": {
+      "get": {
+        "tags": ["admin"],
+        "security": [
+          {
+            "adminToken": []
+          },
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "Moderation user list: profiles with follow-graph counts, username-ascending, optional username filter.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 20,
+              "pattern": "^[a-z0-9_]+$"
+            },
+            "required": false,
+            "name": "username",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": false,
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cursor or filter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/admin/users/{userId}/follow-graph": {
+      "get": {
+        "tags": ["admin"],
+        "security": [
+          {
+            "adminToken": []
+          },
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "One user, their graph counts, and the first pages of followers and following (inspection only - no mutation routes exist).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "b1c2d3e4-0000-4000-8000-000000000001"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Follow graph",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminFollowGraph"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }

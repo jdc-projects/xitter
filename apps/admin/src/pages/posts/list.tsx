@@ -29,14 +29,18 @@ export function PostsListPage() {
   });
 
   const valueOf = (field: string): string => {
-    const found = (filters ?? []).find(
-      (entry) => 'field' in entry && entry.field === field,
-    ) as { value?: string } | undefined;
+    const found = (filters ?? []).find((entry) => 'field' in entry && entry.field === field) as
+      { value?: string } | undefined;
     return found?.value ?? '';
   };
 
   const applyFilters = (patch: Record<string, string>) => {
-    const base = { text: valueOf('text'), authorId: valueOf('authorId'), deleted: valueOf('deleted'), ...patch };
+    const base = {
+      text: valueOf('text'),
+      authorId: valueOf('authorId'),
+      deleted: valueOf('deleted'),
+      ...patch,
+    };
     setFilters([
       { field: 'text', operator: 'contains', value: base.text },
       { field: 'authorId', operator: 'eq', value: base.authorId },

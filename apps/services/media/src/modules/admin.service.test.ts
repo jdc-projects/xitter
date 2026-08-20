@@ -56,11 +56,10 @@ function makeService() {
       return Promise.resolve();
     }),
   };
-  const service = new MediaService(
-    repo as unknown as MediaRepository,
-    storage,
-    { emit: vi.fn(), shutdown: vi.fn() } as unknown as MediaEvents,
-  );
+  const service = new MediaService(repo as unknown as MediaRepository, storage, {
+    emit: vi.fn(),
+    shutdown: vi.fn(),
+  } as unknown as MediaEvents);
   return { repo, storage, removed, audits, service };
 }
 
@@ -70,7 +69,11 @@ describe('MediaService admin moderation', () => {
   it('passes owner/status filters through to the repository', async () => {
     const { repo, service } = makeService();
     await service.adminList({ ownerId: OWNER, status: 'ready', limit: 10 });
-    expect(repo.adminMedia).toHaveBeenCalledWith({ ownerId: OWNER, status: 'ready' }, undefined, 10);
+    expect(repo.adminMedia).toHaveBeenCalledWith(
+      { ownerId: OWNER, status: 'ready' },
+      undefined,
+      10,
+    );
   });
 
   it('rejects a malformed cursor with 400', async () => {

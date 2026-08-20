@@ -21,6 +21,11 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Client-credentials service token (audience = svc-media)."
+      },
+      "adminToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Admin principal: an admin-realm user token (admin-panel client, ADMIN_ROLES realm role) or a svc-admin service token carrying an admin role."
       }
     },
     "schemas": {
@@ -122,6 +127,164 @@
         },
         "required": ["variants"],
         "additionalProperties": false
+      },
+      "AdminMediaPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "ownerId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["pending", "ready", "failed"]
+                },
+                "variants": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": ["original", "thumb"]
+                      },
+                      "objectKey": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "mimeType": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "bytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "exclusiveMinimum": true
+                      },
+                      "width": {
+                        "type": "integer",
+                        "nullable": true,
+                        "minimum": 0,
+                        "exclusiveMinimum": true
+                      },
+                      "height": {
+                        "type": "integer",
+                        "nullable": true,
+                        "minimum": 0,
+                        "exclusiveMinimum": true
+                      },
+                      "url": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["kind", "objectKey", "mimeType", "bytes", "width", "height", "url"]
+                  }
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "objectKey": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mimeType": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "bytes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "exclusiveMinimum": true
+                },
+                "attempts": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "id",
+                "ownerId",
+                "status",
+                "variants",
+                "createdAt",
+                "objectKey",
+                "mimeType",
+                "bytes",
+                "attempts"
+              ]
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": ["items", "nextCursor"]
+      },
+      "AdminAuditPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminAuditEntry"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": ["items", "nextCursor"]
+      },
+      "AdminAuditEntry": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "actorId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "actorName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "action": {
+            "type": "string",
+            "enum": ["post.soft-delete", "post.hard-delete", "post.restore", "media.delete"]
+          },
+          "targetId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "detail": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["id", "actorId", "actorName", "action", "targetId", "detail", "createdAt"]
       }
     },
     "parameters": {}
@@ -972,6 +1135,313 @@
                     }
                   },
                   "required": ["ok"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/admin/media": {
+      "get": {
+        "tags": ["admin"],
+        "security": [
+          {
+            "adminToken": []
+          },
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "Moderation list with owner/status filters; internal view (storage coordinates, bytes, attempts included).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "b1c2d3e4-0000-4000-8000-000000000001"
+            },
+            "required": false,
+            "name": "ownerId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["pending", "ready", "failed"]
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": false,
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Media page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminMediaPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cursor or filter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/admin/media/{mediaId}": {
+      "get": {
+        "tags": ["admin"],
+        "security": [
+          {
+            "adminToken": []
+          },
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "Asset incl. storage coordinates for moderation inspection.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "mediaId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Asset",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "ownerId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": ["pending", "ready", "failed"]
+                    },
+                    "variants": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": ["original", "thumb"]
+                          },
+                          "objectKey": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "mimeType": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "bytes": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "exclusiveMinimum": true
+                          },
+                          "width": {
+                            "type": "integer",
+                            "nullable": true,
+                            "minimum": 0,
+                            "exclusiveMinimum": true
+                          },
+                          "height": {
+                            "type": "integer",
+                            "nullable": true,
+                            "minimum": 0,
+                            "exclusiveMinimum": true
+                          },
+                          "url": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "objectKey",
+                          "mimeType",
+                          "bytes",
+                          "width",
+                          "height",
+                          "url"
+                        ]
+                      }
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "objectKey": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "mimeType": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bytes": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "exclusiveMinimum": true
+                    },
+                    "attempts": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "ownerId",
+                    "status",
+                    "variants",
+                    "createdAt",
+                    "objectKey",
+                    "mimeType",
+                    "bytes",
+                    "attempts"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["admin"],
+        "security": [
+          {
+            "adminToken": []
+          },
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "Moderation delete: the metadata row and every owned RustFS object (original + variants) are removed by this service, the storage owner. Audit-logged.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "mediaId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/admin/audit": {
+      "get": {
+        "tags": ["admin"],
+        "security": [
+          {
+            "adminToken": []
+          },
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "Moderation audit trail for media data (who deleted what, when).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": false,
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Audit page",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAuditPage"
                 }
               }
             }

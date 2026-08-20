@@ -23,9 +23,8 @@ export function MediaListPage() {
   });
 
   const valueOf = (field: string): string => {
-    const found = (filters ?? []).find(
-      (entry) => 'field' in entry && entry.field === field,
-    ) as { value?: string } | undefined;
+    const found = (filters ?? []).find((entry) => 'field' in entry && entry.field === field) as
+      { value?: string } | undefined;
     return found?.value ?? '';
   };
 
@@ -98,7 +97,13 @@ export function MediaListPage() {
             width: 90,
             render: (_: unknown, record) =>
               thumb(record) ? (
-                <Image src={thumb(record)} width={64} height={64} style={{ objectFit: 'cover' }} alt={`Media ${record.id}`} />
+                <Image
+                  src={thumb(record)}
+                  width={64}
+                  height={64}
+                  style={{ objectFit: 'cover' }}
+                  alt={`Media ${record.id}`}
+                />
               ) : (
                 <Tag>none</Tag>
               ),

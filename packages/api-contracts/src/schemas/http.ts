@@ -389,9 +389,8 @@ export const adminMediaListQuerySchema = z
 
 export type AdminMediaListQuery = z.infer<typeof adminMediaListQuerySchema>;
 
-export const adminMediaPageSchema = cursorPagination(internalMediaAssetSchema).openapi(
-  'AdminMediaPage',
-);
+export const adminMediaPageSchema =
+  cursorPagination(internalMediaAssetSchema).openapi('AdminMediaPage');
 
 /** Users list filters (social internal admin view). */
 export const adminUsersListQuerySchema = z
@@ -404,9 +403,8 @@ export const adminUsersListQuerySchema = z
 
 export type AdminUsersListQuery = z.infer<typeof adminUsersListQuerySchema>;
 
-export const adminUserPageSchema = cursorPagination(profileWithCountsSchema).openapi(
-  'AdminUserPage',
-);
+export const adminUserPageSchema =
+  cursorPagination(profileWithCountsSchema).openapi('AdminUserPage');
 
 /** Follow-graph view: the profile plus first pages of both edge directions. */
 export const adminFollowGraphSchema = z
@@ -426,12 +424,7 @@ export const adminAuditEntrySchema = z
     id: z.uuid(),
     actorId: z.string().min(1),
     actorName: z.string().min(1),
-    action: z.enum([
-      'post.soft-delete',
-      'post.hard-delete',
-      'post.restore',
-      'media.delete',
-    ]),
+    action: z.enum(['post.soft-delete', 'post.hard-delete', 'post.restore', 'media.delete']),
     targetId: z.string().min(1),
     detail: z.record(z.string(), z.unknown()).nullable(),
     createdAt: z.iso.datetime(),
@@ -440,9 +433,8 @@ export const adminAuditEntrySchema = z
 
 export type AdminAuditEntry = z.infer<typeof adminAuditEntrySchema>;
 
-export const adminAuditPageSchema = cursorPagination(adminAuditEntrySchema).openapi(
-  'AdminAuditPage',
-);
+export const adminAuditPageSchema =
+  cursorPagination(adminAuditEntrySchema).openapi('AdminAuditPage');
 
 /** Per-service health as the admin dashboard renders it (Terminus details). */
 export const adminHealthSchema = z

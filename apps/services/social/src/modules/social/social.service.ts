@@ -331,7 +331,11 @@ export class SocialService {
   async adminFollowGraph(
     userId: string,
     edgeLimit = 50,
-  ): Promise<{ profile: Profile & { counts: { following: number; followers: number } }; followers: Profile[]; following: Profile[] }> {
+  ): Promise<{
+    profile: Profile & { counts: { following: number; followers: number } };
+    followers: Profile[];
+    following: Profile[];
+  }> {
     const row = await this.repo.adminProfile(userId);
     if (!row) throw notFound('User not found');
     const [counts, followers, following] = await Promise.all([

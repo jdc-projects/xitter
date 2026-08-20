@@ -46,9 +46,7 @@ export class AuthModule {
       // Null when no admin realm is configured: admin routes then fail closed.
       {
         provide: ADMIN_VERIFIER,
-        useValue: options.adminIssuer
-          ? createTokenVerifier({ issuer: options.adminIssuer })
-          : null,
+        useValue: options.adminIssuer ? createTokenVerifier({ issuer: options.adminIssuer }) : null,
       },
       AuthGuard,
       RateLimitGuard,

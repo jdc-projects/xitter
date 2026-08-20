@@ -153,7 +153,12 @@ export class MediaRepository {
     const boundary = position ? new Date(position.createdAt) : null;
     const rows = await this.db.auditLog.findMany({
       where: boundary
-        ? { OR: [{ createdAt: { lt: boundary } }, { createdAt: boundary, id: { lt: position!.id } }] }
+        ? {
+            OR: [
+              { createdAt: { lt: boundary } },
+              { createdAt: boundary, id: { lt: position!.id } },
+            ],
+          }
         : {},
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit + 1,

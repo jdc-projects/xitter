@@ -13,9 +13,7 @@ function fakeDb(overrides: Partial<HealthCheckedDb> = {}): HealthCheckedDb {
 
 async function createApp(db: HealthCheckedDb): Promise<NestFastifyApplication> {
   const moduleRef = await Test.createTestingModule({
-    imports: [
-      HealthModule.forRoot({ prismaFactory: () => db, serviceName: 'posts' }),
-    ],
+    imports: [HealthModule.forRoot({ prismaFactory: () => db, serviceName: 'posts' })],
   }).compile();
   const app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
   await app.init();

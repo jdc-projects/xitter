@@ -252,7 +252,11 @@ export class PostsService {
   async adminListPosts(query: AdminPostsListQuery): Promise<PostPage> {
     assertValidCursor(query.cursor);
     const { authorId, text, deleted } = query;
-    const result = await this.repo.adminPosts({ authorId, text, deleted }, query.cursor, query.limit);
+    const result = await this.repo.adminPosts(
+      { authorId, text, deleted },
+      query.cursor,
+      query.limit,
+    );
     return { items: result.items.map((row) => this.toPost(row)), nextCursor: result.nextCursor };
   }
 

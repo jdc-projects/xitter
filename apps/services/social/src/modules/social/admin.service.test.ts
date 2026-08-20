@@ -114,8 +114,8 @@ describe('SocialService admin inspection', () => {
 
   it('404s for an unknown user', async () => {
     const { service } = makeService();
-    await expect(service.adminFollowGraph('00000000-0000-4000-8000-00000000ffff')).rejects.toMatchObject(
-      { status: 404 },
-    );
+    await expect(
+      service.adminFollowGraph('00000000-0000-4000-8000-00000000ffff'),
+    ).rejects.toMatchObject({ status: 404 });
   });
 });

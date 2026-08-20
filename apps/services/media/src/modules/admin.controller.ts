@@ -50,14 +50,8 @@ export class AdminController {
   @Internal({ admin: true })
   @UseGuards(RateLimitGuard)
   @RateLimit()
-  remove(
-    @CurrentUser() user: RequestUser,
-    @Param('mediaId', mediaIdParam) mediaId: string,
-  ) {
-    return this.media.adminDelete(
-      { actorId: user.subject, actorName: user.username },
-      mediaId,
-    );
+  remove(@CurrentUser() user: RequestUser, @Param('mediaId', mediaIdParam) mediaId: string) {
+    return this.media.adminDelete({ actorId: user.subject, actorName: user.username }, mediaId);
   }
 
   @Get('audit')

@@ -1,6 +1,10 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { Internal } from '@xitter/auth-nest';
-import { adminUsersListQuerySchema, userIdSchema, type AdminUsersListQuery } from '@xitter/api-contracts';
+import {
+  adminUsersListQuerySchema,
+  userIdSchema,
+  type AdminUsersListQuery,
+} from '@xitter/api-contracts';
 import { ZodValidationPipe } from '@xitter/service-kit';
 import { SocialService } from './social.service.js';
 

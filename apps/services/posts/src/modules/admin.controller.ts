@@ -1,5 +1,11 @@
 import { Controller, Delete, Get, HttpCode, Param, Post, Query, UseGuards } from '@nestjs/common';
-import { CurrentUser, Internal, RateLimit, RateLimitGuard, type RequestUser } from '@xitter/auth-nest';
+import {
+  CurrentUser,
+  Internal,
+  RateLimit,
+  RateLimitGuard,
+  type RequestUser,
+} from '@xitter/auth-nest';
 import {
   adminDeletePostQuerySchema,
   adminPostsListQuerySchema,

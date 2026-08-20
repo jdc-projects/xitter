@@ -112,9 +112,9 @@ describe('PostsService admin moderation', () => {
 
   it('rejects a malformed cursor (400, not a silent restart)', async () => {
     const { service } = makeService();
-    await expect(service.adminListPosts({ cursor: '!!!not-base64!!!', limit: 20 })).rejects.toMatchObject(
-      { status: 400 },
-    );
+    await expect(
+      service.adminListPosts({ cursor: '!!!not-base64!!!', limit: 20 }),
+    ).rejects.toMatchObject({ status: 400 });
   });
 
   it('shows a tombstoned post (users get 404 on the same id)', async () => {
@@ -181,7 +181,9 @@ describe('PostsService admin moderation', () => {
   it('404s when restoring a post that is not deleted', async () => {
     const { repo, service } = makeService();
     repo.adminRestore.mockResolvedValue(null);
-    await expect(service.adminRestorePost(ADMIN, 'live-post')).rejects.toMatchObject({ status: 404 });
+    await expect(service.adminRestorePost(ADMIN, 'live-post')).rejects.toMatchObject({
+      status: 404,
+    });
   });
   it('derives the audit actor from the request principal (machine admins included)', async () => {
     const { repo, service } = makeService();

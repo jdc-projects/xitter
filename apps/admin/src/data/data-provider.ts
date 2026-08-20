@@ -87,7 +87,9 @@ function cacheKey(resource: string, filters: CrudFilters | undefined, pageSize: 
   return [resource, JSON.stringify(listQuery(resource, filters)), pageSize].join('|');
 }
 
-async function fetchPostsPage(query: Record<string, string | undefined>): Promise<CursorPage<Post>> {
+async function fetchPostsPage(
+  query: Record<string, string | undefined>,
+): Promise<CursorPage<Post>> {
   return adminFetch<CursorPage<Post>>(ENDPOINTS.posts!.list, { query }, (value) =>
     adminPostPageSchema.parse(value),
   );

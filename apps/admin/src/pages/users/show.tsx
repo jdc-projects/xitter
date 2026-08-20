@@ -28,7 +28,9 @@ export function UsersShowPage() {
         <Typography.Paragraph style={{ marginBottom: 0 }}>
           <strong>{graph.profile.displayName}</strong> · id {graph.profile.id}
         </Typography.Paragraph>
-        {graph.profile.bio ? <Typography.Paragraph>{graph.profile.bio}</Typography.Paragraph> : null}
+        {graph.profile.bio ? (
+          <Typography.Paragraph>{graph.profile.bio}</Typography.Paragraph>
+        ) : null}
         <Typography.Text type="secondary">
           following {graph.profile.counts.following} · followers {graph.profile.counts.followers}
         </Typography.Text>
@@ -39,7 +41,9 @@ export function UsersShowPage() {
           dataSource={graph.followers}
           locale={{ emptyText: 'No followers' }}
           renderItem={(follower) => (
-            <List.Item>@{follower.username} ({follower.displayName})</List.Item>
+            <List.Item>
+              @{follower.username} ({follower.displayName})
+            </List.Item>
           )}
         />
       </Card>
@@ -49,7 +53,9 @@ export function UsersShowPage() {
           dataSource={graph.following}
           locale={{ emptyText: 'Follows nobody' }}
           renderItem={(followee) => (
-            <List.Item>@{followee.username} ({followee.displayName})</List.Item>
+            <List.Item>
+              @{followee.username} ({followee.displayName})
+            </List.Item>
           )}
         />
       </Card>

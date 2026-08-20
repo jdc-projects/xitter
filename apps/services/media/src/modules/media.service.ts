@@ -10,11 +10,7 @@ import {
 import { createLogger } from '@xitter/observability';
 import { assertValidCursor, badRequest, notFound } from '@xitter/service-kit';
 import { MEDIA_EVENTS, type MediaEvents } from './media-events.js';
-import {
-  MediaRepository,
-  type MediaRow,
-  type MediaVariantRecord,
-} from './media.repository.js';
+import { MediaRepository, type MediaRow, type MediaVariantRecord } from './media.repository.js';
 import { MEDIA_STORAGE, type MediaStorage } from './storage.js';
 import {
   mediaUrl,
