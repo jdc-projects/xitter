@@ -39,17 +39,12 @@ export interface HandlerDeps {
 }
 
 /**
- * Search-index dispatch (spec 04):
- *
- * - `posts.post.created` → live document (author name resolved via social);
- * - `posts.post.deleted` → tombstone (deletedAt set; queries exclude it);
- * - `social.profile.updated` → refresh denormalised authorName everywhere;
- * - every message checkpoints its position AFTER the side effect lands, so
- *   a wiped consumer group resumes exactly after the last processed event.
- *
- * Payloads validate against the shared event schemas at this boundary;
- * document upserts are idempotent by postId, so at-least-once redelivery
- * converges.
+ * Search-index dispatch (spec 04): `posts.post.created` → live document,
+ * `posts.post.deleted` → tombstone, `social.profile.updated` → name
+ * refresh; every message checkpoints its position AFTER the side effect
+ * lands. Payloads validate against the shared event schemas at this
+ * boundary; document upserts are idempotent by postId, so at-least-once
+ * redelivery converges.
  */
 export async function handleEvent(
   envelope: unknown,
@@ -60,38 +55,48 @@ export async function handleEvent(
   await checkpoint(envelope, raw, deps);
 }
 
+/** One actionable post lifecycle: create -> live doc (name via social). */
+async function indexCreated(payload: Record<string, unknown> | undefined, deps: HandlerDeps) {
+  const event = parseEvent(EVENT_TYPES.postCreated, payload);
+  if (!event || event.eventType !== EVENT_TYPES.postCreated) return;
+  const authorName = await resolveAuthorName(deps, event.authorId);
+  await deps.search.internalUpsertDocuments([documentFromPostCreated(event, authorName)]);
+  logger.info({ postId: event.postId }, 'post indexed');
+}
+
+/** Delete -> tombstone (deletedAt set; queries exclude it). */
+async function indexDeleted(payload: Record<string, unknown> | undefined, deps: HandlerDeps) {
+  const event = parseEvent(EVENT_TYPES.postDeleted, payload);
+  if (!event || event.eventType !== EVENT_TYPES.postDeleted) return;
+  await deps.search.internalUpsertDocuments([tombstoneFromPostDeleted(event)]);
+  logger.info({ postId: event.postId }, 'post tombstoned');
+}
+
+/** Profile rename -> refresh the denormalised name across the index. */
+async function indexProfileUpdated(
+  payload: Record<string, unknown> | undefined,
+  deps: HandlerDeps,
+) {
+  const event = parseEvent(EVENT_TYPES.profileUpdated, payload);
+  if (!event || event.eventType !== EVENT_TYPES.profileUpdated) return;
+  await deps.search.internalRefreshAuthors([authorRefresh(event)]);
+  logger.info({ profileId: event.profileId }, 'author names refreshed');
+}
+
+const HANDLERS: Record<string, (payload: Record<string, unknown> | undefined, d: HandlerDeps) => Promise<void>> = {
+  [EVENT_TYPES.postCreated]: indexCreated,
+  [EVENT_TYPES.postDeleted]: indexDeleted,
+  [EVENT_TYPES.profileUpdated]: indexProfileUpdated,
+};
+
 async function dispatch(envelope: unknown, deps: HandlerDeps): Promise<void> {
   const { eventType, payload } = (envelope ?? {}) as {
     eventType?: string;
     payload?: Record<string, unknown>;
   };
-
-  switch (eventType) {
-    case EVENT_TYPES.postCreated: {
-      const event = parseEvent(eventType, payload);
-      if (!event || event.eventType !== EVENT_TYPES.postCreated) return;
-      const authorName = await resolveAuthorName(deps, event.authorId);
-      await deps.search.internalUpsertDocuments([documentFromPostCreated(event, authorName)]);
-      logger.info({ postId: event.postId }, 'post indexed');
-      return;
-    }
-    case EVENT_TYPES.postDeleted: {
-      const event = parseEvent(eventType, payload);
-      if (!event || event.eventType !== EVENT_TYPES.postDeleted) return;
-      await deps.search.internalUpsertDocuments([tombstoneFromPostDeleted(event)]);
-      logger.info({ postId: event.postId }, 'post tombstoned');
-      return;
-    }
-    case EVENT_TYPES.profileUpdated: {
-      const event = parseEvent(eventType, payload);
-      if (!event || event.eventType !== EVENT_TYPES.profileUpdated) return;
-      await deps.search.internalRefreshAuthors([authorRefresh(event)]);
-      logger.info({ profileId: event.profileId }, 'author names refreshed');
-      return;
-    }
-    default:
-      return; // interactions/follows/blocks/media are not search concerns
-  }
+  const handler = HANDLERS[eventType ?? ''];
+  if (handler) await handler(payload, deps);
+  // interactions/follows/blocks/media are not search concerns
 }
 
 /**
