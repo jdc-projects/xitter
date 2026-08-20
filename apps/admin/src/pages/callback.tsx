@@ -1,7 +1,7 @@
 import { Alert, Button, Result, Spin } from 'antd';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { isAdminRole } from '@xitter/auth';
+import { isAdminRole } from '@xitter/auth/admin';
 import { accessTokenRoles, userManager } from '../auth/session.js';
 
 /**

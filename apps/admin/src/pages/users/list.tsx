@@ -3,6 +3,7 @@ import { EyeOutlined } from '@ant-design/icons';
 import { useTable } from '@refinedev/antd';
 import { useNavigate } from 'react-router';
 import type { ProfileWithCounts } from '@xitter/api-contracts';
+import { filterValueOf } from '../../data/data-provider.js';
 
 /** User inspection list (read-only): profiles with graph counts. */
 export function UsersListPage() {
@@ -13,11 +14,7 @@ export function UsersListPage() {
     syncWithLocation: true,
   });
 
-  const valueOf = (field: string): string => {
-    const found = (filters ?? []).find((entry) => 'field' in entry && entry.field === field) as
-      { value?: string } | undefined;
-    return found?.value ?? '';
-  };
+  const valueOf = () => filterValueOf(filters, 'username');
 
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -29,7 +26,7 @@ export function UsersListPage() {
         <input
           id="filter-username"
           placeholder="username contains"
-          value={valueOf('username')}
+          value={valueOf()}
           onChange={(event) =>
             setFilters([{ field: 'username', operator: 'contains', value: event.target.value }])
           }

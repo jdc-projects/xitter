@@ -1,5 +1,7 @@
 import type { AuthProvider } from '@refinedev/core';
-import { isAdminRole } from '@xitter/auth';
+// Leaf import: the barrel pulls jose (server token verification) into the
+// browser bundle - the role gate is the only thing the panel needs.
+import { isAdminRole } from '@xitter/auth/admin';
 import { accessTokenRoles, currentUser, userManager } from './session.js';
 
 /**

@@ -169,8 +169,12 @@ export class SocialClient extends ServiceClient {
   }
 
   // -- Internal admin (T10): machine path (svc-admin client credentials).
+  // No in-repo caller yet - the panel fetches browser-direct and bruno covers
+  // the HTTP pair - but every other internal endpoint ships with a typed
+  // client method; ops tooling (#13+) consumes these.
 
   /** Admin: user list (profiles + graph counts), username filter. */
+  // fallow-ignore-next-line unused-class-member -- typed machine path; ops tooling consumes when it lands
   internalAdminUsers(
     filters: { username?: string },
     cursor?: string,
@@ -181,6 +185,7 @@ export class SocialClient extends ServiceClient {
   }
 
   /** Admin: one user's profile + counts + first pages of both directions. */
+  // fallow-ignore-next-line unused-class-member -- typed machine path; ops tooling consumes when it lands
   internalAdminFollowGraph(userId: string): Promise<z.infer<typeof adminFollowGraphSchema>> {
     return this.get(`${V1}/social/internal/admin/users/${userId}/follow-graph`).then(
       adminFollowGraphSchema.parse,
@@ -188,6 +193,7 @@ export class SocialClient extends ServiceClient {
   }
 
   /** Admin: per-service health with Terminus detail. */
+  // fallow-ignore-next-line unused-class-member -- typed machine path; ops tooling consumes when it lands
   internalAdminHealth(): Promise<z.infer<typeof adminHealthSchema>> {
     return this.get(`${V1}/social/internal/admin/health`).then(adminHealthSchema.parse);
   }
@@ -277,6 +283,7 @@ export class PostsClient extends ServiceClient {
   // browser panel uses same-origin fetch through the edge instead.
 
   /** Admin: moderation list with author/text/deleted filters. */
+  // fallow-ignore-next-line unused-class-member -- typed machine path; ops tooling consumes when it lands
   internalAdminPosts(
     filters: { authorId?: string; text?: string; deleted?: 'true' | 'false' },
     cursor?: string,
@@ -287,16 +294,19 @@ export class PostsClient extends ServiceClient {
   }
 
   /** Admin: soft (?hard=false) or hard moderation delete of any post. */
+  // fallow-ignore-next-line unused-class-member -- typed machine path; ops tooling consumes when it lands
   internalAdminDeletePost(postId: string, hard = false): Promise<void> {
     return this.delete(`${V1}/posts/internal/admin/posts/${postId}?hard=${hard}`);
   }
 
   /** Admin: restore a soft-deleted post. */
+  // fallow-ignore-next-line unused-class-member -- typed machine path; ops tooling consumes when it lands
   internalAdminRestorePost(postId: string): Promise<Post> {
     return this.post(`${V1}/posts/internal/admin/posts/${postId}/restore`).then(postSchema.parse);
   }
 
   /** Admin: moderation audit trail (posts data). */
+  // fallow-ignore-next-line unused-class-member -- typed machine path; ops tooling consumes when it lands
   internalAdminAudit(cursor?: string): Promise<z.infer<typeof adminAuditPageSchema>> {
     return this.get(`${V1}/posts/internal/admin/audit`, cursor ? { cursor } : undefined).then(
       adminAuditPageSchema.parse,
@@ -304,6 +314,7 @@ export class PostsClient extends ServiceClient {
   }
 
   /** Admin: per-service health with Terminus detail. */
+  // fallow-ignore-next-line unused-class-member -- typed machine path; ops tooling consumes when it lands
   internalAdminHealth(): Promise<z.infer<typeof adminHealthSchema>> {
     return this.get(`${V1}/posts/internal/admin/health`).then(adminHealthSchema.parse);
   }
@@ -467,6 +478,7 @@ export class MediaClient extends ServiceClient {
   // -- Internal admin (T10): machine path (svc-admin client credentials).
 
   /** Admin: moderation list with owner/status filters (internal view). */
+  // fallow-ignore-next-line unused-class-member -- typed machine path; ops tooling consumes when it lands
   internalAdminMedia(
     filters: { ownerId?: string; status?: 'pending' | 'ready' | 'failed' },
     cursor?: string,
@@ -477,11 +489,13 @@ export class MediaClient extends ServiceClient {
   }
 
   /** Admin: delete an asset (row + RustFS objects cascade). */
+  // fallow-ignore-next-line unused-class-member -- typed machine path; ops tooling consumes when it lands
   internalAdminDeleteMedia(mediaId: string): Promise<void> {
     return this.delete(`${V1}/media/internal/admin/media/${mediaId}`);
   }
 
   /** Admin: moderation audit trail (media data). */
+  // fallow-ignore-next-line unused-class-member -- typed machine path; ops tooling consumes when it lands
   internalAdminAudit(cursor?: string): Promise<z.infer<typeof adminAuditPageSchema>> {
     return this.get(`${V1}/media/internal/admin/audit`, cursor ? { cursor } : undefined).then(
       adminAuditPageSchema.parse,
@@ -489,6 +503,7 @@ export class MediaClient extends ServiceClient {
   }
 
   /** Admin: per-service health with Terminus detail. */
+  // fallow-ignore-next-line unused-class-member -- typed machine path; ops tooling consumes when it lands
   internalAdminHealth(): Promise<z.infer<typeof adminHealthSchema>> {
     return this.get(`${V1}/media/internal/admin/health`).then(adminHealthSchema.parse);
   }

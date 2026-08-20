@@ -8,8 +8,7 @@ import { adminBasePath, adminOidcConfig } from '../env.js';
  * static SPA with no server runtime to hold a secret.
  */
 
-export const callbackPath = '/callback';
-export const loginPath = '/login';
+const callbackPath = '/callback';
 
 function origin(): string {
   // Runtime, not baked: the same build serves through the edge (/admin) and
@@ -34,24 +33,21 @@ function createUserManager(): UserManager {
 
 let manager: UserManager | undefined;
 
-/** Lazily-shared manager (tests inject a double via set UserManager). */
+/** Lazily-shared manager. */
 export function userManager(): UserManager {
   manager ??= createUserManager();
   return manager;
-}
-
-/** Test seam. */
-export function setUserManager(replacement: UserManager | undefined): void {
-  manager = replacement;
 }
 
 /** Realm roles from the ACCESS token payload (server re-verifies; UI gating only). */
 export function accessTokenRoles(user: User | null): string[] {
   if (!user?.access_token) return [];
   try {
-    const payload = JSON.parse(
-      atob(user.access_token.split('.')[1]!.replace(/-/g, '+').replace(/_/g, '/')),
-    ) as { realm_access?: { roles?: string[] } };
+    const payloadPart = user.access_token.split('.')[1];
+    if (!payloadPart) return [];
+    const payload = JSON.parse(atob(payloadPart.replace(/-/g, '+').replace(/_/g, '/'))) as {
+      realm_access?: { roles?: string[] };
+    };
     return payload.realm_access?.roles ?? [];
   } catch {
     return [];

@@ -3,6 +3,7 @@ import { DeleteOutlined } from '@ant-design/icons';
 import { useCustomMutation } from '@refinedev/core';
 import { useTable } from '@refinedev/antd';
 import type { InternalMediaAsset } from '@xitter/api-contracts';
+import { filterValueOf } from '../../data/data-provider.js';
 
 /**
  * Media moderation list: owner/status filters, variant preview (served from
@@ -22,11 +23,7 @@ export function MediaListPage() {
     syncWithLocation: true,
   });
 
-  const valueOf = (field: string): string => {
-    const found = (filters ?? []).find((entry) => 'field' in entry && entry.field === field) as
-      { value?: string } | undefined;
-    return found?.value ?? '';
-  };
+  const valueOf = (field: 'ownerId' | 'status') => filterValueOf(filters, field);
 
   const applyFilters = (patch: Record<string, string>) => {
     const base = { ownerId: valueOf('ownerId'), status: valueOf('status'), ...patch };

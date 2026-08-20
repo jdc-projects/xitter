@@ -12,7 +12,7 @@ import { adminFetch } from './admin-fetch.js';
  */
 const SERVICES = ['social', 'posts', 'media', 'feed', 'search'] as const;
 
-export type ServiceName = (typeof SERVICES)[number];
+type ServiceName = (typeof SERVICES)[number];
 
 export const WORKER_METRICS: { name: string }[] = [
   { name: 'fanout' },

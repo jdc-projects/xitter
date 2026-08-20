@@ -4,6 +4,7 @@ import { useCustomMutation } from '@refinedev/core';
 import { useTable } from '@refinedev/antd';
 import { useNavigate } from 'react-router';
 import type { Post } from '@xitter/api-contracts';
+import { filterValueOf } from '../../data/data-provider.js';
 
 /**
  * Posts moderation list: filter by author, text, or deleted state; soft
@@ -28,11 +29,7 @@ export function PostsListPage() {
     syncWithLocation: true,
   });
 
-  const valueOf = (field: string): string => {
-    const found = (filters ?? []).find((entry) => 'field' in entry && entry.field === field) as
-      { value?: string } | undefined;
-    return found?.value ?? '';
-  };
+  const valueOf = (field: 'text' | 'authorId' | 'deleted') => filterValueOf(filters, field);
 
   const applyFilters = (patch: Record<string, string>) => {
     const base = {

@@ -47,6 +47,7 @@ const ENDPOINTS: Record<string, Endpoint> = {
   },
 };
 
+// fallow-ignore-next-line unused-export -- exercised via listQuery + data-provider.test.ts
 export function logical(filters: CrudFilters | undefined): LogicalFilter[] {
   return (filters ?? []).filter((filter): filter is LogicalFilter => 'field' in filter);
 }
@@ -57,7 +58,13 @@ function filterValue(filters: CrudFilters | undefined, field: string): string | 
   return text === '' ? undefined : text;
 }
 
+/** String filter value for list-page inputs ('' when unset). */
+export function filterValueOf(filters: CrudFilters | undefined, field: string): string {
+  return filterValue(filters, field) ?? '';
+}
+
 /** Refine filters → per-resource query params. */
+// fallow-ignore-next-line unused-export -- mapping under test (data-provider.test.ts)
 export function listQuery(resource: string, filters: CrudFilters | undefined) {
   if (resource === 'posts') {
     return {

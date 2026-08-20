@@ -353,14 +353,20 @@ export const idParam = (name: 'userId' | 'postId' | 'mediaId' | 'username') =>
 
 export const ADMIN_LIMIT_MAX = 100;
 
+// Shared cursor-pagination shape for the admin list queries (the page size
+// ceiling is panel-scale by decree, spec 03 §admin).
+const adminPageQuery = {
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(ADMIN_LIMIT_MAX).default(20),
+};
+
 /** Posts list filters for the moderation view. `deleted` absent = all. */
 export const adminPostsListQuerySchema = z
   .object({
     authorId: userIdSchema.optional(),
     text: z.string().min(1).max(POST_TEXT_MAX).optional(),
     deleted: z.enum(['true', 'false']).optional(),
-    cursor: z.string().min(1).optional(),
-    limit: z.coerce.number().int().min(1).max(ADMIN_LIMIT_MAX).default(20),
+    ...adminPageQuery,
   })
   .strict();
 
@@ -382,8 +388,7 @@ export const adminMediaListQuerySchema = z
   .object({
     ownerId: userIdSchema.optional(),
     status: z.enum(['pending', 'ready', 'failed']).optional(),
-    cursor: z.string().min(1).optional(),
-    limit: z.coerce.number().int().min(1).max(ADMIN_LIMIT_MAX).default(20),
+    ...adminPageQuery,
   })
   .strict();
 
@@ -396,8 +401,7 @@ export const adminMediaPageSchema =
 export const adminUsersListQuerySchema = z
   .object({
     username: usernameSchema.optional(),
-    cursor: z.string().min(1).optional(),
-    limit: z.coerce.number().int().min(1).max(ADMIN_LIMIT_MAX).default(20),
+    ...adminPageQuery,
   })
   .strict();
 

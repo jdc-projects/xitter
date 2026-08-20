@@ -7,7 +7,7 @@ import { getAccessToken } from '../auth/session.js';
  * validate every response at this boundary, mirroring what
  * @xitter/api-client does for the machine path.
  */
-export class AdminApiError extends Error {
+class AdminApiError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
@@ -46,7 +46,6 @@ export async function adminFetch<T>(
     }
     throw new AdminApiError(res.status, code, message);
   }
-
   if (res.status === 204) return undefined as T;
   const body: unknown = await res.json();
   return parse ? parse(body) : (body as T);
