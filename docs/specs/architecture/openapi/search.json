@@ -16,20 +16,343 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT"
+      },
+      "serviceToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Client-credentials service token (audience = svc-search)."
       }
     },
-    "schemas": {},
+    "schemas": {
+      "SearchPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "post": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                    },
+                    "authorId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                    },
+                    "text": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    "media": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "ownerId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": ["pending", "ready", "failed"]
+                          },
+                          "variants": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": ["original", "thumb"]
+                                },
+                                "objectKey": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mimeType": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "bytes": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "exclusiveMinimum": true
+                                },
+                                "width": {
+                                  "type": "integer",
+                                  "nullable": true,
+                                  "minimum": 0,
+                                  "exclusiveMinimum": true
+                                },
+                                "height": {
+                                  "type": "integer",
+                                  "nullable": true,
+                                  "minimum": 0,
+                                  "exclusiveMinimum": true
+                                },
+                                "url": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "objectKey",
+                                "mimeType",
+                                "bytes",
+                                "width",
+                                "height",
+                                "url"
+                              ]
+                            }
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": ["id", "ownerId", "status", "variants", "createdAt"]
+                      }
+                    },
+                    "replyToId": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                    },
+                    "repostOfId": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                    },
+                    "counts": {
+                      "type": "object",
+                      "properties": {
+                        "replies": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "likes": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "reposts": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": ["replies", "likes", "reposts"]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "deletedAt": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "authorId",
+                    "text",
+                    "media",
+                    "replyToId",
+                    "repostOfId",
+                    "counts",
+                    "createdAt",
+                    "deletedAt"
+                  ]
+                },
+                "author": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                    },
+                    "username": {
+                      "type": "string",
+                      "minLength": 3,
+                      "maxLength": 20,
+                      "pattern": "^[a-z0-9_]+$"
+                    },
+                    "displayName": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 50
+                    },
+                    "bio": {
+                      "type": "string",
+                      "nullable": true,
+                      "maxLength": 200
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": ["id", "username", "displayName", "bio", "createdAt"]
+                }
+              },
+              "required": ["post", "author"]
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": ["items", "nextCursor"]
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object",
+                "additionalProperties": {
+                  "nullable": true
+                }
+              }
+            },
+            "required": ["code", "message"]
+          }
+        },
+        "required": ["error"]
+      },
+      "UpsertSearchDocumentsRequest": {
+        "type": "object",
+        "properties": {
+          "documents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchIndexDocument"
+            },
+            "minItems": 1,
+            "maxItems": 1000
+          }
+        },
+        "required": ["documents"],
+        "additionalProperties": false
+      },
+      "SearchIndexDocument": {
+        "type": "object",
+        "properties": {
+          "postId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "b1c2d3e4-0000-4000-8000-000000000002"
+          },
+          "authorId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "b1c2d3e4-0000-4000-8000-000000000001"
+          },
+          "authorName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "maxItems": 32,
+            "default": []
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deletedAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time",
+            "default": null
+          }
+        },
+        "required": ["postId", "authorId", "authorName", "text", "createdAt"],
+        "additionalProperties": false
+      },
+      "RefreshSearchAuthorsRequest": {
+        "type": "object",
+        "properties": {
+          "authors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "authorId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                },
+                "authorName": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 50
+                }
+              },
+              "required": ["authorId", "authorName"],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 100
+          }
+        },
+        "required": ["authors"],
+        "additionalProperties": false
+      }
+    },
     "parameters": {}
   },
   "paths": {
-    "/posts": {
+    "/v1/posts": {
       "get": {
         "tags": ["search"],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "Full-text post search (analysed text + exact keyword terms), relevance-ranked within a (createdAt, postId) keyset pagination. Results are hydrated server-side; tombstoned and blocked-author posts are excluded.",
         "parameters": [
           {
             "schema": {
               "type": "string",
-              "minLength": 1
+              "minLength": 1,
+              "maxLength": 512
             },
             "required": true,
             "name": "q",
@@ -37,10 +360,22 @@
           },
           {
             "schema": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             },
             "required": false,
             "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            },
+            "required": false,
+            "name": "limit",
             "in": "query"
           }
         ],
@@ -50,200 +385,285 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "$ref": "#/components/schemas/SearchPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid q/cursor/limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/search/index": {
+      "post": {
+        "tags": ["internal"],
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "Bulk idempotent index upsert keyed by postId (search-index worker); documents with deletedAt set are tombstones that stop matching queries.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertSearchDocumentsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Documents submitted to the index bulk request",
+            "content": {
+              "application/json": {
+                "schema": {
                   "type": "object",
                   "properties": {
-                    "items": {
+                    "indexed": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["indexed"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["internal"],
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "Clear every indexed document (reset job); the mapping survives for reuse.",
+        "responses": {
+          "200": {
+            "description": "Documents deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deleted": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["deleted"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/search/index/authors": {
+      "post": {
+        "tags": ["internal"],
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "Refresh the denormalised authorName on an author's documents (social.profile.updated keeps the index self-contained).",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshSearchAuthorsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Documents updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "updated": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["updated"]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/search/checkpoint": {
+      "post": {
+        "tags": ["internal"],
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "Persist the worker's last processed Kafka position (durable resume cursor - consumer groups die with the nightly reset).",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "consumerKey": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "topicPartition": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "offset": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "eventId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "eventAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": ["consumerKey", "topicPartition", "offset", "eventId", "eventAt"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Stored"
+          }
+        }
+      },
+      "get": {
+        "tags": ["internal"],
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "Resume positions for one consumer (worker boot).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "required": true,
+            "name": "consumerKey",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Positions by topic-partition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "positions": {
                       "type": "array",
                       "items": {
                         "type": "object",
                         "properties": {
-                          "post": {
-                            "type": "object",
-                            "properties": {
-                              "id": {
-                                "type": "string",
-                                "format": "uuid",
-                                "example": "b1c2d3e4-0000-4000-8000-000000000002"
-                              },
-                              "authorId": {
-                                "type": "string",
-                                "format": "uuid",
-                                "example": "b1c2d3e4-0000-4000-8000-000000000001"
-                              },
-                              "text": {
-                                "type": "string",
-                                "minLength": 1,
-                                "maxLength": 512
-                              },
-                              "media": {
-                                "type": "array",
-                                "items": {
-                                  "type": "object",
-                                  "properties": {
-                                    "id": {
-                                      "type": "string",
-                                      "format": "uuid"
-                                    },
-                                    "ownerId": {
-                                      "type": "string",
-                                      "format": "uuid",
-                                      "example": "b1c2d3e4-0000-4000-8000-000000000001"
-                                    },
-                                    "status": {
-                                      "type": "string",
-                                      "enum": ["pending", "ready", "failed"]
-                                    },
-                                    "variants": {
-                                      "type": "array",
-                                      "items": {
-                                        "type": "object",
-                                        "properties": {
-                                          "kind": {
-                                            "type": "string",
-                                            "enum": ["original", "thumb"]
-                                          },
-                                          "objectKey": {
-                                            "type": "string",
-                                            "minLength": 1
-                                          },
-                                          "mimeType": {
-                                            "type": "string",
-                                            "minLength": 1
-                                          },
-                                          "bytes": {
-                                            "type": "integer",
-                                            "minimum": 0,
-                                            "exclusiveMinimum": true
-                                          },
-                                          "width": {
-                                            "type": "integer",
-                                            "nullable": true,
-                                            "minimum": 0,
-                                            "exclusiveMinimum": true
-                                          },
-                                          "height": {
-                                            "type": "integer",
-                                            "nullable": true,
-                                            "minimum": 0,
-                                            "exclusiveMinimum": true
-                                          },
-                                          "url": {
-                                            "type": "string",
-                                            "minLength": 1
-                                          }
-                                        },
-                                        "required": [
-                                          "kind",
-                                          "objectKey",
-                                          "mimeType",
-                                          "bytes",
-                                          "width",
-                                          "height",
-                                          "url"
-                                        ]
-                                      }
-                                    },
-                                    "createdAt": {
-                                      "type": "string",
-                                      "format": "date-time"
-                                    }
-                                  },
-                                  "required": ["id", "ownerId", "status", "variants", "createdAt"]
-                                }
-                              },
-                              "replyToId": {
-                                "type": "string",
-                                "nullable": true,
-                                "format": "uuid",
-                                "example": "b1c2d3e4-0000-4000-8000-000000000002"
-                              },
-                              "repostOfId": {
-                                "type": "string",
-                                "nullable": true,
-                                "format": "uuid",
-                                "example": "b1c2d3e4-0000-4000-8000-000000000002"
-                              },
-                              "counts": {
-                                "type": "object",
-                                "properties": {
-                                  "replies": {
-                                    "type": "integer",
-                                    "minimum": 0
-                                  },
-                                  "likes": {
-                                    "type": "integer",
-                                    "minimum": 0
-                                  },
-                                  "reposts": {
-                                    "type": "integer",
-                                    "minimum": 0
-                                  }
-                                },
-                                "required": ["replies", "likes", "reposts"]
-                              },
-                              "createdAt": {
-                                "type": "string",
-                                "format": "date-time"
-                              },
-                              "deletedAt": {
-                                "type": "string",
-                                "nullable": true,
-                                "format": "date-time"
-                              }
-                            },
-                            "required": [
-                              "id",
-                              "authorId",
-                              "text",
-                              "media",
-                              "replyToId",
-                              "repostOfId",
-                              "counts",
-                              "createdAt",
-                              "deletedAt"
-                            ]
+                          "topicPartition": {
+                            "type": "string"
                           },
-                          "author": {
-                            "type": "object",
-                            "properties": {
-                              "id": {
-                                "type": "string",
-                                "format": "uuid",
-                                "example": "b1c2d3e4-0000-4000-8000-000000000001"
-                              },
-                              "username": {
-                                "type": "string",
-                                "minLength": 3,
-                                "maxLength": 20,
-                                "pattern": "^[a-z0-9_]+$"
-                              },
-                              "displayName": {
-                                "type": "string",
-                                "minLength": 1,
-                                "maxLength": 50
-                              },
-                              "bio": {
-                                "type": "string",
-                                "nullable": true,
-                                "maxLength": 200
-                              },
-                              "createdAt": {
-                                "type": "string",
-                                "format": "date-time"
-                              }
-                            },
-                            "required": ["id", "username", "displayName", "bio", "createdAt"]
+                          "offset": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "eventId": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "eventAt": {
+                            "type": "string",
+                            "nullable": true
                           }
                         },
-                        "required": ["post", "author"]
+                        "required": ["topicPartition", "offset", "eventId", "eventAt"],
+                        "additionalProperties": false
                       }
-                    },
-                    "nextCursor": {
-                      "type": "string",
-                      "nullable": true
                     }
                   },
-                  "required": ["items", "nextCursor"]
+                  "required": ["positions"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/reseed": {
+      "post": {
+        "tags": ["internal"],
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "Truncate search service state - checkpoints (reset job); index docs are cleared separately.",
+        "responses": {
+          "200": {
+            "description": "Acknowledged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "deleted": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["ok", "deleted"]
                 }
               }
             }

@@ -57,6 +57,11 @@ export function valkeyUrl(): string {
   return `redis://localhost:${localPort('valkey')}`;
 }
 
+/** OpenSearch URL (search service + local bootstrap; overridable per env). */
+export function opensearchUrl(): string {
+  return process.env.XITTER_OPENSEARCH_URL ?? localUrl('opensearch');
+}
+
 const DB_PASSWORDS = {
   social: 'social-local',
   posts: 'posts-local',

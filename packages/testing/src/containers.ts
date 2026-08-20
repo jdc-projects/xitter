@@ -27,18 +27,27 @@ export async function startPostgres(
   dbUser = 'test',
   dbPassword = 'test',
 ): Promise<PostgresHandle> {
+  // Ephemeral host port, so no fixed-port lock - but label the container so
+  // crashed-run orphans can be identified and swept (the label-scoped sweep
+  // below only removes containers older than the vitest suite timeout:
+  // a live suite's container is always younger).
+  await sweepLabelledOrphans(POSTGRES_TEST_LABEL, 10 * 60_000).catch(() => undefined);
   const container: StartedPostgreSqlContainer = await new PostgreSqlContainer(
     'postgres:18.6-alpine',
   )
     .withDatabase(dbName)
     .withUsername(dbUser)
     .withPassword(dbPassword)
+    .withLabels({ [POSTGRES_TEST_LABEL]: 'true' })
     .start();
   return {
     connectionString: container.getConnectionUri(),
     stop: () => container.stop(),
   };
 }
+
+/** Postgres test containers carry this label (orphan sweep, below). */
+const POSTGRES_TEST_LABEL = 'xitter.test.postgres';
 
 export interface KafkaHandle extends Disposable {
   bootstrapServers: string;
@@ -51,6 +60,61 @@ export interface RustFsHandle extends Disposable {
   endpoint: string;
   accessKey: string;
   secretKey: string;
+}
+
+export interface OpenSearchHandle extends Disposable {
+  /** Cluster URL reachable from the host (HTTP, security disabled like compose). */
+  url: string;
+}
+
+// Ephemeral host port (no fixed-port lock needed), labelled so crashed-run
+// orphans can be swept by hand - same pattern as the RustFS container.
+const OPENSEARCH_TEST_LABEL = 'xitter.test.opensearch';
+
+/**
+ * Start a throwaway OpenSearch node, same image + env as the local compose
+ * stack (infra/docker/compose.yaml): single node, security plugin disabled.
+ * Ephemeral host port; readiness is the plain HTTP retry loop below - the
+ * testcontainers port-bind wait is deliberately absent: under a loaded
+ * podman VM (sibling stacks + parallel CI suites) that check races podman's
+ * port proxy and fails while the JVM is healthy. Heap halved vs compose -
+ * CI runners hold several of these at once and a test corpus needs a
+ * fraction of 512m.
+ */
+export async function startOpenSearch(): Promise<OpenSearchHandle> {
+  const container = await new GenericContainer('opensearchproject/opensearch:3.8.0')
+    .withLabels({ [OPENSEARCH_TEST_LABEL]: 'true' })
+    .withEnvironment({
+      'discovery.type': 'single-node',
+      DISABLE_SECURITY_PLUGIN: 'true',
+      OPENSEARCH_JAVA_OPTS: '-Xms256m -Xmx256m',
+      'bootstrap.memory_lock': 'false',
+    })
+    .withExposedPorts(9200)
+    // The default host-port wait (60s) fires while the JVM is still booting
+    // on CI's shared runners - the container is healthy, just slow. The
+    // HTTP loop below is the real readiness gate; give the bind 5 minutes.
+    .withStartupTimeout(300_000)
+    .start();
+  const url = `http://${container.getHost()}:${container.getMappedPort(9200)}`;
+
+  // The HTTP layer boots a few seconds after the port listens.
+  const deadline = Date.now() + 120_000;
+  for (;;) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) break;
+    } catch {
+      /* not up yet */
+    }
+    if (Date.now() > deadline) {
+      await container.stop().catch(() => undefined);
+      throw new Error('OpenSearch testcontainer did not become healthy in 120s');
+    }
+    await new Promise((r) => setTimeout(r, 1_500));
+  }
+
+  return { url, stop: () => container.stop() };
 }
 
 // Ephemeral host port, so no fixed-port lock is needed - but label the
@@ -146,6 +210,68 @@ async function sweepOrphansOnPort(port: number): Promise<void> {
       (c) =>
         new Promise<void>((resolve) => {
           const req = fetch(
+            { socketPath, path: `/containers/${c.Id}?force=true`, method: 'DELETE' },
+            () => resolve(),
+          );
+          req.on('error', () => resolve());
+          req.end();
+        }),
+    ),
+  );
+}
+
+/**
+ * Remove labelled containers older than `minAgeMs`. Ephemeral-port fixtures
+ * (Postgres) leak when a vitest run is killed: nothing else can identify
+ * them, so the label does. Age-gated because concurrency: another suite's
+ * in-flight container matches the label but is necessarily younger than a
+ * suite timeout; only long-lived leftovers are ever removed. Never touches
+ * unlabelled containers.
+ */
+async function sweepLabelledOrphans(label: string, minAgeMs: number): Promise<void> {
+  const socketPath = process.env.DOCKER_HOST?.replace(/^unix:\/\//, '') ?? '/var/run/docker.sock';
+  const http = await import('node:http');
+  const list = await new Promise<{ Id: string; Created: number }[]>((resolve, reject) => {
+    const req = http.request(
+      {
+        socketPath,
+        path: `/containers/json?all=1&filters=${encodeURIComponent(
+          JSON.stringify({ label: [label] }),
+        )}`,
+        method: 'GET',
+      },
+      (res) => {
+        let body = '';
+        res.on('data', (c) => (body += c));
+        res.on('end', () => {
+          try {
+            const parsed = JSON.parse(body) as unknown;
+            if (res.statusCode !== 200 || !Array.isArray(parsed)) {
+              reject(new Error(`orphan sweep list failed (${res.statusCode})`));
+              return;
+            }
+            resolve(parsed as { Id: string; Created: number }[]);
+          } catch {
+            reject(new Error('orphan sweep list returned non-JSON'));
+          }
+        });
+      },
+    );
+    req.on('error', reject);
+    req.end();
+  });
+  const cutoff = (Date.now() - minAgeMs) / 1000;
+  const stale = list.filter((c) => c.Created < cutoff);
+  if (stale.length > 0) {
+    process.stderr.write(
+      `[test-containers] sweeping ${stale.length} orphaned ${label} container(s)\n`,
+    );
+  }
+  await Promise.all(
+    stale.map(
+      (c) =>
+        new Promise<void>((resolve) => {
+          const req = http.request(
             { socketPath, path: `/containers/${c.Id}?force=true`, method: 'DELETE' },
             () => resolve(),
           );

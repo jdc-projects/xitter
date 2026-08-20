@@ -1,5 +1,6 @@
 import { Button, Container, Group, Text } from '@mantine/core';
 import { getSession } from '@/lib/auth/session';
+import { SearchBox } from '@/components/search-box';
 
 /**
  * Authenticated app shell. Pages gate themselves via requireSession() (they
@@ -27,6 +28,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </Group>
         {session ? (
           <Group gap="sm">
+            <SearchBox visibleFrom="xs" />
             <Text
               size="sm"
               c="dimmed"

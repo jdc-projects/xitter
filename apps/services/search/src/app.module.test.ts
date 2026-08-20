@@ -30,10 +30,11 @@ async function createApp(dbOverride?: object): Promise<NestFastifyApplication> {
   if (dbOverride) builder.overrideProvider(HEALTH_DB).useValue(dbOverride);
   const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
-  // Mirrors main.ts: probes sit at the root, outside the versioned prefix.
-  // Only this prefix wiring is replicated here - main.ts's bootstrap config
+  // Mirrors main.ts: probes sit at the root, outside the service prefix
+  // (public routes add the v1 segment themselves, spec 03). Only this
+  // prefix wiring is replicated here - main.ts's bootstrap config
   // (env parsing, tracing, Sentry) isn't unit-testable.
-  app.setGlobalPrefix('api/search/v1', { exclude: ['healthz', 'readyz'] });
+  app.setGlobalPrefix('api/search', { exclude: ['healthz', 'readyz'] });
   await app.init();
   return app;
 }
@@ -67,10 +68,10 @@ describe('health probe wiring', () => {
     expect(res.json()).toMatchObject({ status: 'error' });
   });
 
-  it('does not route probes under the api/search/v1 prefix', async () => {
+  it('does not route probes under the api/search prefix', async () => {
     app = await createApp();
 
-    const res = await app.inject({ method: 'GET', url: '/api/search/v1/healthz' });
+    const res = await app.inject({ method: 'GET', url: '/api/search/healthz' });
 
     expect(res.statusCode).toBe(404);
   });

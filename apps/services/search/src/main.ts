@@ -16,7 +16,10 @@ process.once('SIGTERM', () => void tracing.shutdown());
 
 bootstrapApiService({
   service: 'search',
-  prefix: 'api/search/v1',
+  // Service-level prefix: the public controller adds its `v1` segment,
+  // internal routes sit at /api/search/internal/... without a version
+  // (spec 03).
+  prefix: 'api/search',
   port: env.PORT,
   module: AppModule,
 }).catch((err: unknown) => {

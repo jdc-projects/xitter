@@ -11,7 +11,8 @@
     "**/src/generated/**",
     "**/next-env.d.ts",
     "apps/cms/src/app/(payload)/admin/importMap.js",
-    "apps/cms/src/payload-types.ts"
+    "apps/cms/src/payload-types.ts",
+    "**/vitest.mutation.config.ts"
   ],
   "ignoreDependencies": ["@mermaid-js/mermaid-cli"]
 }

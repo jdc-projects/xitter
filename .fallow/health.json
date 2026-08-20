@@ -61,6 +61,11 @@
         "count": 1
       }
     },
+    "apps/web/src/app/(app)/search/page.tsx": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
     "apps/web/src/app/api/auth/logout/route.ts": {
       "crap_moderate": {
         "count": 1
@@ -131,6 +136,11 @@
         "count": 1
       }
     },
+    "packages/events/src/consumer.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
     "packages/events/src/worker.ts": {
       "crap_high": {
         "count": 1
@@ -167,6 +177,9 @@
       },
       "crap_high": {
         "count": 2
+      },
+      "crap_moderate": {
+        "count": 1
       }
     },
     "packages/ui/src/components/PostCard.tsx": {

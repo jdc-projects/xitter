@@ -41,18 +41,19 @@ xitter-media/{userId}/{mediaId}/thumb.{ext}
 
 ## OpenSearch index
 
-Index `posts` (recreated wholesale by the nightly reset).
+Index `posts` (recreated wholesale by the nightly reset). Definition lives in `@xitter/config` (`postsIndexDefinition`) — the search service applies it at boot and the local bootstrap does the same, so the two cannot drift.
 
-| Field       | Type                   | Notes                                                                                                          |
-| ----------- | ---------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `postId`    | keyword                | Document id; upsert key                                                                                        |
-| `authorId`  | keyword                | Filter/facet                                                                                                   |
-| `text`      | text                   | Analysed for full-text match (`q`)                                                                             |
-| `createdAt` | date                   | Recency sorting                                                                                                |
-| `deletedAt` | date                   | Tombstoned docs are deleted from the index by the search-index worker; field kept for auditability of the flow |
-| `keywords`  | keyword-analysed field | Exact-token matching alongside analysed `text`                                                                 |
+| Field        | Type    | Notes                                                                                                                         |
+| ------------ | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `postId`     | keyword | Document id; upsert key                                                                                                       |
+| `authorId`   | keyword | Filter/facet                                                                                                                  |
+| `authorName` | keyword | Denormalised display name; refreshed in place by the worker on `social.profile.updated`                                       |
+| `text`       | text    | Analysed for full-text match (`q`); custom `post_text` analyser (standard tokenizer + lowercase + asciifolding + porter_stem) |
+| `createdAt`  | date    | Recency sorting                                                                                                               |
+| `deletedAt`  | date    | Tombstoned docs carry `deletedAt`; queries exclude them (`must_not exists`), the nightly reset reclaims the docs              |
+| `keywords`   | keyword | Exact-token matching (hashtags) alongside analysed `text`                                                                     |
 
-Writes arrive exclusively via the search service's internal bulk index API; `GET /v1/search/posts` is the only reader.
+Writes arrive exclusively via the search service's internal bulk index API; `GET /v1/search/posts` is the only reader. Deletions are tombstones keyed-upserted by `postId` (spec 04) — the field stays for auditability of the flow and the delete event's replay converges.
 
 ## Valkey
 

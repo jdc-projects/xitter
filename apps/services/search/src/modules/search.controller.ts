@@ -1,26 +1,37 @@
-import { Controller, Get, Post } from '@nestjs/common';
-import { Internal } from '@xitter/auth-nest';
+import { Controller, Get, Query } from '@nestjs/common';
+import type { RequestUser } from '@xitter/auth-nest';
+import { CurrentUser } from '@xitter/auth-nest';
+import { badRequest } from '@xitter/service-kit';
+import { z } from 'zod';
 import { SearchService } from './search.service.js';
 
+const searchQuery = z.object({
+  q: z.string().min(1).max(512),
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+});
+
 /**
- * Full-text search over posts, backed by OpenSearch.
- * Skeleton controller - the search feature ticket fills in querying.
- * Auth is enforced by the global AuthGuard (user tokens); `@Internal()`
- * routes require service (M2M) tokens.
- * Contract: docs/specs/architecture/03-service-interfaces.md.
+ * Public search API (spec 03): full-text post search, cursor-paginated,
+ * hydrated server-side (posts + social joins). The `v1` segment lives here
+ * (the global prefix is service-level). Auth is user-Bearer via the global
+ * AuthGuard.
  */
-@Controller()
+@Controller('v1')
 export class SearchController {
-  constructor(private readonly service: SearchService) {}
+  constructor(private readonly search: SearchService) {}
 
   @Get('posts')
-  search() {
-    return this.service.placeholder();
-  }
-
-  @Post('internal/reseed')
-  @Internal()
-  reseed() {
-    return { ok: true };
+  searchPosts(
+    @CurrentUser() user: RequestUser,
+    @Query('q') q?: string,
+    @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsed = searchQuery.safeParse({ q, cursor, limit });
+    if (!parsed.success) {
+      throw badRequest('Query validation failed', { fields: parsed.error.flatten() });
+    }
+    return this.search.searchPosts(user.subject, parsed.data);
   }
 }
