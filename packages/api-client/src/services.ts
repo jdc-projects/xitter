@@ -1,5 +1,12 @@
 import { localUrl } from '@xitter/config';
 import {
+  adminAuditPageSchema,
+  adminFollowGraphSchema,
+  adminHealthSchema,
+  adminMediaPageSchema,
+  adminPostPageSchema,
+  adminPostsListQuerySchema,
+  adminUserPageSchema,
   createInteractionRequestSchema,
   createMediaUploadResponseSchema,
   feedPageSchema,
@@ -42,6 +49,13 @@ const V1 = '/api';
 
 function paginated<T>(schema: z.ZodType<T>) {
   return z.object({ items: z.array(schema), nextCursor: z.string().nullable() });
+}
+
+/** Drop undefined/empty entries so query strings stay clean. */
+function cleanQuery(query: Record<string, string | undefined>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(query).filter((entry): entry is [string, string] => Boolean(entry[1])),
+  );
 } /** Base URLs resolved from env-driven local ports; override with env in deployed contexts. */
 export const localServiceUrls = () => ({
   social: process.env.XITTER_SOCIAL_URL ?? localUrl('social'),
@@ -154,6 +168,30 @@ export class SocialClient extends ServiceClient {
       profileLookupResponseSchema.parse,
     );
   }
+
+  // -- Internal admin (T10): machine path (svc-admin client credentials).
+
+  /** Admin: user list (profiles + graph counts), username filter. */
+  internalAdminUsers(
+    filters: { username?: string },
+    cursor?: string,
+    limit?: number,
+  ): Promise<z.infer<typeof adminUserPageSchema>> {
+    const query = cleanQuery({ ...filters, cursor, limit: limit?.toString() });
+    return this.get(`${V1}/social/internal/admin/users`, query).then(adminUserPageSchema.parse);
+  }
+
+  /** Admin: one user's profile + counts + first pages of both directions. */
+  internalAdminFollowGraph(userId: string): Promise<z.infer<typeof adminFollowGraphSchema>> {
+    return this.get(`${V1}/social/internal/admin/users/${userId}/follow-graph`).then(
+      adminFollowGraphSchema.parse,
+    );
+  }
+
+  /** Admin: per-service health with Terminus detail. */
+  internalAdminHealth(): Promise<z.infer<typeof adminHealthSchema>> {
+    return this.get(`${V1}/social/internal/admin/health`).then(adminHealthSchema.parse);
+  }
 }
 
 export class PostsClient extends ServiceClient {
@@ -234,6 +272,41 @@ export class PostsClient extends ServiceClient {
     return this.post(`${V1}/posts/internal/posts/by-author`, { authorId, cursor, limit }).then(
       postPageSchema.parse,
     );
+  }
+
+  // -- Internal admin (T10): machine path (svc-admin client credentials). The
+  // browser panel uses same-origin fetch through the edge instead.
+
+  /** Admin: moderation list with author/text/deleted filters. */
+  internalAdminPosts(
+    filters: { authorId?: string; text?: string; deleted?: 'true' | 'false' },
+    cursor?: string,
+    limit?: number,
+  ): Promise<{ items: Post[]; nextCursor: string | null }> {
+    const query = cleanQuery({ ...filters, cursor, limit: limit?.toString() });
+    return this.get(`${V1}/posts/internal/admin/posts`, query).then(adminPostPageSchema.parse);
+  }
+
+  /** Admin: soft (?hard=false) or hard moderation delete of any post. */
+  internalAdminDeletePost(postId: string, hard = false): Promise<void> {
+    return this.delete(`${V1}/posts/internal/admin/posts/${postId}?hard=${hard}`);
+  }
+
+  /** Admin: restore a soft-deleted post. */
+  internalAdminRestorePost(postId: string): Promise<Post> {
+    return this.post(`${V1}/posts/internal/admin/posts/${postId}/restore`).then(postSchema.parse);
+  }
+
+  /** Admin: moderation audit trail (posts data). */
+  internalAdminAudit(cursor?: string): Promise<z.infer<typeof adminAuditPageSchema>> {
+    return this.get(`${V1}/posts/internal/admin/audit`, cursor ? { cursor } : undefined).then(
+      adminAuditPageSchema.parse,
+    );
+  }
+
+  /** Admin: per-service health with Terminus detail. */
+  internalAdminHealth(): Promise<z.infer<typeof adminHealthSchema>> {
+    return this.get(`${V1}/posts/internal/admin/health`).then(adminHealthSchema.parse);
   }
 }
 
@@ -390,6 +463,35 @@ export class MediaClient extends ServiceClient {
     return this.post(`${V1}/media/internal/media/lookup`, { ownerId, mediaIds }).then(
       mediaLookupResponseSchema.parse,
     );
+  }
+
+  // -- Internal admin (T10): machine path (svc-admin client credentials).
+
+  /** Admin: moderation list with owner/status filters (internal view). */
+  internalAdminMedia(
+    filters: { ownerId?: string; status?: 'pending' | 'ready' | 'failed' },
+    cursor?: string,
+    limit?: number,
+  ): Promise<z.infer<typeof adminMediaPageSchema>> {
+    const query = cleanQuery({ ...filters, cursor, limit: limit?.toString() });
+    return this.get(`${V1}/media/internal/admin/media`, query).then(adminMediaPageSchema.parse);
+  }
+
+  /** Admin: delete an asset (row + RustFS objects cascade). */
+  internalAdminDeleteMedia(mediaId: string): Promise<void> {
+    return this.delete(`${V1}/media/internal/media/${mediaId}`);
+  }
+
+  /** Admin: moderation audit trail (media data). */
+  internalAdminAudit(cursor?: string): Promise<z.infer<typeof adminAuditPageSchema>> {
+    return this.get(`${V1}/media/internal/admin/audit`, cursor ? { cursor } : undefined).then(
+      adminAuditPageSchema.parse,
+    );
+  }
+
+  /** Admin: per-service health with Terminus detail. */
+  internalAdminHealth(): Promise<z.infer<typeof adminHealthSchema>> {
+    return this.get(`${V1}/media/internal/admin/health`).then(adminHealthSchema.parse);
   }
 }
 
