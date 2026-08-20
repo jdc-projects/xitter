@@ -47,17 +47,26 @@ export function createEventProducer(options: EventProducerOptions): EventProduce
         eventId: crypto.randomUUID(),
       });
       // kafkajs send() connects on demand; a failed eager connect at boot is
-      // retried here, so a broker outage at startup must not brick the producer.
-      await producer.send({
-        topic: `${prefix}${TOPICS[topic]}`,
-        messages: [
-          {
-            key: event.key ?? envelope.eventType,
-            value: JSON.stringify(envelope),
-            headers: { eventType: envelope.eventType },
-          },
-        ],
-      });
+      // retried here, so a broker outage at startup must not brick the
+      // producer. A DROPPED connection is the harder case: send() rejects
+      // with 'The producer is disconnected' and never self-heals, so catch
+      // that one failure, explicitly reconnect, and retry the send once.
+      const envelopeMessages = [
+        {
+          key: event.key ?? envelope.eventType,
+          value: JSON.stringify(envelope),
+          headers: { eventType: envelope.eventType },
+        },
+      ];
+      try {
+        await producer.send({ topic: `${prefix}${TOPICS[topic]}`, messages: envelopeMessages });
+      } catch (err) {
+        if (!(err instanceof Error) || !err.message.includes('producer is disconnected')) {
+          throw err;
+        }
+        await producer.connect();
+        await producer.send({ topic: `${prefix}${TOPICS[topic]}`, messages: envelopeMessages });
+      }
     },
     async disconnect() {
       await producer.disconnect();

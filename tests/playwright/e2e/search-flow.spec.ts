@@ -40,11 +40,14 @@ test('unauthenticated search redirects to login and back', async ({ page }) => {
 
 test('header search box navigates to results for the query', async ({ page }) => {
   await login(page, 'demo1');
-  await page.getByTestId('search-input').fill('hello');
-  await page.getByTestId('search-input').press('Enter');
+  // Two inputs carry the testid once on /search (header + page) - scope to
+  // the header's app nav to stay strict-mode safe.
+  const headerSearch = page.getByTestId('app-nav').getByTestId('search-input');
+  await headerSearch.fill('hello');
+  await headerSearch.press('Enter');
 
   await page.waitForURL(/\/search\?q=hello/);
-  await expect(page.getByTestId('search-input')).toHaveValue('hello');
+  await expect(headerSearch).toHaveValue('hello');
 });
 
 test('search finds a composed post and deletes remove it from results', async ({ page }) => {
