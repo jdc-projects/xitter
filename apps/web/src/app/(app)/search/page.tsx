@@ -77,7 +77,9 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
   const { q, cursor } = await searchParams;
   const query = q?.trim() ?? '';
   // Gate before fetching; preserve the query in the login round-trip.
-  const session = await requireSession(query ? `/search?q=${encodeURIComponent(query)}` : '/search');
+  const session = await requireSession(
+    query ? `/search?q=${encodeURIComponent(query)}` : '/search',
+  );
 
   const result = query
     ? await loadSearch(session, query, cursor)

@@ -83,7 +83,10 @@ async function indexProfileUpdated(
   logger.info({ profileId: event.profileId }, 'author names refreshed');
 }
 
-const HANDLERS: Record<string, (payload: Record<string, unknown> | undefined, d: HandlerDeps) => Promise<void>> = {
+const HANDLERS: Record<
+  string,
+  (payload: Record<string, unknown> | undefined, d: HandlerDeps) => Promise<void>
+> = {
   [EVENT_TYPES.postCreated]: indexCreated,
   [EVENT_TYPES.postDeleted]: indexDeleted,
   [EVENT_TYPES.profileUpdated]: indexProfileUpdated,
