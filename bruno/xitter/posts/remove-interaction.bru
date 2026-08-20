@@ -79,7 +79,7 @@ script:pre-request {
   });
 }
 
-post {
+delete {
   url: {{seedBase}}/api/posts/v1/posts/{{undoPostId}}/interactions/like
   body: none
   auth: bearer

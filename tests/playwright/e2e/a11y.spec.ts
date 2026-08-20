@@ -106,11 +106,18 @@ test('/bookmarks (own, with interactive post cards) has no serious axe violation
 
   // The click returns on the optimistic flip; the server action (and its
   // revalidate of /bookmarks) is still in flight - poll fresh renders until
-  // the bookmarked post lands on the page.
+  // THIS post lands on the page (the list may already show older bookmarks,
+  // so mere visibility of the list is not arrival).
   await page.goto('/bookmarks');
   const bookmarked = page.getByTestId('bookmarks-list');
   const a11yDeadline = Date.now() + 15_000;
-  while (!(await bookmarked.isVisible().catch(() => false)) && Date.now() < a11yDeadline) {
+  while (
+    !(await bookmarked
+      .getByText(text)
+      .isVisible()
+      .catch(() => false))
+  ) {
+    if (Date.now() > a11yDeadline) break;
     await page.reload();
     await new Promise((resolve) => setTimeout(resolve, 400));
   }
