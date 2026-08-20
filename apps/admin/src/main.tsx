@@ -2,8 +2,8 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { Refine } from '@refinedev/core';
 import routerProvider from '@refinedev/react-router';
-import { authProvider } from './auth-provider.js';
-import { dataProvider } from './data-provider.js';
+import { authProvider } from './auth/auth-provider.js';
+import { dataProvider } from './data/data-provider.js';
 import { App } from './App.js';
 
 const container = document.getElementById('root');
@@ -16,11 +16,11 @@ createRoot(container).render(
       dataProvider={dataProvider}
       routerProvider={routerProvider}
       resources={[
-        { name: 'posts', list: '/posts' },
-        { name: 'users', list: '/users' },
+        { name: 'posts', list: '/posts', show: '/posts/show/:id' },
         { name: 'media', list: '/media' },
+        { name: 'users', list: '/users', show: '/users/show/:id' },
       ]}
-      options={{ syncWithLocation: true }}
+      options={{ syncWithLocation: true, disableTelemetry: true }}
     >
       <App />
     </Refine>

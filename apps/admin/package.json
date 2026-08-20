@@ -12,11 +12,15 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@ant-design/icons": "^5.6.1",
     "@refinedev/antd": "^6.0.1",
     "@refinedev/core": "^5",
     "@refinedev/react-router": "^2",
+    "@xitter/api-contracts": "*",
+    "@xitter/auth": "*",
     "@xitter/config": "*",
     "antd": "^5",
+    "oidc-client-ts": "^3",
     "react": "^19",
     "react-dom": "^19",
     "react-router": "^7"
