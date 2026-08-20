@@ -2,38 +2,55 @@
 
 import { useState, useTransition } from 'react';
 import { Alert } from '@mantine/core';
-import type { PostCardInteractionKind, PostCardViewer } from '@xitter/ui';
+import {
+  PostCard,
+  type PostCardImage,
+  type PostCardInteractionKind,
+  type PostCardUser,
+  type PostCardViewer,
+} from '@xitter/ui';
+import type { Post } from '@xitter/api-contracts';
 import { interactAction } from '@/lib/posts/actions';
-
-export interface InteractionState {
-  viewer: PostCardViewer;
-  busyKinds: PostCardInteractionKind[];
-  onInteract: (kind: PostCardInteractionKind, active: boolean) => void;
-}
+import { imagesFor } from '@/lib/media/images';
 
 export interface PostInteractionsProps {
-  postId: string;
+  /** PostCard payload (serializable - this component owns the handlers). */
+  post: Pick<Post, 'id' | 'text' | 'createdAt' | 'counts' | 'media'>;
+  author: PostCardUser;
   /** Server-rendered viewer flags for this post (batched viewer-state). */
   viewer: PostCardViewer;
-  children: (state: InteractionState) => React.ReactNode;
+  /** Repost attribution (feed repost entries). */
+  repostedBy?: PostCardUser;
+  /** Card images variant: thumbs in lists, originals on the detail page. */
+  variant?: 'thumb' | 'original';
+  /** Detail-page link (the action row stays outside the anchor for a11y). */
+  href?: string;
 }
 
 /**
- * Client wiring for PostCard's interaction row (#8): optimistic flip of the
- * active state, then the server action reconciles (its revalidate refreshes
- * authoritative counts + filled icons). The render prop keeps PostCard
- * transport-free while this component owns transport + optimistic state.
+ * Interactive post card (#8): PostCard + the like/repost/bookmark wiring.
+ * Client-owned so the handlers can live next to the optimistic state (flip
+ * immediately, reconcile with the server action's revalidate). This
+ * component renders the card itself - a render prop would have to cross
+ * the server/client boundary, and functions cannot.
  */
-export function PostInteractions({ postId, viewer, children }: PostInteractionsProps) {
+export function PostInteractions({
+  post,
+  author,
+  viewer,
+  repostedBy,
+  variant = 'thumb',
+  href,
+}: PostInteractionsProps) {
   const [optimistic, setOptimistic] = useState<PostCardViewer>(viewer);
   const [busy, setBusy] = useState<PostCardInteractionKind[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
-  // Server revalidation re-renders the card with authoritative flags - sync
-  // during render (same pattern as the feed timeline's page reset). In-flight
-  // flips are not clobbered: revalidation only lands after the action
-  // resolved, when server state already matches the flip.
+  // Server revalidation re-renders with authoritative flags - sync during
+  // render (same pattern as the feed timeline's page reset). Revalidation
+  // only lands after the action resolved, when server state already
+  // matches the flip, so in-flight clicks are not clobbered.
   const [synced, setSynced] = useState(viewer);
   if (viewer !== synced) {
     setSynced(viewer);
@@ -46,7 +63,7 @@ export function PostInteractions({ postId, viewer, children }: PostInteractionsP
     setOptimistic((current) => ({ ...current, [kind]: !active }));
 
     startTransition(async () => {
-      const result = await interactAction(postId, kind, active);
+      const result = await interactAction(post.id, kind, active);
       setBusy((current) => current.filter((k) => k !== kind));
       if (result.error) {
         // Roll the optimistic flip back - the server is the truth.
@@ -56,11 +73,22 @@ export function PostInteractions({ postId, viewer, children }: PostInteractionsP
     });
   }
 
+  const images: PostCardImage[] = imagesFor(post, variant);
+
   return (
     <>
-      {children({ viewer: optimistic, busyKinds: busy, onInteract })}
+      <PostCard
+        author={author}
+        post={post}
+        images={images}
+        viewer={optimistic}
+        busyKinds={busy}
+        onInteract={onInteract}
+        repostedBy={repostedBy}
+        href={href}
+      />
       {error ? (
-        <Alert color="red" py={4} px="sm" data-testid={`interact-error-${postId}`}>
+        <Alert color="red" py={4} px="sm" mt={4} data-testid={`interact-error-${post.id}`}>
           {error}
         </Alert>
       ) : null}

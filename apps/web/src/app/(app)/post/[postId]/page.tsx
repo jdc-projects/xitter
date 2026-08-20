@@ -1,5 +1,4 @@
 import { Anchor, Container, Divider, Stack, Text, Title } from '@mantine/core';
-import { PostCard } from '@xitter/ui';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import type { Post, Profile } from '@xitter/api-contracts';
@@ -8,7 +7,6 @@ import { requireSession } from '@/lib/auth/session';
 import { PostComposer } from '@/components/post-composer';
 import { PostInteractions } from '@/components/post-interactions';
 import { PostListItem } from '@/components/post-list-item';
-import { imagesFor } from '@/lib/media/images';
 import { DeletePostButton } from '@/components/delete-post-button';
 import { clientsForSession, profilesByAuthorIds, viewerStateByPostId } from '@/lib/posts/server';
 
@@ -92,18 +90,12 @@ export default async function PostDetailPage({
         ) : null}
 
         <div data-testid={`post-detail-${post.id}`}>
-          <PostInteractions postId={post.id} viewer={flagsOf(post.id)}>
-            {({ viewer, busyKinds, onInteract }) => (
-              <PostCard
-                author={author}
-                post={post}
-                images={imagesFor(post, 'original')}
-                viewer={viewer}
-                busyKinds={busyKinds}
-                onInteract={onInteract}
-              />
-            )}
-          </PostInteractions>
+          <PostInteractions
+            post={post}
+            author={author}
+            viewer={flagsOf(post.id)}
+            variant="original"
+          />
         </div>
         {post.authorId === session.subject ? (
           <DeletePostButton postId={post.id} username={author.username} goTo="/feed" />

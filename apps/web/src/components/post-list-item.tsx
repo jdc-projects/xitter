@@ -1,9 +1,7 @@
 'use client';
 
 import { Stack } from '@mantine/core';
-import { PostCard } from '@xitter/ui';
 import type { Post } from '@xitter/api-contracts';
-import { imagesFor } from '@/lib/media/images';
 import { DeletePostButton } from './delete-post-button';
 import { PostInteractions } from './post-interactions';
 
@@ -11,7 +9,7 @@ export interface PostListItemProps {
   post: Pick<Post, 'id' | 'text' | 'createdAt' | 'counts' | 'media'>;
   author: { id: string; username: string; displayName: string };
   /** Viewer's like/repost/bookmark flags for this post (batched viewer-state). */
-  viewer?: { liked?: boolean; bookmarked?: boolean; reposted?: boolean };
+  viewer?: { liked?: boolean; reposted?: boolean; bookmarked?: boolean };
   /** Repost attribution (feed repost entries). */
   repostedBy?: { id: string; username: string; displayName: string };
   /** Viewer's own post: render the delete affordance. */
@@ -23,10 +21,9 @@ export interface PostListItemProps {
 }
 
 /**
- * PostCard + navigation to the detail page + interaction wiring + (own
- * posts) delete. The delete button sits below the card so it never nests a
- * form inside the anchor. Lists render thumbs; the detail page passes
- * originals via PostCard itself.
+ * Interactive post card + (own posts) delete, for every list surface. The
+ * delete button sits below the card so it never nests a form inside the
+ * card's own anchor. Lists render thumbs; the detail page passes originals.
  */
 export function PostListItem({
   post,
@@ -39,20 +36,14 @@ export function PostListItem({
 }: PostListItemProps) {
   return (
     <Stack gap={4} data-testid={`post-item-${post.id}`}>
-      <PostInteractions postId={post.id} viewer={viewer ?? {}}>
-        {({ viewer: flags, busyKinds, onInteract }) => (
-          <PostCard
-            author={author}
-            post={post}
-            images={imagesFor(post, 'thumb')}
-            viewer={flags}
-            busyKinds={busyKinds}
-            onInteract={onInteract}
-            repostedBy={repostedBy}
-            href={`/post/${post.id}`}
-          />
-        )}
-      </PostInteractions>
+      <PostInteractions
+        post={post}
+        author={author}
+        viewer={viewer ?? {}}
+        repostedBy={repostedBy}
+        variant="thumb"
+        href={`/post/${post.id}`}
+      />
       {canDelete ? <DeletePostButton postId={post.id} username={username} goTo={goTo} /> : null}
     </Stack>
   );

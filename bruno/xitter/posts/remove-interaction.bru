@@ -4,37 +4,83 @@ meta {
 }
 
 docs {
-  Undo pair for interact-with-post: removes the caller's like from the post
-  created there (shared `interactionPostId`), then verifies the counts
-  read-model ticked 1 -> 0 via GET /posts/:id. Idempotent: a repeat still
-  answers 204.
+  Undo pair for interact-with-post: bootstraps its own liked post (login,
+  profile, compose, like) so it is deterministic standalone, then the main
+  request removes the like and the test verifies the counts read-model
+  ticked 1 -> 0 (interaction + counter share one transaction in posts).
+  Idempotent: a repeat still answers 204.
 }
 
 script:pre-request {
   const tokenUrl = `${bru.getEnvVar("keycloak")}/realms/${bru.getEnvVar("realm")}/protocol/openid-connect/token`;
-  const form =
-    "grant_type=password&client_id=web" +
-    "&username=" + encodeURIComponent(bru.getEnvVar("username") || "demo1") +
-    "&password=" + encodeURIComponent(bru.getEnvVar("password") || "DemoPass123!");
-  const res = await bru.sendRequest({
+
+  async function login(username) {
+    const form =
+      "grant_type=password&client_id=web" +
+      "&username=" + encodeURIComponent(username) +
+      "&password=" + encodeURIComponent(bru.getEnvVar("password") || "DemoPass123!");
+    const res = await bru.sendRequest({
+      method: "POST",
+      url: tokenUrl,
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      data: form,
+    });
+    const raw =
+      typeof res.data === "string"
+        ? res.data
+        : res.data && typeof res.data === "object" && "byteLength" in res.data
+          ? new TextDecoder().decode(res.data)
+          : typeof res.data === "object" && res.data !== null
+            ? JSON.stringify(res.data)
+            : String(res.data ?? "");
+    return JSON.parse(raw).access_token;
+  }
+
+  function subjectOf(accessToken) {
+    return JSON.parse(Buffer.from(accessToken.split(".")[1], "base64").toString()).sub;
+  }
+
+  function bodyOf(res) {
+    const raw =
+      typeof res.data === "string"
+        ? res.data
+        : res.data && typeof res.data === "object" && "byteLength" in res.data
+          ? new TextDecoder().decode(res.data)
+          : JSON.stringify(res.data ?? {});
+    return JSON.parse(raw);
+  }
+
+  const token = await login(bru.getEnvVar("username") || "demo1");
+  bru.setEnvVar("token", token);
+  const callerId = subjectOf(token);
+
+  await bru.sendRequest({
     method: "POST",
-    url: tokenUrl,
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    data: form,
+    url: `${bru.getEnvVar("seedBase")}/api/social/v1/profiles/${callerId}`,
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    data: {},
   });
-  const raw =
-    typeof res.data === "string"
-      ? res.data
-      : res.data && typeof res.data === "object" && "byteLength" in res.data
-        ? new TextDecoder().decode(res.data)
-        : typeof res.data === "object" && res.data !== null
-          ? JSON.stringify(res.data)
-          : String(res.data ?? "");
-  bru.setEnvVar("token", JSON.parse(raw).access_token);
+
+  const created = await bru.sendRequest({
+    method: "POST",
+    url: `${bru.getEnvVar("seedBase")}/api/posts/v1/posts`,
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    data: { text: "Bruno undo target " + Date.now() },
+  });
+  const post = bodyOf(created);
+  console.log("undo target id:", post.id);
+  bru.setVar("undoPostId", post.id);
+
+  await bru.sendRequest({
+    method: "POST",
+    url: `${bru.getEnvVar("seedBase")}/api/posts/v1/posts/${post.id}/interactions`,
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    data: { kind: "like" },
+  });
 }
 
 post {
-  url: {{seedBase}}/api/posts/v1/posts/{{interactionPostId}}/interactions/like
+  url: {{seedBase}}/api/posts/v1/posts/{{undoPostId}}/interactions/like
   body: none
   auth: bearer
 }
@@ -50,10 +96,9 @@ assert {
 tests {
   // The counts read-model reversed with the undo (interaction + counter
   // share one transaction in the posts service).
-  const postId = bru.getVar("interactionPostId");
   const res2 = await bru.sendRequest({
     method: "GET",
-    url: `${bru.getEnvVar("seedBase")}/api/posts/v1/posts/${postId}`,
+    url: `${bru.getEnvVar("seedBase")}/api/posts/v1/posts/${bru.getVar("undoPostId")}`,
     headers: { authorization: `Bearer ${bru.getEnvVar("token")}` },
   });
   const raw =

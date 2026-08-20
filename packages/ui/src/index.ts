@@ -5,6 +5,7 @@ export {
   PostCard,
   type PostCardImage,
   type PostCardInteractionKind,
+  type PostCardUser,
   type PostCardViewer,
 } from './components/PostCard';
 export { UserAvatar } from './components/UserAvatar';
