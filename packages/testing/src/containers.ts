@@ -27,18 +27,27 @@ export async function startPostgres(
   dbUser = 'test',
   dbPassword = 'test',
 ): Promise<PostgresHandle> {
+  // Ephemeral host port, so no fixed-port lock - but label the container so
+  // crashed-run orphans can be identified and swept (the label-scoped sweep
+  // below only removes containers older than the vitest suite timeout:
+  // a live suite's container is always younger).
+  await sweepLabelledOrphans(POSTGRES_TEST_LABEL, 10 * 60_000).catch(() => undefined);
   const container: StartedPostgreSqlContainer = await new PostgreSqlContainer(
     'postgres:18.6-alpine',
   )
     .withDatabase(dbName)
     .withUsername(dbUser)
     .withPassword(dbPassword)
+    .withLabels({ [POSTGRES_TEST_LABEL]: 'true' })
     .start();
   return {
     connectionString: container.getConnectionUri(),
     stop: () => container.stop(),
   };
 }
+
+/** Postgres test containers carry this label (orphan sweep, below). */
+const POSTGRES_TEST_LABEL = 'xitter.test.postgres';
 
 export interface KafkaHandle extends Disposable {
   bootstrapServers: string;
@@ -146,6 +155,68 @@ async function sweepOrphansOnPort(port: number): Promise<void> {
       (c) =>
         new Promise<void>((resolve) => {
           const req = fetch(
+            { socketPath, path: `/containers/${c.Id}?force=true`, method: 'DELETE' },
+            () => resolve(),
+          );
+          req.on('error', () => resolve());
+          req.end();
+        }),
+    ),
+  );
+}
+
+/**
+ * Remove labelled containers older than `minAgeMs`. Ephemeral-port fixtures
+ * (Postgres) leak when a vitest run is killed: nothing else can identify
+ * them, so the label does. Age-gated because concurrency: another suite's
+ * in-flight container matches the label but is necessarily younger than a
+ * suite timeout; only long-lived leftovers are ever removed. Never touches
+ * unlabelled containers.
+ */
+async function sweepLabelledOrphans(label: string, minAgeMs: number): Promise<void> {
+  const socketPath = process.env.DOCKER_HOST?.replace(/^unix:\/\//, '') ?? '/var/run/docker.sock';
+  const http = await import('node:http');
+  const list = await new Promise<{ Id: string; Created: number }[]>((resolve, reject) => {
+    const req = http.request(
+      {
+        socketPath,
+        path: `/containers/json?all=1&filters=${encodeURIComponent(
+          JSON.stringify({ label: [label] }),
+        )}`,
+        method: 'GET',
+      },
+      (res) => {
+        let body = '';
+        res.on('data', (c) => (body += c));
+        res.on('end', () => {
+          try {
+            const parsed = JSON.parse(body) as unknown;
+            if (res.statusCode !== 200 || !Array.isArray(parsed)) {
+              reject(new Error(`orphan sweep list failed (${res.statusCode})`));
+              return;
+            }
+            resolve(parsed as { Id: string; Created: number }[]);
+          } catch {
+            reject(new Error('orphan sweep list returned non-JSON'));
+          }
+        });
+      },
+    );
+    req.on('error', reject);
+    req.end();
+  });
+  const cutoff = (Date.now() - minAgeMs) / 1000;
+  const stale = list.filter((c) => c.Created < cutoff);
+  if (stale.length > 0) {
+    process.stderr.write(
+      `[test-containers] sweeping ${stale.length} orphaned ${label} container(s)\n`,
+    );
+  }
+  await Promise.all(
+    stale.map(
+      (c) =>
+        new Promise<void>((resolve) => {
+          const req = http.request(
             { socketPath, path: `/containers/${c.Id}?force=true`, method: 'DELETE' },
             () => resolve(),
           );
