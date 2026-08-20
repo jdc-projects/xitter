@@ -86,6 +86,7 @@ function makeService() {
     events as unknown as PostsEvents,
     {} as RelationshipChecker,
     {} as MediaChecker,
+    { notify: () => Promise.resolve() } as never,
   );
   return { repo, audits, events, service };
 }
