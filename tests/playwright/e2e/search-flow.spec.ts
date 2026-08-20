@@ -83,7 +83,11 @@ test('search finds a composed post and deletes remove it from results', async ({
     if (Date.now() > deadline) break;
     await page.waitForTimeout(1_000);
   }
-  await expect(page.locator('[data-testid^="post-item-"]', { hasText: needle })).toHaveCount(0);
+  // Assert on the CURRENT page's DOM (no navigation between poll exit and
+  // assertion - the count can transiently read undefined mid-navigation).
+  await expect(page.locator('[data-testid^="post-item-"]', { hasText: needle })).toHaveCount(0, {
+    timeout: 15_000,
+  });
 });
 
 test('no-results query renders the empty state, not an error', async ({ page }) => {
