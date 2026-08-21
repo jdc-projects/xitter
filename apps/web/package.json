@@ -16,6 +16,7 @@
     "@mantine/core": "^9",
     "@mantine/hooks": "^9",
     "@payloadcms/live-preview-react": "^3",
+    "@sentry/nextjs": "^10",
     "@tabler/icons-react": "^3",
     "@xitter/api-client": "*",
     "@xitter/api-contracts": "*",
