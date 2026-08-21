@@ -386,7 +386,7 @@ export const resetStatusSchema = z
   .strict()
   .openapi('ResetStatus');
 
-export type ResetStatus = z.infer<typeof resetStatusSchema>;// ---------------------------------------------------------------------------
+export type ResetStatus = z.infer<typeof resetStatusSchema>; // ---------------------------------------------------------------------------
 // Internal admin endpoints (admin-role-gated, spec 03 §admin). These live at
 // /api/{service}/internal/admin/... and are called by the admin panel (an
 // admin-realm user token) and machine tooling (the svc-admin service token).
@@ -496,4 +496,4 @@ export const adminHealthSchema = z
   .strict()
   .openapi('AdminHealth');
 
-export type AdminHealth = z.infer<typeof adminHealthSchema>;origin/dev
+export type AdminHealth = z.infer<typeof adminHealthSchema>;

@@ -5,6 +5,7 @@ import {
   adminDeletePostQuerySchema,
   adminPostPageSchema,
   adminPostsListQuerySchema,
+  createInteractionRequestSchema,
   createPostRequestSchema,
   errorSchema,
   interactionSchema,
@@ -14,6 +15,7 @@ import {
   postIdSchema,
   postSchema,
   userIdSchema,
+  viewerStateResponseSchema,
 } from '@xitter/api-contracts';
 
 extendZodWithOpenApi(z);
@@ -187,7 +189,6 @@ postsApi.registerPath({
     400: jsonResponse('Validation error (bad or over-cap postIds)', errorSchema),
   },
 });
-origin/dev
 // Internal endpoints: no version segment, service tokens only (spec 03).
 postsApi.registerPath({
   method: 'post',
@@ -276,7 +277,7 @@ postsApi.registerPath({
   tags: ['admin'],
   security: [{ adminToken: [] }, { serviceToken: [] }],
   description: 'Moderation audit trail for posts data (who deleted/restored what, when).',
-  request: { query: pageQuery },
+  request: { query: pageQuerySchema },
   responses: {
     200: jsonResponse('Audit page', adminAuditPageSchema),
   },
