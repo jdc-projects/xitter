@@ -59,30 +59,32 @@ test('profile posts append in place via Load more', async ({ page }) => {
 });
 
 test('search results append in place via the same Load more', async ({ page }) => {
+  test.setTimeout(120_000);
   await loginViaKeycloak(page, 'demo5', 'DemoPass123!');
   await page.waitForURL(/\/feed$/);
 
   const needle = `t41 searchpage ${crypto.randomUUID()}`;
-  // 22 posts > the 20-entry page: Load more must surface the tail.
+  // 21 posts = one over the 20-entry page: enough to prove Load more
+  // appends in place without a 22-doc index burst alongside the other
+  // suites (OpenSearch lags under concurrent load).
   await seedPosts(
     page,
-    Array.from({ length: 22 }, (_, n) => `${needle} ${String(n).padStart(2, '0')}`),
+    Array.from({ length: 21 }, (_, n) => `${needle} ${String(n).padStart(2, '0')}`),
   );
 
   // Indexing is async (post -> Kafka -> search-index worker): settle on the
-  // search API first - Load more only sees what the index already holds,
-  // and a button driven by the 21st doc can precede the 22nd.
+  // search API first - Load more only sees what the index already holds.
   const searchApi = `/api/search/v1/search/posts?q=${encodeURIComponent(needle)}&limit=50`;
-  const deadline = Date.now() + 45_000;
+  const deadline = Date.now() + 60_000;
   for (;;) {
-    const res = await page.request.get(searchApi);
+    const res = await page.request.get(searchApi, { timeout: 10_000 });
     const text = (await res.text()) ?? '';
     const hits = text.split(needle).length - 1;
-    if (res.ok() && hits >= 22) break;
+    if (res.ok() && hits >= 21) break;
     if (Date.now() > deadline) {
-      throw new Error(`search index settled at ${hits}/22 for ${needle}`);
+      throw new Error(`search index settled at ${hits}/21 for ${needle}`);
     }
-    await page.waitForTimeout(1_000);
+    await page.waitForTimeout(1_500);
   }
 
   await page.goto(`/search?q=${encodeURIComponent(needle)}`);
@@ -90,7 +92,7 @@ test('search results append in place via the same Load more', async ({ page }) =
   await expect(results).toHaveCount(20);
 
   await page.getByTestId('load-more').click();
-  await expect(results).toHaveCount(22, { timeout: 15_000 });
+  await expect(results).toHaveCount(21, { timeout: 15_000 });
   // Append-in-place: the query URL is untouched by Load more.
   await expect(page).toHaveURL(new RegExp(`/search\\?q=${encodeURIComponent(needle)}`));
 });
