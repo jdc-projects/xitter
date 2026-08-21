@@ -52,6 +52,15 @@ test('header search box navigates to results for the query', async ({ page }) =>
   await expect(page.getByTestId('search-input').last()).toHaveValue('hello');
 });
 
+/** Bearer access token for API polls - the session holds it; the ws route
+ * is the broker (same pattern as feed-flow). Uses the page's cookies. */
+async function accessToken(page: Page): Promise<string> {
+  const res = await page.request.get('/api/ws/feed-token');
+  expect(res.status()).toBe(200);
+  const body = (await res.json()) as { token: string };
+  return body.token;
+}
+
 test('search finds a composed post and deletes remove it from results', async ({ page }) => {
   await login(page, 'demo2');
   const needle = `t8 searchable quokka ${crypto.randomUUID()}`;
@@ -73,11 +82,15 @@ test('search finds a composed post and deletes remove it from results', async ({
 
   // Poll the search API (no page navigation - a mid-navigation locator
   // count reads undefined) until the index tombstone lands, then assert
-  // on one settled page render.
+  // on one settled page render. The API is user-gated: poll with the
+  // session's bearer so res.ok() reflects the index, not a 401.
+  const token = await accessToken(page);
   const searchApi = `/api/search/v1/search/posts?q=${encodeURIComponent('quokka')}`;
   const deadline = Date.now() + 45_000;
   for (;;) {
-    const res = await page.request.get(searchApi);
+    const res = await page.request.get(searchApi, {
+      headers: { authorization: `Bearer ${token}` },
+    });
     if (res.ok() && !((await res.text()) ?? '').includes(needle)) break;
     if (Date.now() > deadline) break;
     await page.waitForTimeout(1_000);

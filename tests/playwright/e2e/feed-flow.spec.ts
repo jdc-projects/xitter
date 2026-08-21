@@ -74,6 +74,21 @@ async function seedPosts(page: Page, texts: string[]): Promise<void> {
   }
 }
 
+/**
+ * The seeded corpus pre-creates some follow edges (spec testing 02), so a
+ * spec pair may already be connected when the test wants to exercise the
+ * follow flow. Normalize to "not following" first; outcome assertions are
+ * untouched - this only fixes the precondition.
+ */
+async function ensureNotFollowing(page: Page, followee: string) {
+  await page.goto(`/profile/${followee}`);
+  const unfollow = page.getByTestId('unfollow-button');
+  if (await unfollow.isVisible()) {
+    await unfollow.click();
+    await expect(page.getByTestId('follow-button')).toBeVisible();
+  }
+}
+
 test('following an account backfills their recent posts into the feed', async ({
   page,
   browser,
@@ -89,6 +104,8 @@ test('following an account backfills their recent posts into the feed', async ({
   await demo7.close();
 
   await login(page, 'demo6');
+  // The corpus seeds demo6 -> demo7; backfill only fires on a NEW follow.
+  await ensureNotFollowing(page, 'demo7');
   await page.goto('/profile/demo7');
   await page.getByTestId('follow-button').click();
   await expect(page.getByTestId('unfollow-button')).toBeVisible();
@@ -167,6 +184,9 @@ test('unfollowed accounts stop appearing in the feed', async ({ page, browser })
   await compose(demo10, text);
 
   const demo9 = await loggedInPage(browser, 'demo9');
+  // The corpus seeds demo9 -> demo10; the follow/unfollow cycle below needs
+  // a clean edge to observe both transitions.
+  await ensureNotFollowing(demo9, 'demo10');
   await demo9.goto('/profile/demo10');
   await demo9.getByTestId('follow-button').click();
   await expect(demo9.getByTestId('unfollow-button')).toBeVisible();

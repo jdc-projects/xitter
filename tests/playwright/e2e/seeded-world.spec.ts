@@ -50,7 +50,11 @@ test('seeded profiles carry the deterministic corpus identity', async ({ page })
 test('every demo account owns its corpus posts', async ({ request }) => {
   for (const [index, user] of corpus.users.entries()) {
     const token = await apiToken(user.username);
-    const byName = await request.get(`/api/social/v1/profiles/username/${user.username}`);
+    // Every read is user-gated: the edge 401s unauthenticated requests and
+    // the 401 body has no `items`, so carry the bearer on lookups too.
+    const byName = await request.get(`/api/social/v1/profiles/username/${user.username}`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
     const profile = (await byName.json()) as { id: string };
     const posts = await request.get(`/api/posts/v1/users/${profile.id}/posts?limit=50`, {
       headers: { authorization: `Bearer ${token}` },
@@ -64,9 +68,13 @@ test('every demo account owns its corpus posts', async ({ request }) => {
 test('feeds hold the fanout-derived corpus entries', async ({ page }) => {
   await login(page, 'demo1');
   const expected = corpus.counts.feedEntriesByUser[0]!;
+  // page.request shares cookies, not the app's bearer token - mint one.
+  const token = await apiToken('demo1');
   await expect
     .poll(async () => {
-      const res = await page.request.get('/api/feed/v1/feed?limit=50');
+      const res = await page.request.get('/api/feed/v1/feed?limit=50', {
+        headers: { authorization: `Bearer ${token}` },
+      });
       const body = (await res.json()) as { items: unknown[] };
       return body.items.length;
     }, CONVERGENCE)
@@ -86,6 +94,7 @@ test('conversation threads from the corpus are reply-connected', async ({ reques
   )!;
   const byName = await request.get(
     `/api/social/v1/profiles/username/${corpus.users[root.authorIndex]!.username}`,
+    { headers: { authorization: `Bearer ${token}` } },
   );
   const profile = (await byName.json()) as { id: string };
   const posts = await request.get(`/api/posts/v1/users/${profile.id}/posts?limit=50`, {
@@ -126,6 +135,7 @@ test('seeded images render through the media pipeline', async ({ request }) => {
   const token = await apiToken(corpus.users[imagePost.authorIndex]!.username);
   const byName = await request.get(
     `/api/social/v1/profiles/username/${corpus.users[imagePost.authorIndex]!.username}`,
+    { headers: { authorization: `Bearer ${token}` } },
   );
   const profile = (await byName.json()) as { id: string };
   const posts = await request.get(`/api/posts/v1/users/${profile.id}/posts?limit=50`, {
@@ -143,6 +153,7 @@ test('seeded images render through the media pipeline', async ({ request }) => {
 
 test('search indexes the corpus (derived store, not written directly)', async ({ page }) => {
   await login(page, 'demo1');
+  const token = await apiToken('demo1');
   // Pick a distinctive corpus word (long words are rare enough).
   const words = corpus.posts
     .flatMap((p) => p.text.toLowerCase().split(/\s+/))
@@ -152,6 +163,7 @@ test('search indexes the corpus (derived store, not written directly)', async ({
     .poll(async () => {
       const res = await page.request.get(
         `/api/search/v1/search/posts?q=${encodeURIComponent(needle)}`,
+        { headers: { authorization: `Bearer ${token}` } },
       );
       const body = (await res.json()) as { items: unknown[] };
       return body.items.length;
