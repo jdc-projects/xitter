@@ -5,6 +5,11 @@ import { createEventProducer } from '@xitter/events';
 import { env } from '../env.js';
 import { PrismaClient } from '../generated/prisma/client.js';
 import { AdminController } from './admin.controller.js';
+import {
+  INTERACTION_REALTIME,
+  ValkeyInteractionRealtime,
+  type InteractionRealtime,
+} from './interaction-realtime.js';
 import { InternalController } from './internal.controller.js';
 import { MEDIA_CHECKER, MediaServiceChecker, type MediaChecker } from './media-checker.js';
 import { KafkaPostsEvents, POSTS_EVENTS, type PostsEvents } from './posts-events.js';
@@ -80,6 +85,10 @@ export class PostsLifecycle implements OnApplicationShutdown {
     eventsProvider,
     relationshipCheckerProvider,
     mediaCheckerProvider,
+    {
+      provide: INTERACTION_REALTIME,
+      useFactory: (): InteractionRealtime => new ValkeyInteractionRealtime(env.VALKEY_URL),
+    },
     PostsRepository,
     PostsService,
     PostsLifecycle,
