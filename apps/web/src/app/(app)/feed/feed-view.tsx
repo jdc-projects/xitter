@@ -92,6 +92,9 @@ export function FeedView({ initialEntries, initialCursor, viewerId }: FeedViewPr
   );
   const [newCount, setNewCount] = useState(0);
 
+  // ws notify hint → count, refetched on Show (spec 03: never a data push).
+  useFeedUpdates((count) => setNewCount((current) => current + count));
+
   const entries = pages.flat();
 
   return (
