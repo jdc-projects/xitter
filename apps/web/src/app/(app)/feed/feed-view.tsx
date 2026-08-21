@@ -26,6 +26,8 @@ export function FeedView({ initialEntries, initialCursor, viewerId }: FeedViewPr
   const [newCount, setNewCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Which fetch mode the retry button should replay ('append' | 'refresh'). */
+  const [failedMode, setFailedMode] = useState<'append' | 'refresh' | null>(null);
 
   // Server revalidation (a delete) re-renders page 1 - sync the reset during
   // render (same pattern as the composer's draft clearing).
@@ -44,9 +46,12 @@ export function FeedView({ initialEntries, initialCursor, viewerId }: FeedViewPr
     if (loading || !cursor) return;
     setLoading(true);
     setError(null);
+    setFailedMode(null);
     const page = await feedPageAction(cursor);
-    if (page.error) setError(page.error);
-    else {
+    if (page.error) {
+      setError(page.error);
+      setFailedMode('append');
+    } else {
       setPages((current) => [...current, page.entries]);
       setCursor(page.nextCursor);
     }
@@ -57,9 +62,12 @@ export function FeedView({ initialEntries, initialCursor, viewerId }: FeedViewPr
     if (loading) return;
     setLoading(true);
     setError(null);
+    setFailedMode(null);
     const page = await feedPageAction(); // page 1
-    if (page.error) setError(page.error);
-    else {
+    if (page.error) {
+      setError(page.error);
+      setFailedMode('refresh');
+    } else {
       setPages([page.entries]);
       setCursor(page.nextCursor);
       setNewCount(0);
@@ -124,12 +132,14 @@ export function FeedView({ initialEntries, initialCursor, viewerId }: FeedViewPr
         <Alert color="red" data-testid="feed-error">
           <Group justify="space-between" gap="sm">
             <span>{error}</span>
-            {/* Retry whichever fetch failed: append (cursor) or page 1. */}
+            {/* Replay whichever fetch actually failed - the mode can differ
+              from the current cursor state (e.g. a failed Show-new while
+              scrolled). */}
             <Button
               size="compact-xs"
               variant="light"
               loading={loading}
-              onClick={() => void (cursor ? loadMore() : showNew())}
+              onClick={() => void (failedMode === 'append' ? loadMore() : showNew())}
               data-testid="feed-retry"
             >
               Try again
