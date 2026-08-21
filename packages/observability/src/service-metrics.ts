@@ -18,11 +18,11 @@ export interface ServiceMetrics {
   plugin: (instance: FastifyMetricsInstance, opts: unknown, done: (err?: Error) => void) => void;
 }
 
-interface MetricRequest {
+export interface MetricRequest {
   routeOptions?: { url?: string | undefined };
 }
 
-interface MetricReply {
+export interface MetricReply {
   statusCode: number;
 }
 

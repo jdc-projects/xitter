@@ -30,8 +30,12 @@ function harness(serviceName: string): Harness {
 
   const instance: FastifyMetricsInstance = {
     addHook(name, hook) {
-      if (name === 'onRequest') onRequest = hook;
-      if (name === 'onResponse') onResponse = hook;
+      if (name === 'onRequest') {
+        onRequest = hook as typeof onRequest;
+      }
+      if (name === 'onResponse') {
+        onResponse = hook as typeof onResponse;
+      }
       return undefined;
     },
     get(_route, _handler) {
