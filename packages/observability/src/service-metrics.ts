@@ -31,6 +31,7 @@ type HookNext = (err?: Error) => void;
 interface ReplySender {
   header(name: string, value: string): unknown;
   send(body: string): unknown;
+  code(status: number): { send(body: string): unknown };
 }
 
 export interface FastifyMetricsInstance {
@@ -100,7 +101,14 @@ export function createServiceMetrics(serviceName: string): ServiceMetrics {
 
     instance.get('/metrics', async (_request, reply) => {
       reply.header('content-type', registry.contentType);
-      reply.send(await registry.metrics());
+      // A scrape endpoint must survive its own metrics failing: serve the
+      // series that collected cleanly rather than 500ing the target.
+      try {
+        reply.send(await registry.metrics());
+      } catch (err) {
+        process.stderr.write(`[metrics] scrape failed: ${String(err).slice(0, 200)}\n`);
+        reply.code(500).send('metrics collection failed');
+      }
     });
 
     done();
@@ -113,7 +121,12 @@ export function createServiceMetrics(serviceName: string): ServiceMetrics {
  * Gauge filled on scrape via an async collect callback (spec 06 platform
  * metrics - e.g. feed freshness reads the newest entry age from its DB).
  * A null reading leaves the previous value exported rather than reporting a
- * fake zero; the series simply stays at its last observation.
+ * fake zero; the series simply stays at its last observation. A REJECTED
+ * read is logged and skipped: prom-client propagates collect() errors out
+ * of registry.metrics(), which 500s the entire /metrics endpoint and takes
+ * the whole scrape target down - one flaky platform read must never do
+ * that (learned on dev: the feed target alert fired for hours because the
+ * freshness aggregate failed).
  */
 export function registerCollectGauge(
   metrics: ServiceMetrics,
@@ -129,8 +142,14 @@ export function registerCollectGauge(
     registers: [metrics.registry],
     // prom-client runs this on every /metrics scrape.
     collect: async () => {
-      const value = await options.collect();
-      if (value !== null) gauge.set(value);
+      try {
+        const value = await options.collect();
+        if (value !== null) gauge.set(value);
+      } catch (err) {
+        process.stderr.write(
+          `[metrics] collect gauge ${options.name} failed - skipped this scrape: ${String(err).slice(0, 200)}\n`,
+        );
+      }
     },
   });
 }
