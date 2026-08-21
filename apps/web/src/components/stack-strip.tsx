@@ -70,7 +70,7 @@ export function StackStrip() {
       <Text size="sm" c="dimmed">
         A microservices demo, end to end: a browser app, APIs with their own
         data, event-driven workers behind them, and infrastructure as code.{' '}
-        <Anchor href="/about" size="sm" data-testid="landing-stack-about-link">
+        <Anchor href="/about" size="sm" underline data-testid="landing-stack-about-link">
           Read how it works
         </Anchor>
         .

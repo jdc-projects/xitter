@@ -24,7 +24,7 @@ export function DemoCredentials() {
         <Text size="sm" c="dimmed">
           Any of <strong>demo1&ndash;demo10</strong>, password <Code>DemoPass123!</Code> - public
           by design. Anyone can be any demo user, and everything posted is shared. More detail on
-          the <Anchor href="/about" size="sm">About page</Anchor>.
+          the <Anchor href="/about" size="sm" underline>About page</Anchor>.
         </Text>
       </Stack>
     </Paper>

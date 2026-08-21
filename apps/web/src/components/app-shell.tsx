@@ -113,7 +113,7 @@ export function AppShellFrame({ username, children }: AppShellFrameProps) {
                 component="a"
                 href="/search"
                 variant="default"
-                aria-label="Search posts"
+                aria-label="Search"
                 hiddenFrom="xs"
                 data-testid="mobile-search-link"
               >

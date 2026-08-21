@@ -68,19 +68,22 @@ test('search results append in place via the same Load more', async ({ page }) =
     Array.from({ length: 22 }, (_, n) => `${needle} ${String(n).padStart(2, '0')}`),
   );
 
-  // Indexing is async (post -> Kafka -> search-index worker): reload-poll
-  // until the first page shows 20 of the 22.
+  // Indexing is async (post -> Kafka -> search-index worker): the Load-more
+  // button only appears once a 21st doc proves another page exists, so
+  // reload-poll on the button itself, not the first-page count.
   const results = page.locator('[data-testid^="post-item-"]', { hasText: needle });
+  const loadMore = page.getByTestId('load-more');
   const deadline = Date.now() + 30_000;
   for (;;) {
     await page.goto(`/search?q=${encodeURIComponent(needle)}`);
-    if ((await results.count()) >= 20) break;
+    if (await loadMore.isVisible().catch(() => false)) break;
     if (Date.now() > deadline) break;
     await page.waitForTimeout(1_000);
   }
   await expect(results).toHaveCount(20);
+  await expect(loadMore).toBeVisible();
 
-  await page.getByTestId('load-more').click();
+  await loadMore.click();
   await expect(results).toHaveCount(22, { timeout: 15_000 });
   await expect(page).toHaveURL(new RegExp(`/search\\?q=${encodeURIComponent(needle)}`));
 });
