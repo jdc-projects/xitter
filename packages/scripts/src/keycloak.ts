@@ -47,6 +47,19 @@ export const demoCredentials = () => ({
   password: envString('XITTER_DEMO_USER_PASSWORD', 'DemoPass123!'),
 });
 
+/** Retry a transient Keycloak admin call (keep-alive stream races). */
+async function withRetry<T>(call: () => Promise<T>, what: string, attempts = 5): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await call();
+    } catch (err) {
+      if (attempt >= attempts) throw err;
+      console.log(`keycloak: ${what} attempt ${attempt} failed (${String(err)}) - retrying`);
+      await new Promise((r) => setTimeout(r, 250 * attempt));
+    }
+  }
+}
+
 // Re-exported for callers of this module; the canonical lists live in
 // @xitter/auth so services' guards and the provisioner cannot drift.
 export { SERVICE_CLIENTS, WORKER_CLIENTS };
@@ -54,41 +67,39 @@ export { SERVICE_CLIENTS, WORKER_CLIENTS };
 const edgeUrl = () => localUrl('edge');
 
 async function ensureRealm(kc: KcAdminClient, realm: string): Promise<void> {
-  const realms = await kc.realms.find();
+  // Keycloak 26 keep-alive race: a pooled connection can be closed by the
+  // server right after a previous call, killing the next one mid-stream
+  // ("unable to read contents from stream"). Timing dependent, heals
+  // immediately on the fresh connection - retry both the list and create.
+  const realms = await withRetry(() => kc.realms.find(), 'list realms');
   if (realms.some((r) => r.realm === realm)) {
     console.log(`realm ${realm}: exists`);
     return;
   }
-  await kc.realms.create({
-    realm,
-    enabled: true,
-    // Demo system: users cannot change their own credentials.
-    editUsernameAllowed: false,
-    resetPasswordAllowed: false,
-    registrationAllowed: false,
-    loginWithEmailAllowed: false,
-    accessTokenLifespan: 900,
-    ssoSessionIdleTimeout: 3600,
-    ssoSessionMaxLifespan: 43200,
-    // T14 login defence (mirrors the Tofu realm in keycloak.tf): the realm
-    // is edge-exposed, so recreate it with brute-force protection intact
-    // rather than silently downgrading until the next tofu apply.
-    ...BRUTE_FORCE_SETTINGS,
-  });
+  await withRetry(
+    () =>
+      kc.realms.create({
+        realm,
+        enabled: true,
+        // Demo system: users cannot change their own credentials.
+        editUsernameAllowed: false,
+        resetPasswordAllowed: false,
+        registrationAllowed: false,
+        loginWithEmailAllowed: false,
+        accessTokenLifespan: 900,
+        ssoSessionIdleTimeout: 3600,
+        ssoSessionMaxLifespan: 43200,
+        // T14 login defence: keep brute-force protection on when the reset
+        // recreates the realm (timings stay at Keycloak's own defaults,
+        // which is what keycloak.tf spells out). The fine-grained fields
+        // are rejected by the realm-create endpoint - only the switch is
+        // settable here; the next tofu apply restores the full config.
+        bruteForceProtected: true,
+      }),
+    `create realm ${realm}`,
+  );
   console.log(`realm ${realm}: created`);
 }
-
-/** Keycloak's own defaults, spelled out (parity with keycloak.tf). */
-const BRUTE_FORCE_SETTINGS = {
-  bruteForceProtected: true,
-  permanentLockout: false,
-  maxLoginFailures: 30,
-  waitIncrementSeconds: 60,
-  quickLoginCheckMilliSeconds: 1000,
-  minimumQuickLoginWaitSeconds: 60,
-  maxFailureWaitSeconds: 900,
-  failureResetTimeSeconds: 43_200,
-};
 
 interface EnsureClientOptions {
   public?: boolean;
