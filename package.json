@@ -26,6 +26,8 @@
     "build:apps": "turbo run build --filter=./apps/*",
     "dev": "turbo run dev",
     "start": "turbo run start",
+    "start:apps": "turbo run start --filter=web --filter=cms --filter=admin --filter=@xitter/service-social --filter=@xitter/service-posts --filter=@xitter/service-media --filter=@xitter/service-feed --filter=@xitter/service-search",
+    "start:workers": "turbo run start --filter=@xitter/worker-fanout --filter=@xitter/worker-media-process --filter=@xitter/worker-search-index",
     "check": "npm run format:check && npm run audit && npm run build:packages && turbo run lint typecheck test build",
     "check:repo": "npm run check && npm run lint:repo",
     "check:mutation": "npm run mutate:affected",

@@ -15,7 +15,14 @@
  * leaving the system in a safe (empty or partially wiped) state.
  */
 import client from 'prom-client';
-import { envString, loadRepoEnv, localPort, localUrl, RESET_STATUS_KEY } from '@xitter/config';
+import {
+  envInt,
+  envString,
+  loadRepoEnv,
+  localPort,
+  localUrl,
+  RESET_STATUS_KEY,
+} from '@xitter/config';
 import { createJwtCache, realmUrls } from '@xitter/auth';
 import { ALL_TOPICS, CONSUMER_GROUPS } from '@xitter/events';
 import { Kafka } from 'kafkajs';
@@ -428,17 +435,32 @@ async function defaultStores(): Promise<StoreControls> {
       try {
         const wanted = Object.values(CONSUMER_GROUPS);
         const existing = new Set((await admin.listGroups()).groups.map((g) => g.groupId));
-        const reset: string[] = [];
-        for (const group of wanted.filter((g) => existing.has(g))) {
-          // earliest:false = reset to the LOG END - the new epoch boundary:
-          // retained messages are never replayed; the resumed workers only
-          // see post-reset events (kafkajs resets every partition).
-          for (const topic of ALL_TOPICS) {
-            await admin.resetOffsets({ groupId: group, topic, earliest: false });
-          }
-          reset.push(group);
+        const targets = wanted.filter((g) => existing.has(g));
+        if (targets.length > 0) {
+          await waitForGroupsEmpty(admin, targets, logDrainDeadline());
         }
-        return reset;
+
+        // New epoch = new topic instances. kafkajs admin.resetOffsets does
+        // NOT durably commit against Kafka 4 (verified: fetchOffsets reads
+        // -1 right after a "successful" reset), so pinning group offsets at
+        // the log end is not achievable that way. Deleting and recreating
+        // the topics empties the log instead - the drained groups are then
+        // deleted too, and the resumed workers (fromBeginning) replay only
+        // post-reset events on the fresh log. Verified by offsets at 0.
+        const existingTopics = (await admin.listTopics()).filter((t) =>
+          (ALL_TOPICS as readonly string[]).includes(t),
+        );
+        if (existingTopics.length > 0) {
+          await admin.deleteTopics({ topics: existingTopics });
+        }
+        const { ensureTopics } = await import('./topics.js');
+        await ensureTopics(kafka);
+        const stillExisting = new Set((await admin.listGroups()).groups.map((g) => g.groupId));
+        const groups = targets.filter((g) => stillExisting.has(g));
+        if (groups.length > 0) {
+          await admin.deleteGroups(groups);
+        }
+        return [...existingTopics.map((t) => `topic:${t}`), ...groups.map((g) => `group:${g}`)];
       } finally {
         await admin.disconnect().catch(() => undefined);
       }
@@ -446,14 +468,16 @@ async function defaultStores(): Promise<StoreControls> {
 
     async flushValkey() {
       const { valkeyUrl } = await import('@xitter/config');
-      const redis = await openValkey(process.env.VALKEY_URL ?? valkeyUrl());
+      const { connectValkey } = await import('@xitter/observability');
+      const redis = await connectValkey<ValkeyLike>({ url: process.env.VALKEY_URL ?? valkeyUrl() });
       await redis.flushall();
       await redis.quit();
     },
 
     async writeStatus(status) {
       const { valkeyUrl } = await import('@xitter/config');
-      const redis = await openValkey(process.env.VALKEY_URL ?? valkeyUrl());
+      const { connectValkey } = await import('@xitter/observability');
+      const redis = await connectValkey<ValkeyLike>({ url: process.env.VALKEY_URL ?? valkeyUrl() });
       try {
         await redis.set(RESET_STATUS_KEY, JSON.stringify(status));
       } finally {
@@ -483,23 +507,51 @@ interface ValkeyLike {
   set(key: string, value: string): Promise<unknown>;
   quit(): Promise<unknown>;
 }
+interface AdminLike {
+  describeGroups(
+    groupIds: string[],
+  ): Promise<{ groups: Array<{ state: string; members: unknown[] }> }>;
+}
 
-async function openValkey(url: string): Promise<ValkeyLike> {
-  const { Redis } = await import('ioredis');
-  const redis = new Redis(url, {
-    maxRetriesPerRequest: 2,
-    enableOfflineQueue: false,
-    connectTimeout: 5_000,
-    lazyConnect: false,
-  });
-  return redis;
+function logDrainDeadline(): number {
+  return Date.now() + envInt('XITTER_RESET_GROUP_DRAIN_MS', 90_000);
+}
+
+/**
+ * Kafka keeps a killed consumer's group membership until its session times
+ * out (~30s with kafkajs defaults) - in-cluster scale-to-zero AND the local
+ * SIGTERM quiesce both land here. AlterConsumerGroupOffsets is rejected
+ * while any member is attached, so wait the sessions out (bounded).
+ */
+async function waitForGroupsEmpty(
+  admin: AdminLike,
+  groups: string[],
+  deadline: number,
+): Promise<void> {
+  for (;;) {
+    const described = (await admin.describeGroups(groups)).groups;
+    const attached = described
+      .map((group, index) => ({ name: groups[index], group }))
+      .filter(({ group }) => group.members.length > 0 && group.state !== 'Dead');
+    if (attached.length === 0) return;
+    if (Date.now() > deadline) {
+      throw new Error(
+        `consumer groups still have members after drain wait: ${attached.map((a) => a.name).join(', ')}`,
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
 }
 
 /**
  * Local worker control: the reset CLI runs where the workers are plain node
- * processes (turbo dev/start) we cannot and should not kill. Volume-level
- * reset (`npm run reset`) is inherently quiesced (deps down); for a live
- * local reset we warn so the operator stops the stack first.
+ * processes. A live reset (`reset:live`) needs them STOPPED while stores are
+ * wiped (Kafka rejects group resets while members are attached), so quiesce
+ * SIGTERMs the worker processes found on their metrics ports and resume
+ * respawns them via `npm run start:workers`. Run the workers in their own
+ * tree (`start:workers`) - killing workers inside a combined `npm run start`
+ * makes that turbo exit and take the services with it. The volume twin
+ * (`npm run reset`) never gets here: the whole stack is down already.
  */
 export function localWorkerControl(log: (message: string) => void): WorkerControl {
   const ports = [
@@ -507,19 +559,63 @@ export function localWorkerControl(log: (message: string) => void): WorkerContro
     localPort('mediaProcessMetrics'),
     localPort('searchIndexMetrics'),
   ];
+  let stoppedAny = false;
   return {
     async quiesce() {
-      const alive = await Promise.all(ports.map((port) => portAnswers(port)));
-      if (alive.some(Boolean)) {
-        log(
-          'reset: local workers appear to be RUNNING - for a fully quiesced live reset, stop the app stack first (npm run reset is always safe)',
-        );
+      const pidLists = await Promise.all(ports.map((port) => pidsOnPort(port)));
+      const pids = [...new Set(pidLists.flat())];
+      if (pids.length === 0) {
+        log('reset: no local workers on their metrics ports (already quiesced)');
+        return;
       }
+      log(`reset: stopping ${pids.length} local worker process(es) for the wipe`);
+      for (const pid of pids) {
+        try {
+          process.kill(pid, 'SIGTERM');
+        } catch {
+          /* raced exit - fine */
+        }
+      }
+      const deadline = Date.now() + 15_000;
+      const busy = async () =>
+        (await Promise.all(ports.map((port) => portAnswers(port)))).filter(Boolean).length;
+      while ((await busy()) > 0 && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      stoppedAny = true;
     },
     async resume() {
-      /* local workers are not lifecycle-managed by the reset */
+      if (!stoppedAny) return;
+      stoppedAny = false;
+      log('reset: restarting local workers (npm run start:workers)');
+      const { spawn } = await import('node:child_process');
+      const { findRepoRoot } = await import('@xitter/config');
+      const child = spawn('npm', ['run', 'start:workers'], {
+        cwd: findRepoRoot(),
+        detached: true,
+        stdio: 'ignore',
+      });
+      child.unref();
     },
   };
+}
+
+async function pidsOnPort(port: number): Promise<number[]> {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const runLsof = promisify(execFile) as (
+    file: string,
+    args: string[],
+  ) => Promise<{ stdout: string }>;
+  try {
+    const { stdout } = await runLsof('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t']);
+    return stdout
+      .split('\n')
+      .map((line) => Number.parseInt(line, 10))
+      .filter((pid) => Number.isFinite(pid));
+  } catch {
+    return []; // lsof exits 1 when nothing listens
+  }
 }
 
 async function portAnswers(port: number): Promise<boolean> {

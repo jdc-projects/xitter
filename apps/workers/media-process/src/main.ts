@@ -54,7 +54,7 @@ await runEventWorker({
   topics: ['media'],
   // Derived-state builder: a fresh group replays the log so seed uploads
   // emitted before the worker first ran still get their variants. The
-  // nightly reset resets group offsets to the new epoch instead
+  // nightly reset recreates the topics (fresh log) and deletes the groups
   // (reset-flow.ts), so retained traffic is never reprocessed there.
   fromBeginning: true,
   metricsPort: env.METRICS_PORT,

@@ -48,10 +48,11 @@ await runEventWorker({
   groupId: CONSUMER_GROUPS.fanoutWorker,
   topics: ['posts', 'social'],
   // Derived-state builder: a FRESH group (no committed offsets - new
-  // cluster, or bootstrap-seed before the worker first ran) must replay
-  // the whole log or the materialised feed silently misses the corpus.
-  // The nightly reset avoids replaying retained traffic by resetting group
-  // offsets to the new epoch (reset-flow.ts), which takes precedence.
+  // cluster, fresh log after the nightly reset, or bootstrap-seed before
+  // the worker first ran) must replay the whole log or the materialised
+  // feed silently misses the corpus. The nightly reset guarantees a FRESH
+  // LOG (topics are deleted and recreated), so replay never crosses the
+  // epoch boundary (reset-flow.ts).
   fromBeginning: true,
   metricsPort: env.METRICS_PORT,
   handle: (envelope) => handleEvent(envelope, { social, posts, feed }),
