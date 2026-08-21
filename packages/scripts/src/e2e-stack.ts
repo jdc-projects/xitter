@@ -8,8 +8,15 @@
  * for services AND workers (media processing + fanout must be live before
  * the corpus lands), applies the seed (idempotent - an already-seeded stack
  * verifies and skips), then idles until Playwright terminates it.
+ *
+ * Readiness is signalled on the stackProbe port ONLY after the seed step
+ * resolves. Gating on the web port instead lets Playwright start tests
+ * while the seed still waits for the workers; test logins then bootstrap
+ * stub profiles that trip the seeder's partial-corpus guard (observed:
+ * "environment holds a partial corpus" on a freshly wiped stack).
  */
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:http';
 import { localPort } from '@xitter/config';
 import { seedWhenStackReady } from './lib/seed-stack.js';
 
@@ -37,8 +44,9 @@ stack.once('exit', (code) => {
   if (!shuttingDown) process.exit(code ?? 0);
 });
 
-// Playwright probes the web port; hold off on seeding until the whole
-// stack (services + workers) is answering.
+// Playwright probes the stackProbe port; hold off on seeding until the whole
+// stack (services + workers) is answering, and hold the port closed until
+// the corpus has landed (or was verified) so no test can beat the seed.
 const seeded = (async () => {
   const webUp = await waitForWeb(300_000);
   if (!webUp) return;
@@ -60,7 +68,19 @@ async function stackReadyWeb(): Promise<boolean> {
 }
 
 await seeded;
-console.log('e2e stack: ready (seeded when possible) - idling until Playwright stops us');
+
+// Seed resolved - now (and only now) tell Playwright the suite may start.
+const probe = createServer((_req, res) => {
+  res.writeHead(200, { 'content-type': 'text/plain' });
+  res.end('e2e stack: seeded\n');
+});
+probe.once('error', (err) => {
+  console.error(`e2e stack: stackProbe port unavailable: ${err}`);
+  process.exit(1);
+});
+probe.listen(localPort('stackProbe'), 'localhost', () => {
+  console.log('e2e stack: ready (seeded) - idling until Playwright stops us');
+});
 
 // Keep the process alive; the child owns stdio.
 setInterval(() => {

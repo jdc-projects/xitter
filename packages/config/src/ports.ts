@@ -4,6 +4,7 @@ export const PORT_DEFAULTS = {
   web: 3456,
   cms: 3457,
   admin: 3458,
+  stackProbe: 3459,
   social: 8101,
   posts: 8102,
   media: 8103,

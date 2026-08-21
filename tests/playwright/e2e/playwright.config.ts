@@ -36,10 +36,12 @@ export default defineConfig({
     // literally - anchor to the repo root.
     command: 'tsx packages/scripts/src/e2e-stack.ts',
     cwd: '../../../',
-    // Probe the web app port, NOT the edge (:8080) - traefik holds the edge
-    // open whenever the docker stack is up, which would falsely signal ready
-    // and skip starting the apps under test.
-    url: `http://localhost:${localPort('web')}`,
+    // Probe the stackProbe port, NOT the web app - the wrapper answers
+    // there only after the seed has landed. Gating on the web port let
+    // tests start mid-seed: first-logins bootstrap stub profiles that
+    // trip the seeder's partial-corpus guard. (The edge port is even
+    // worse: traefik holds it open whenever the docker stack is up.)
+    url: `http://localhost:${localPort('stackProbe')}`,
     reuseExistingServer: !process.env.CI,
     timeout: 300_000,
   },
