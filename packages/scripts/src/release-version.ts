@@ -19,7 +19,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findRepoRoot } from '@xitter/config';
 
@@ -260,7 +260,7 @@ function main(): void {
     notes,
   };
 
-  const outPath = join(findRepoRoot(), outDir);
+  const outPath = isAbsolute(outDir) ? outDir : join(findRepoRoot(), outDir);
   mkdirSync(outPath, { recursive: true });
   writeFileSync(
     join(outPath, 'version.json'),

@@ -43,6 +43,8 @@ jobs:
           # the last reachable v* tag.
           fetch-depth: 0
       - uses: ./.github/actions/setup
+      - name: Materialise package builds (release-version imports @xitter/config dist)
+        run: npm run build:packages
       - name: Derive release version
         id: derive
         run: |
@@ -132,6 +134,8 @@ jobs:
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup
+      - name: Materialise package builds (release-version imports @xitter/config dist)
+        run: npm run build:packages
       - name: Regenerate release notes
         run: |
           args="--out-dir .release"
