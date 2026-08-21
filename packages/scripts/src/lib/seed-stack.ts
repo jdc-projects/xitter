@@ -4,11 +4,14 @@
  * derived stores, the workers) are back from a dependency teardown. Waits
  * politely; never starts anything itself.
  */
-import { localPort } from '@xitter/config';
+import { localPort, type PortName } from '@xitter/config';
 import { checkPort } from './port.js';
 
-const SERVICE_PORTS = ['social', 'posts', 'media', 'feed', 'search'].map((name) =>
-  localPort(name as 'social'),
+// The seed surface: five services + CMS (Payload boots slower than the
+// NestJS services - waiting for it here keeps the seeder's first CMS call
+// from racing a cold stack) + the three workers' metrics ports.
+const SERVICE_PORTS = ['social', 'posts', 'media', 'feed', 'search', 'cms'].map((name) =>
+  localPort(name as PortName),
 );
 const WORKER_PORTS = [
   localPort('fanoutMetrics'),

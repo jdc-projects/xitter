@@ -47,10 +47,19 @@ stack.once('exit', (code) => {
 // Playwright probes the stackProbe port; hold off on seeding until the whole
 // stack (services + workers) is answering, and hold the port closed until
 // the corpus has landed (or was verified) so no test can beat the seed.
+// A seed failure is fatal and loud: exit non-zero so Playwright fails fast
+// instead of idling to its 300s probe timeout.
 const seeded = (async () => {
   const webUp = await waitForWeb(300_000);
   if (!webUp) return;
-  await seedWhenStackReady(300_000);
+  try {
+    await seedWhenStackReady(300_000);
+  } catch (err) {
+    console.error('e2e stack: seed failed - see error above; refusing to signal ready');
+    shutdown();
+    process.exitCode = 1;
+    throw err;
+  }
 })();
 
 async function waitForWeb(timeoutMs: number): Promise<boolean> {
