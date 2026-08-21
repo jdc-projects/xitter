@@ -10,7 +10,6 @@ import {
 import type { Icon } from '@tabler/icons-react';
 import { UserAvatar } from '@xitter/ui';
 
-
 interface StackFact {
   icon: Icon;
   color: MantineColor;
@@ -68,9 +67,9 @@ export function StackStrip() {
         Under the hood
       </Title>
       <Text size="sm" c="dimmed">
-        A microservices demo, end to end: a browser app, APIs with their own
-        data, event-driven workers behind them, and infrastructure as code.{' '}
-        <Anchor href="/about" size="sm" underline data-testid="landing-stack-about-link">
+        A microservices demo, end to end: a browser app, APIs with their own data, event-driven
+        workers behind them, and infrastructure as code.{' '}
+        <Anchor href="/about" size="sm" underline="always" data-testid="landing-stack-about-link">
           Read how it works
         </Anchor>
         .
