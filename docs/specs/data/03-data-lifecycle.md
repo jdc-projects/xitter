@@ -83,10 +83,10 @@ Notes:
 
 ## Retention
 
-| Data                                                              | Retention                                                                                                     |
-| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Kafka messages                                                    | 7 days (topic retention) — irrelevant to product state; consumer-group reset makes the nightly epoch boundary |
-| Everything else (DBs, RustFS, OpenSearch, Valkey, Keycloak realm) | Until the nightly reset                                                                                       |
-| Repo seed content files                                           | Indefinite (version-controlled); the only durable data ([02-seeding.md](./02-seeding.md))                     |
+| Data                                                              | Retention                                                                                                                                                    |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Kafka messages                                                    | 7 days (topic retention) — irrelevant to product state; the reset's topic recreation makes the nightly epoch boundary (retained messages are never replayed) |
+| Everything else (DBs, RustFS, OpenSearch, Valkey, Keycloak realm) | Until the nightly reset                                                                                                                                      |
+| Repo seed content files                                           | Indefinite (version-controlled); the only durable data ([02-seeding.md](./02-seeding.md))                                                                    |
 
 There is no other TTL, archival, or backup: nothing is precious, and privacy posture depends on wipes being final ([04-privacy.md](./04-privacy.md)).

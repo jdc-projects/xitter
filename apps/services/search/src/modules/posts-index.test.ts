@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import type { Client } from '@opensearch-project/opensearch';
 import { PostsIndex, buildSearchBody } from './posts-index.js';
 
-
 /** Minimal valid options for pure query-building assertions. */
 const opts = (overrides: Partial<Parameters<typeof buildSearchBody>[0]> = {}) => ({
   q: 'hello',
@@ -78,10 +77,8 @@ describe('PostsIndex after a reset deletes the index', () => {
       }),
     );
 
-  const index = (client: {
-    updateByQuery: unknown;
-    deleteByQuery: unknown;
-  }): PostsIndex => new PostsIndex(client as unknown as Client);
+  const index = (client: { updateByQuery: unknown; deleteByQuery: unknown }): PostsIndex =>
+    new PostsIndex(client as unknown as Client);
 
   it('refreshAuthorName is a no-op, not a 500 (profile events precede the first write)', async () => {
     const posts = index({ updateByQuery: missingIndex, deleteByQuery: missingIndex });

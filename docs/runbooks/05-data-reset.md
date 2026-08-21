@@ -17,7 +17,7 @@ kubectl -n xitter-dev create job --from=cronjob/xitter-reset xitter-reset-manual
 kubectl -n xitter-dev logs -f job/xitter-reset-manual
 ```
 
-The same flow, against a local stack, is `npm run reset:live [-- --seed]` (run it with the app stack stopped, or accept the quiesce warning).
+The same flow, against a local stack, is `npm run reset:live [-- --seed]`. Run the stack as two trees (`npm run start:apps` + `npm run start:workers`): the flow stops the worker processes for the wipe (Kafka rejects group operations while members are attached) and restarts them via `npm run start:workers`; killing workers inside a combined `npm run start` makes that turbo exit and take the services with it. The services must stay up throughout (the flow calls their `/internal/reseed`).
 
 ## Partial reset recovery
 
@@ -28,7 +28,7 @@ The flow logs one line per step in order (`reset: <step> ok (<ms>ms)`); the last
 3. Re-trigger the job (manual trigger above). If the same step fails twice, treat it as a real incident:
    - `truncate-service-dbs` → check the named service's health/logs (it answered non-2xx).
    - `wipe-media-bucket` / `delete-search-index` → check RustFS / OpenSearch pods.
-   - `reset-consumer-groups` → check the Kafka cluster; if groups are stuck, `kubectl -n xitter-dev delete ...` is NOT needed — the flow resets to the log end, which is always valid.
+   - `reset-consumer-groups` → check the Kafka cluster. The step drains group membership (Kafka evicts stopped consumers after their session timeout, ~45s), then deletes + recreates every topic and deletes the drained groups — a "still has members" failure means a worker did not actually stop (quiesce failed); find it before re-running.
    - `recreate-keycloak-realm` → check the homelab Keycloak; the realm returns on the next run with the same client secrets.
 4. After recovery, verify (spec ops 02 table): demo1 login, feed/search state, bucket object count.
 

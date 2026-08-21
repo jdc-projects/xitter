@@ -35,7 +35,9 @@ export async function ensureTopics(kafka: Kafka): Promise<void> {
       for (let attempt = 1; attempt <= 5 && !created; attempt++) {
         try {
           await admin.createTopics({
-            topics: [{ topic, numPartitions: 6, replicationFactor: 1, configEntries: [...TOPIC_CONFIG] }],
+            topics: [
+              { topic, numPartitions: 6, replicationFactor: 1, configEntries: [...TOPIC_CONFIG] },
+            ],
           });
           created = true;
         } catch (err) {
