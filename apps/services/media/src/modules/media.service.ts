@@ -1,13 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   MEDIA_MAX_BYTES,
+  type AdminMediaListQuery,
   type CreateMediaUploadResponse,
   type InternalMediaAsset,
   type MediaAsset,
   type MediaVariantCore,
 } from '@xitter/api-contracts';
 import { createLogger } from '@xitter/observability';
-import { badRequest, notFound } from '@xitter/service-kit';
+import { assertValidCursor, badRequest, notFound } from '@xitter/service-kit';
 import { MEDIA_EVENTS, type MediaEvents } from './media-events.js';
 import { MediaRepository, type MediaRow, type MediaVariantRecord } from './media.repository.js';
 import { MEDIA_STORAGE, type MediaStorage } from './storage.js';
@@ -122,13 +123,7 @@ export class MediaService {
   async getInternal(mediaId: string): Promise<InternalMediaAsset> {
     const row = await this.repo.find(mediaId);
     if (!row) throw notFound('Media not found');
-    return {
-      ...this.toAsset(row),
-      objectKey: row.objectKey,
-      mimeType: row.mimeType,
-      bytes: row.bytes,
-      attempts: row.attempts,
-    };
+    return this.toInternal(row);
   }
 
   /** Internal (posts): existence + ownership + ready-status resolution. */
@@ -185,6 +180,62 @@ export class MediaService {
     await this.repo.truncate();
   }
 
+  // -- Admin moderation (T10). The guard already established the admin role.
+
+  /** Filtered moderation list (internal view: storage coords included). */
+  async adminList(query: AdminMediaListQuery) {
+    assertValidCursor(query.cursor);
+    const { ownerId, status } = query;
+    const result = await this.repo.adminMedia({ ownerId, status }, query.cursor, query.limit);
+    return {
+      items: result.items.map((row) => this.toInternal(row)),
+      nextCursor: result.nextCursor,
+    };
+  }
+
+  async adminGet(mediaId: string): Promise<InternalMediaAsset> {
+    return this.getInternal(mediaId);
+  }
+
+  /**
+   * Moderation delete: the row goes first, then every object the asset owns
+   * (original + variants) leaves RustFS - the bucket is public, so a
+   * deleted asset must not stay served. Object cleanup is best-effort after
+   * commit, matching the rejected-upload path.
+   */
+  async adminDelete(actor: { actorId: string; actorName: string }, mediaId: string): Promise<void> {
+    const row = await this.repo
+      .adminDelete(mediaId, {
+        actorId: actor.actorId,
+        actorName: actor.actorName,
+        action: 'media.delete',
+        targetId: mediaId,
+      })
+      .then((deleted) => {
+        if (!deleted) throw notFound('Media not found');
+        return deleted;
+      });
+
+    for (const objectKey of this.ownedObjectKeys(row)) {
+      await this.storage.remove(objectKey).catch((err) => {
+        logger.warn({ err, objectKey }, 'moderation object cleanup failed');
+      });
+    }
+  }
+
+  /** Moderation audit trail (who deleted what, when). */
+  async adminAudit(page: { cursor?: string; limit: number }) {
+    assertValidCursor(page.cursor);
+    return this.repo.adminAudit(page.cursor, page.limit);
+  }
+
+  /** Every object key the asset owns: the original + each variant. */
+  private ownedObjectKeys(row: MediaRow | null): string[] {
+    if (!row) return [];
+    const variants = (row.variants ?? []) as MediaVariantRecord[];
+    return [row.objectKey, ...variants.map((variant) => variant.objectKey)];
+  }
+
   /** A rejected upload is failed AND its object is removed (public bucket). */
   private async rejectUpload(mediaId: string, objectKey: string): Promise<void> {
     await this.repo.markFailed(mediaId);
@@ -218,6 +269,17 @@ export class MediaService {
         url: mediaUrl(variant.objectKey),
       })),
       createdAt: row.createdAt.toISOString(),
+    };
+  }
+
+  /** Internal/admin view: the public asset + storage coordinates + attempts. */
+  private toInternal(row: MediaRow): InternalMediaAsset {
+    return {
+      ...this.toAsset(row),
+      objectKey: row.objectKey,
+      mimeType: row.mimeType,
+      bytes: row.bytes,
+      attempts: row.attempts,
     };
   }
 

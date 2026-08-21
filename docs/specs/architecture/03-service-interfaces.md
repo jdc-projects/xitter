@@ -124,4 +124,32 @@ Service-token only (audience = receiving service client id; callers are the `svc
 | `POST /api/search/internal/reseed`                           | reset job            | Truncate search service state (checkpoints)                                                 |
 | `POST /api/social/internal/reseed`                           | reset job            | Truncate + optional reseed of profiles/graph                                                |
 
+### Internal admin endpoints
+
+`/api/{service}/internal/admin/...` — moderation and inspection for the
+admin panel (product spec 02 §11). Unlike the service-token routes above,
+these accept an **admin principal**: an admin-realm user token (the panel's
+`admin-panel` OIDC client) or the `svc-admin` machine client — either way
+the token must carry an `ADMIN_ROLES` realm role (`system-admin` /
+`app-admin`, ADR 0006), verified server-side by the shared auth guard. A
+valid-but-role-less token is 403.
+
+| Path                                                        | Owner    | Purpose                                                                    |
+| ----------------------------------------------------------- | -------- | -------------------------------------------------------------------------- |
+| `GET /api/posts/internal/admin/posts`                       | posts    | Moderation list: `authorId`/`text`/`deleted` filters, cursor paged         |
+| `GET /api/posts/internal/admin/posts/:postId`               | posts    | Post detail incl. tombstone state                                          |
+| `DELETE /api/posts/internal/admin/posts/:postId?hard=`      | posts    | Soft delete (default, restorable) or hard delete; audit-logged             |
+| `POST /api/posts/internal/admin/posts/:postId/restore`      | posts    | Restore a soft-deleted post; audit-logged                                  |
+| `GET /api/posts/internal/admin/audit`                       | posts    | Audit log page (who deleted what, when)                                    |
+| `GET /api/media/internal/admin/media`                       | media    | Media list: `ownerId`/`status` filters, cursor paged                       |
+| `GET /api/media/internal/admin/media/:mediaId`              | media    | Asset detail incl. variants                                                |
+| `DELETE /api/media/internal/admin/media/:mediaId`           | media    | Delete asset + RustFS objects (original and variants); audit-logged        |
+| `GET /api/media/internal/admin/audit`                       | media    | Audit log page                                                             |
+| `GET /api/social/internal/admin/users`                      | social   | User list: `username` filter, cursor paged, profile + graph counts         |
+| `GET /api/social/internal/admin/users/:userId/follow-graph` | social   | Profile + first pages of followers/following (read-only inspection)        |
+| `GET /api/{service}/internal/admin/health`                  | all svcs | Terminus detail (checks, uptime, version) for the panel's health dashboard |
+
+The panel's data provider validates every response at the boundary with the
+same `@xitter/api-contracts` zod schemas these endpoints are typed by.
+
 Reset semantics (what "reseed" means, ordering, determinism) are specified in [05-data-platform.md](05-data-platform.md); the runbook lives in the [operations specs](../operations/).

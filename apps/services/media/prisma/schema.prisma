@@ -24,3 +24,17 @@ model MediaAsset {
   @@index([ownerId])
   @@index([status])
 }
+
+// Moderation accountability (T10): who deleted which asset, when. Owned by
+// this service because the action targets its rows + objects.
+model AuditLog {
+  id        String   @id @default(uuid())
+  actorId   String // admin principal sub (user uuid or service-account id)
+  actorName  String // preferred_username / client id for the panel display
+  action    String // media.delete
+  targetId  String // media id
+  detail    Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}

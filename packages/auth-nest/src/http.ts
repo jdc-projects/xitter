@@ -19,6 +19,11 @@ export function unauthenticated(message = 'Authentication required'): HttpExcept
   return new HttpException(errorBody('UNAUTHENTICATED', message), 401);
 }
 
+/** Authenticated but not authorised - a missing grant, not a bad credential. */
+export function forbidden(message: string): HttpException {
+  return new HttpException(errorBody('FORBIDDEN', message), 403);
+}
+
 /**
  * Bearer token from `Authorization`, falling back to the edge-forwarded
  * `X-Access-Token` (always re-validated, never trusted blindly).

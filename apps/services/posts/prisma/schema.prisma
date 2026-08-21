@@ -48,3 +48,17 @@ model Interaction {
   @@unique([kind, postId, userId])
   @@index([userId, kind])
 }
+
+// Moderation accountability (T10): who deleted/restored what, when. Owned by
+// this service because the action targets its rows; same shape in media.
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String // admin principal sub (user uuid or service-account id)
+  actorName  String // preferred_username / client id for the panel display
+  action     String // post.soft-delete | post.hard-delete | post.restore
+  targetId   String // post id
+  detail     Json? // e.g. { hard: true }
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+}

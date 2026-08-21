@@ -1,6 +1,9 @@
 import { OpenAPIRegistry, extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
 import {
+  adminAuditPageSchema,
+  adminMediaListQuerySchema,
+  adminMediaPageSchema,
   createMediaUploadRequestSchema,
   createMediaUploadResponseSchema,
   errorSchema,
@@ -32,6 +35,13 @@ mediaApi.registerComponent('securitySchemes', 'serviceToken', {
   type: 'http',
   scheme: 'bearer',
   description: 'Client-credentials service token (audience = svc-media).',
+});
+
+mediaApi.registerComponent('securitySchemes', 'adminToken', {
+  type: 'http',
+  scheme: 'bearer',
+  description:
+    'Admin principal: an admin-realm user token (admin-panel client, ADMIN_ROLES realm role) or a svc-admin service token carrying an admin role.',
 });
 
 mediaApi.registerPath({
@@ -156,4 +166,64 @@ mediaApi.registerPath({
   description:
     'Truncate media metadata (reset job); bucket contents are wiped by the reset itself.',
   responses: { 200: jsonResponse('Acknowledged', z.object({ ok: z.boolean() })) },
+});
+
+// Internal admin endpoints (T10): admin-role-gated (panel user token or the
+// svc-admin machine client - see the adminToken scheme above).
+mediaApi.registerPath({
+  method: 'get',
+  path: '/internal/admin/media',
+  tags: ['admin'],
+  security: [{ adminToken: [] }, { serviceToken: [] }],
+  description:
+    'Moderation list with owner/status filters; internal view (storage coordinates, bytes, attempts included).',
+  request: { query: adminMediaListQuerySchema },
+  responses: {
+    200: jsonResponse('Media page', adminMediaPageSchema),
+    400: jsonResponse('Invalid cursor or filter', errorSchema),
+  },
+});
+
+mediaApi.registerPath({
+  method: 'get',
+  path: '/internal/admin/media/{mediaId}',
+  tags: ['admin'],
+  security: [{ adminToken: [] }, { serviceToken: [] }],
+  description: 'Asset incl. storage coordinates for moderation inspection.',
+  request: { params: mediaParams },
+  responses: {
+    200: jsonResponse('Asset', internalMediaAssetSchema),
+    404: jsonResponse('Not found', errorSchema),
+  },
+});
+
+mediaApi.registerPath({
+  method: 'delete',
+  path: '/internal/admin/media/{mediaId}',
+  tags: ['admin'],
+  security: [{ adminToken: [] }, { serviceToken: [] }],
+  description:
+    'Moderation delete: the metadata row and every owned RustFS object (original + variants) are removed by this service, the storage owner. Audit-logged.',
+  request: { params: mediaParams },
+  responses: {
+    204: { description: 'Deleted' },
+    404: jsonResponse('Not found', errorSchema),
+  },
+});
+
+mediaApi.registerPath({
+  method: 'get',
+  path: '/internal/admin/audit',
+  tags: ['admin'],
+  security: [{ adminToken: [] }, { serviceToken: [] }],
+  description: 'Moderation audit trail for media data (who deleted what, when).',
+  request: {
+    query: z.object({
+      cursor: z.string().min(1).optional(),
+      limit: z.coerce.number().int().min(1).max(100).default(20),
+    }),
+  },
+  responses: {
+    200: jsonResponse('Audit page', adminAuditPageSchema),
+  },
 });
