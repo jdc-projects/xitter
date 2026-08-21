@@ -63,7 +63,17 @@ export function HealthPage() {
             key: 'status',
             width: 110,
             render: (status: AdminHealth['status']) =>
-              status === 'ok' ? <Tag color="green">ok</Tag> : <Tag color="red">error</Tag>,
+              status === 'ok' ? (
+                // antd's preset green tag (green-7 text on green-1) is 3.37:1 -
+                // these darker palette endpoints clear WCAG AA.
+                <Tag color="green" style={{ color: '#135200' }}>
+                  ok
+                </Tag>
+              ) : (
+                <Tag color="red" style={{ color: '#a8071a' }}>
+                  error
+                </Tag>
+              ),
           },
           {
             title: 'Checks',

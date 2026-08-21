@@ -22,20 +22,14 @@ import { AuditPage } from './pages/audit.js';
  */
 const a11yTheme: ThemeConfig = {
   token: {
+    // White-on-primary was 4.1:1 (below AA); #0958d9 gives 6.16:1.
+    colorPrimary: '#0958d9',
     colorLink: '#0958d9',
     colorLinkHover: '#0958d9',
     colorLinkActive: '#003eb3',
     colorText: '#333333',
     colorTextSecondary: '#595959',
     colorTextTertiary: '#595959',
-  },
-  components: {
-    Tag: {
-      colorSuccess: '#2f7d32',
-    },
-    Menu: {
-      itemSelectedColor: '#0958d9',
-    },
   },
 };
 
