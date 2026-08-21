@@ -21,6 +21,7 @@ Full policy: [../specs/operations/04-release-pipeline.md](../specs/operations/04
    - The rc images and tag are not created (dry run skips `github-release`); the rc image tags on GHCR are harmless orphans.
 
 3. **Cut + merge the release**
+
    ```sh
    git checkout -b release/v0.2 origin/dev
    git push origin release/v0.2

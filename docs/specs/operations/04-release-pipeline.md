@@ -4,12 +4,12 @@ Gitflow for xitter: `feature/*` → PR → `dev` → release branch → PR → `
 
 ## Branch model
 
-| Branch        | Role                                                                | Deploy trigger                       |
-| ------------- | ------------------------------------------------------------------- | ------------------------------------ |
-| `dev`         | Integration; continuous deployment of every merge                   | `push` → Deploy dev (images `:dev`)  |
-| `release/*`   | Stabilisation branch cut from `dev` when a release is decided       | none (merges into `prod`)            |
-| `prod`        | Released state; every merge is a semver release                     | `push` → Release workflow            |
-| `feature/*`   | Work branches; PRs target `dev` (occasionally `release/*` for fixes) | none                                 |
+| Branch      | Role                                                                 | Deploy trigger                      |
+| ----------- | -------------------------------------------------------------------- | ----------------------------------- |
+| `dev`       | Integration; continuous deployment of every merge                    | `push` → Deploy dev (images `:dev`) |
+| `release/*` | Stabilisation branch cut from `dev` when a release is decided        | none (merges into `prod`)           |
+| `prod`      | Released state; every merge is a semver release                      | `push` → Release workflow           |
+| `feature/*` | Work branches; PRs target `dev` (occasionally `release/*` for fixes) | none                                |
 
 Promoting a release:
 
@@ -31,12 +31,12 @@ flowchart LR
 
 Versions are **derived from the conventional-commit history** since the last `v*` tag (`packages/scripts/src/release-version.ts`), not from a `workflow_dispatch` input. Rationale: the repo already mandates conventional commits for every PR, so the derivation is auditable (tag → compare range → commit list) and cannot drift from what actually shipped; a manual input is a second source of truth that silently disagrees with history. An explicit `--explicit vX.Y.Z` override exists for dry runs and repairs, and the workflow rejects versions that are not greater than the latest tag.
 
-| History since last tag                     | Bump (major ≥ 1) | Bump (0.x) |
-| ------------------------------------------ | ---------------- | ---------- |
-| any `!` / `BREAKING CHANGE:` footer        | major            | **minor**  |
-| any `feat`                                 | minor            | minor      |
-| only `fix` / `perf` / chores / nothing     | patch            | patch      |
-| no previous tag (first release)            | `0.1.0`          | —          |
+| History since last tag                 | Bump (major ≥ 1) | Bump (0.x) |
+| -------------------------------------- | ---------------- | ---------- |
+| any `!` / `BREAKING CHANGE:` footer    | major            | **minor**  |
+| any `feat`                             | minor            | minor      |
+| only `fix` / `perf` / chores / nothing | patch            | patch      |
+| no previous tag (first release)        | `0.1.0`          | —          |
 
 While the major is `0`, breaking changes bump the **minor** (pre-1.0 semver convention: `0.x.y` signals instability; the minor is the "major-like" component).
 
@@ -48,13 +48,13 @@ While the major is `0`, breaking changes bump the **minor** (pre-1.0 semver conv
 
 Triggered by `push` to `prod` (a release-branch merge) and by `workflow_dispatch` (dry runs).
 
-| Job               | What it does                                                                                                                        |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `version`         | Derives the next version (or takes the explicit input), uploads the derivation + notes artifact.                                      |
-| `release-images`  | Builds + pushes all 11 images tagged `vX.Y.Z` + `sha-<short>` (GHA cache per image).                                                  |
-| `github-release`  | `gh release create` with the generated notes, target = released SHA. Skipped on dry runs.                                             |
-| `tofu-apply`      | `tofu apply` on `infra/iac/environments/prod` with `-var image_tag=vX.Y.Z`. Dry runs plan instead (detailed exit code 2 = changes = pass) and upload the plan. Self-hosted runner — the cluster API is private. |
-| `reconcile`       | Opens a `prod` → `dev` PR when `prod` holds commits `dev` lacks.                                                                     |
+| Job              | What it does                                                                                                                                                                                                    |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `version`        | Derives the next version (or takes the explicit input), uploads the derivation + notes artifact.                                                                                                                |
+| `release-images` | Builds + pushes all 11 images tagged `vX.Y.Z` + `sha-<short>` (GHA cache per image).                                                                                                                            |
+| `github-release` | `gh release create` with the generated notes, target = released SHA. Skipped on dry runs.                                                                                                                       |
+| `tofu-apply`     | `tofu apply` on `infra/iac/environments/prod` with `-var image_tag=vX.Y.Z`. Dry runs plan instead (detailed exit code 2 = changes = pass) and upload the plan. Self-hosted runner — the cluster API is private. |
+| `reconcile`      | Opens a `prod` → `dev` PR when `prod` holds commits `dev` lacks.                                                                                                                                                |
 
 Reconciliation cases:
 
@@ -68,17 +68,17 @@ The reconciliation path is **exercised by the first release** (v0.1.0): a merge 
 
 `infra/iac/environments/prod` mirrors dev's topology (same modules, same file layout) with deliberate deltas:
 
-| Concern          | dev                                     | prod                                                                 |
-| ---------------- | --------------------------------------- | -------------------------------------------------------------------- |
-| Domain           | `xitter-dev.jd-chapman.dev`             | `xitter.jd-chapman.dev`                                              |
-| Image tag        | mutable `dev` (default)                 | **required** `image_tag` var — always an explicit release            |
-| Postgres (CNPG)  | 1 instance                              | 2 instances (supervised switchover rolls)                             |
-| OpenSearch       | 2 nodes (forced by the operator's restart guard; zero failure tolerance) | 3 nodes (majority quorum; tolerates one node down)      |
-| Sentry           | team `xitter` / projects `xitter-*`     | team `xitter-prod` / projects `xitter-prod-*` (isolated error streams) |
-| Alerts           | incl. reset-job rules                   | same SLOs, env-interpolated; reset rules land with #13's prod wiring  |
-| Dashboards       | 4 (incl. reset job)                     | the 3 env-agnostic dashboards rendered from dev's JSON files          |
-| Reset (CronJob)  | nightly 00:00 UTC (#13)                 | deferred to #13's follow-up (schedule/enable per env is its variable) |
-| Keycloak clients | incl. `svc-reset`                       | no `svc-reset` until the reset job exists in prod                     |
+| Concern          | dev                                                                      | prod                                                                   |
+| ---------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| Domain           | `xitter-dev.jd-chapman.dev`                                              | `xitter.jd-chapman.dev`                                                |
+| Image tag        | mutable `dev` (default)                                                  | **required** `image_tag` var — always an explicit release              |
+| Postgres (CNPG)  | 1 instance                                                               | 2 instances (supervised switchover rolls)                              |
+| OpenSearch       | 2 nodes (forced by the operator's restart guard; zero failure tolerance) | 3 nodes (majority quorum; tolerates one node down)                     |
+| Sentry           | team `xitter` / projects `xitter-*`                                      | team `xitter-prod` / projects `xitter-prod-*` (isolated error streams) |
+| Alerts           | incl. reset-job rules                                                    | same SLOs, env-interpolated; reset rules land with #13's prod wiring   |
+| Dashboards       | 4 (incl. reset job)                                                      | the 3 env-agnostic dashboards rendered from dev's JSON files           |
+| Reset (CronJob)  | nightly 00:00 UTC (#13)                                                  | deferred to #13's follow-up (schedule/enable per env is its variable)  |
+| Keycloak clients | incl. `svc-reset`                                                        | no `svc-reset` until the reset job exists in prod                      |
 
 **Ingress/realm wiring**: same host-based edge routing via the homelab ingress module — `/api/{service}` (oidc-api against the `xitter-demo` realm), `/cms` + `/admin` (oidc-interactive against `primary`), `/` + `/media` unauthenticated, plus the unauthenticated `/xitter-media` presign route. No dev values leak: the only literal domains are `var.domain` (`xitter.jd-chapman.dev`), the Keycloak host from homelab remote state, and in-cluster service DNS. The geo-open Keycloak path routes on `idp.jd-chapman.dev` use priority **190** (dev's are 200): dev's identical matchers win while dev exists, and prod's remain armed standbys so global demo login survives if dev is ever destroyed.
 
@@ -86,9 +86,9 @@ The reconciliation path is **exercised by the first release** (v0.1.0): a merge 
 
 Nightly at **02:30 UTC** — after the 00:00 UTC reset/reseed window — against the freshly reseeded dev environment:
 
-| Suite    | Command                                                        | Reporting                                        |
-| -------- | -------------------------------------------------------------- | ------------------------------------------------ |
-| Bruno    | `npm run test:api -- --env dev` (the deployed dev env)         | `bruno-report-dev` artifact (14-day retention)   |
+| Suite     | Command                                                                                         | Reporting                                          |
+| --------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Bruno     | `npm run test:api -- --env dev` (the deployed dev env)                                          | `bruno-report-dev` artifact (14-day retention)     |
 | Artillery | `npx artillery run tests/artillery/feed-flow.yml` (modest phases: 30s warm-up + 2m ramp 2→10/s) | `artillery-report-dev` artifact (14-day retention) |
 
 Both target the public edge (`https://xitter-dev.jd-chapman.dev`, Keycloak at `https://idp.jd-chapman.dev`) — no cluster credentials involved. Failures surface as the workflow run status (visible from the Actions tab; no separate paging — the observability alerts own production health). `workflow_dispatch` accepts `environment: dev|prod` for on-demand runs, including pre-release smoke against prod.

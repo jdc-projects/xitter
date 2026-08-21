@@ -121,7 +121,8 @@ jobs:
 
   github-release:
     # Tag + release notes for the deployed version. Re-runs the same
-    # derivation on the same SHA, so the notes match the version job exactly.
+    # derivation (same explicit override, if any) on the same SHA, so the
+    # notes match the version job exactly.
     needs: [version, release-images]
     if: needs.version.outputs.dry_run != 'true'
     runs-on: ubuntu-latest
@@ -132,7 +133,12 @@ jobs:
           fetch-depth: 0
       - uses: ./.github/actions/setup
       - name: Regenerate release notes
-        run: tsx packages/scripts/src/release-version.ts --out-dir .release
+        run: |
+          args="--out-dir .release"
+          if [ -n "${{ inputs.version }}" ]; then
+            args="$args --explicit ${{ inputs.version }}"
+          fi
+          tsx packages/scripts/src/release-version.ts $args
       - name: Tag and create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

@@ -31,6 +31,7 @@ flowchart LR
 ```
 
 Deploy triggers: merge to `dev` deploys the mutable `dev` image tag (Deploy dev workflow); merge to `prod` — a release — publishes semver-tagged images and applies prod pinned to that version (Release workflow; see [04-release-pipeline.md](04-release-pipeline.md)).
+
 - Ingress module: `github.com/jdc-projects/homelab//iac/modules/ingress`, path-based routing, `auth_mode: oidc-api`.
 - Tofu state: `kubernetes` backend with per-env `secret_suffix` (e.g. `xitter-dev`, `xitter-prod`).
 - Kubeconfig convention: `config_path = "../../../cluster.yml"` in each env's provider/backend blocks, resolving to `infra/cluster.yml` (gitignored — copy it from the homelab repo per the deploy runbook).

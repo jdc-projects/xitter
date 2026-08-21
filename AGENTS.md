@@ -19,7 +19,7 @@ Read first: `docs/README.md` (structure), `docs/specs/` (desired end-state),
 | Install                   | `npm install`                                                                                                      |
 | All gates (run before PR) | `npm run check` (format + turbo lint/typecheck/test/build)                                                         |
 | Repo analysis             | `npm run lint:repo` (fallow + react-doctor; requires `origin/dev` fetched)                                         |
-| Everything CI runs on PR  | `npm run check:all` (`check` + repo analysis + scoped Stryker + Bruno API + web + e2e Playwright)                     |
+| Everything CI runs on PR  | `npm run check:all` (`check` + repo analysis + scoped Stryker + Bruno API + web + e2e Playwright)                  |
 | Deep-clean build state    | `npm run clean` - before trusting gates on a long-lived checkout                                                   |
 | Dev (everything, watch)   | `npm run deps:up && npm run bootstrap && npm run dev`                                                              |
 | Prod-like                 | `npm run build && npm run start`                                                                                   |

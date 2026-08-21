@@ -98,30 +98,52 @@ export function deriveNextVersion(commits: ConventionalCommit[], previous: SemVe
   if (feature) {
     return { major: previous.major, minor: previous.minor + 1, patch: 0, prerelease: null };
   }
-  return { major: previous.major, minor: previous.minor, patch: previous.patch + 1, prerelease: null };
+  return {
+    major: previous.major,
+    minor: previous.minor,
+    patch: previous.patch + 1,
+    prerelease: null,
+  };
 }
 
 /** Markdown release notes grouped by change type (keep-a-changelog style). */
-export function renderNotes(version: SemVer, previousTag: string | null, commits: ConventionalCommit[]): string {
+export function renderNotes(
+  version: SemVer,
+  previousTag: string | null,
+  commits: ConventionalCommit[],
+): string {
   const parsed = commits.map(parseConventionalCommit).filter((c): c is ParsedCommit => c !== null);
   const compare = previousTag
     ? `Full changelog: [${previousTag}...${formatSemVer(version)}](https://github.com/jdc-projects/xitter/compare/${previousTag}...${formatSemVer(version)})`
     : 'Initial release.';
 
   const section = (title: string, entries: ParsedCommit[]): string =>
-    entries.length === 0 ? '' : `\n\n### ${title}\n\n${entries.map((c) => `- ${c.scope ? `**${c.scope}:** ` : ''}${c.description} (${c.hash})`).join('\n')}`;
+    entries.length === 0
+      ? ''
+      : `\n\n### ${title}\n\n${entries.map((c) => `- ${c.scope ? `**${c.scope}:** ` : ''}${c.description} (${c.hash})`).join('\n')}`;
 
   const breaking = parsed.filter((c) => c.breaking);
   const breakingNote =
-    breaking.length > 0 ? `\n\n### Breaking changes\n\n${breaking.map((c) => `- ${c.description} (${c.hash})`).join('\n')}` : '';
+    breaking.length > 0
+      ? `\n\n### Breaking changes\n\n${breaking.map((c) => `- ${c.description} (${c.hash})`).join('\n')}`
+      : '';
 
   return [
     `## ${formatSemVer(version)}`,
     `\n${compare}`,
     breakingNote,
-    section('Features', parsed.filter((c) => c.type === 'feat' && !c.breaking)),
-    section('Fixes', parsed.filter((c) => c.type === 'fix' && !c.breaking)),
-    section('Internal', parsed.filter((c) => c.type !== 'feat' && c.type !== 'fix' && !c.breaking)),
+    section(
+      'Features',
+      parsed.filter((c) => c.type === 'feat' && !c.breaking),
+    ),
+    section(
+      'Fixes',
+      parsed.filter((c) => c.type === 'fix' && !c.breaking),
+    ),
+    section(
+      'Internal',
+      parsed.filter((c) => c.type !== 'feat' && c.type !== 'fix' && !c.breaking),
+    ),
   ].join('');
 }
 
@@ -160,7 +182,9 @@ export function latestTag(): string | null {
 /** Commit subjects + bodies since `ref` (all of HEAD when ref is null). */
 export function commitsSince(ref: string | null): ConventionalCommit[] {
   const range = ref === null ? 'HEAD' : `${ref}..HEAD`;
-  const raw = execFileSync('git', ['log', range, '--format=%h%x00%s%x00%B%x00'], { encoding: 'utf8' });
+  const raw = execFileSync('git', ['log', range, '--format=%h%x00%s%x00%B%x00'], {
+    encoding: 'utf8',
+  });
   // Bodies contain newlines, and git log terminates every record with a
   // newline after the trailing NUL - so the NUL-separated stream chunks into
   // hash/subject/body triplets where every hash after the first carries a
@@ -170,7 +194,8 @@ export function commitsSince(ref: string | null): ConventionalCommit[] {
   for (let i = 0; i + 2 < fields.length; i += 3) {
     const [hash, subject, body] = [fields[i], fields[i + 1], fields[i + 2]];
     if (hash === undefined || subject === undefined || body === undefined) break;
-    if (hash !== '') commits.push({ hash: hash.replace(/^\n/, ''), subject: subject.replace(/^\n/, ''), body });
+    if (hash !== '')
+      commits.push({ hash: hash.replace(/^\n/, ''), subject: subject.replace(/^\n/, ''), body });
   }
   return commits;
 }
@@ -187,15 +212,23 @@ function fail(message: string): never {
 function main(): void {
   const args = process.argv.slice(2);
   const explicitIndex = args.indexOf('--explicit');
-  const explicit = explicitIndex >= 0 ? (args[explicitIndex + 1] ?? fail('--explicit requires a value')) : null;
+  const explicit =
+    explicitIndex >= 0 ? (args[explicitIndex + 1] ?? fail('--explicit requires a value')) : null;
   const outDirIndex = args.indexOf('--out-dir');
-  const outDir = outDirIndex >= 0 ? (args[outDirIndex + 1] ?? fail('--out-dir requires a value')) : '.release';
+  const outDir =
+    outDirIndex >= 0 ? (args[outDirIndex + 1] ?? fail('--out-dir requires a value')) : '.release';
 
   const previousTag = latestTag();
-  const previous = previousTag === null ? null : (parseSemVer(previousTag) ?? fail(`existing tag ${previousTag} is not semver`));
+  const previous =
+    previousTag === null
+      ? null
+      : (parseSemVer(previousTag) ?? fail(`existing tag ${previousTag} is not semver`));
   const commits = commitsSince(previousTag);
 
-  const version = explicit === null ? deriveNextVersion(commits, previous) : (parseSemVer(explicit) ?? fail(`${explicit} is not a valid semver version`));
+  const version =
+    explicit === null
+      ? deriveNextVersion(commits, previous)
+      : (parseSemVer(explicit) ?? fail(`${explicit} is not a valid semver version`));
   if (version.prerelease === null && previous !== null && compareVersions(version, previous) <= 0) {
     fail(`${formatSemVer(version)} is not greater than the latest tag ${previousTag}`);
   }
@@ -210,7 +243,10 @@ function main(): void {
 
   const outPath = join(findRepoRoot(), outDir);
   mkdirSync(outPath, { recursive: true });
-  writeFileSync(join(outPath, 'version.json'), `${JSON.stringify({ ...result, notes: undefined }, null, 2)}\n`);
+  writeFileSync(
+    join(outPath, 'version.json'),
+    `${JSON.stringify({ ...result, notes: undefined }, null, 2)}\n`,
+  );
   writeFileSync(join(outPath, 'notes.md'), `${notes}\n`);
   console.log(JSON.stringify(result));
 }

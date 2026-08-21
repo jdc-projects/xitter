@@ -29,10 +29,10 @@ flowchart LR
 
 ## Spec areas
 
-| Area           | Covers                                                        |
-| -------------- | ------------------------------------------------------------- |
-| `architecture` | Technology, infrastructure, interfaces, technical flows       |
-| `product`      | Non-technical product information, rationale, strategy        |
-| `data`         | Schemas, pipelines, seeding, lifecycle                        |
+| Area           | Covers                                                                  |
+| -------------- | ----------------------------------------------------------------------- |
+| `architecture` | Technology, infrastructure, interfaces, technical flows                 |
+| `product`      | Non-technical product information, rationale, strategy                  |
+| `data`         | Schemas, pipelines, seeding, lifecycle                                  |
 | `operations`   | Environments, resets, backups, releases, access (links out to runbooks) |
-| `testing`      | Test strategy, suites, requirements, coverage gates           |
+| `testing`      | Test strategy, suites, requirements, coverage gates                     |

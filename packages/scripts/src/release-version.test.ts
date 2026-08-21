@@ -16,7 +16,12 @@ describe('parseSemVer', () => {
   it('parses major/minor/patch with optional v prefix and prerelease', () => {
     expect(parseSemVer('v1.2.3')).toEqual({ major: 1, minor: 2, patch: 3, prerelease: null });
     expect(parseSemVer('0.11.0')).toEqual({ major: 0, minor: 11, patch: 0, prerelease: null });
-    expect(parseSemVer('v1.0.0-rc.1')).toEqual({ major: 1, minor: 0, patch: 0, prerelease: 'rc.1' });
+    expect(parseSemVer('v1.0.0-rc.1')).toEqual({
+      major: 1,
+      minor: 0,
+      patch: 0,
+      prerelease: 'rc.1',
+    });
   });
 
   it('rejects non-semver tags', () => {
@@ -43,8 +48,13 @@ describe('parseConventionalCommit', () => {
 
   it('marks breaking via ! and via BREAKING CHANGE footer', () => {
     expect(parseConventionalCommit(commit('feat(api)!: rename field'))?.breaking).toBe(true);
-    expect(parseConventionalCommit(commit('fix: thing', 'BREAKING CHANGE: dropped v0 endpoints'))?.breaking).toBe(true);
-    expect(parseConventionalCommit(commit('fix: thing', 'some unrelated body'))?.breaking).toBe(false);
+    expect(
+      parseConventionalCommit(commit('fix: thing', 'BREAKING CHANGE: dropped v0 endpoints'))
+        ?.breaking,
+    ).toBe(true);
+    expect(parseConventionalCommit(commit('fix: thing', 'some unrelated body'))?.breaking).toBe(
+      false,
+    );
   });
 
   it('returns null for non-conventional subjects (merges, reverts-in-prose)', () => {
@@ -61,16 +71,24 @@ describe('deriveNextVersion', () => {
   it('feat bumps minor, fix/perf bump patch', () => {
     const prev = parseSemVer('v0.1.0')!;
     expect(formatSemVer(deriveNextVersion([commit('feat(x): new')], prev))).toBe('v0.2.0');
-    expect(formatSemVer(deriveNextVersion([commit('fix(x): bug'), commit('perf(x): faster')], prev))).toBe('v0.1.1');
+    expect(
+      formatSemVer(deriveNextVersion([commit('fix(x): bug'), commit('perf(x): faster')], prev)),
+    ).toBe('v0.1.1');
   });
 
   it('breaking bumps minor while major is 0, major after', () => {
-    expect(formatSemVer(deriveNextVersion([commit('feat(x)!: break')], parseSemVer('v0.4.2')!))).toBe('v0.5.0');
-    expect(formatSemVer(deriveNextVersion([commit('feat(x)!: break')], parseSemVer('v1.4.2')!))).toBe('v2.0.0');
+    expect(
+      formatSemVer(deriveNextVersion([commit('feat(x)!: break')], parseSemVer('v0.4.2')!)),
+    ).toBe('v0.5.0');
+    expect(
+      formatSemVer(deriveNextVersion([commit('feat(x)!: break')], parseSemVer('v1.4.2')!)),
+    ).toBe('v2.0.0');
   });
 
   it('non-user-facing commits alone still produce a patch release', () => {
-    expect(formatSemVer(deriveNextVersion([commit('chore: deps')], parseSemVer('v1.0.0')!))).toBe('v1.0.1');
+    expect(formatSemVer(deriveNextVersion([commit('chore: deps')], parseSemVer('v1.0.0')!))).toBe(
+      'v1.0.1',
+    );
     expect(formatSemVer(deriveNextVersion([], parseSemVer('v1.0.0')!))).toBe('v1.0.1');
   });
 
@@ -80,22 +98,20 @@ describe('deriveNextVersion', () => {
   });
 
   it('ignores non-conventional commits entirely', () => {
-    expect(formatSemVer(deriveNextVersion([commit('Merge pull request #12')], parseSemVer('v0.1.0')!))).toBe('v0.1.1');
+    expect(
+      formatSemVer(deriveNextVersion([commit('Merge pull request #12')], parseSemVer('v0.1.0')!)),
+    ).toBe('v0.1.1');
   });
 });
 
 describe('renderNotes', () => {
   it('groups breaking, features, fixes, internal, and links the compare range', () => {
-    const notes = renderNotes(
-      parseSemVer('v0.2.0')!,
-      'v0.1.0',
-      [
-        commit('feat(feed): realtime fanout', '', 'aaaa111'),
-        commit('fix(web): 404 branding', '', 'bbbb222'),
-        commit('chore(ci): bump actions', '', 'cccc333'),
-        commit('feat(api)!: drop legacy field', '', 'dddd444'),
-      ],
-    );
+    const notes = renderNotes(parseSemVer('v0.2.0')!, 'v0.1.0', [
+      commit('feat(feed): realtime fanout', '', 'aaaa111'),
+      commit('fix(web): 404 branding', '', 'bbbb222'),
+      commit('chore(ci): bump actions', '', 'cccc333'),
+      commit('feat(api)!: drop legacy field', '', 'dddd444'),
+    ]);
     expect(notes).toContain('## v0.2.0');
     expect(notes).toContain('v0.1.0...v0.2.0');
     expect(notes).toContain('### Breaking changes');
@@ -109,7 +125,9 @@ describe('renderNotes', () => {
   });
 
   it('omits empty sections and handles the initial release', () => {
-    const notes = renderNotes(parseSemVer('v0.1.0')!, null, [commit('feat: everything', '', 'aaaa111')]);
+    const notes = renderNotes(parseSemVer('v0.1.0')!, null, [
+      commit('feat: everything', '', 'aaaa111'),
+    ]);
     expect(notes).toContain('Initial release.');
     expect(notes).not.toContain('### Fixes');
     expect(notes).not.toContain('### Breaking changes');

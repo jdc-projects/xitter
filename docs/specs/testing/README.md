@@ -10,11 +10,11 @@ Desired end-state for how xitter is tested: strategy, suites, and quality gates.
 
 ## Suite overview
 
-| Suite              | Tool       | Scope                                     | Runs against                                       | When                                                     |
-| ------------------ | ---------- | ----------------------------------------- | -------------------------------------------------- | -------------------------------------------------------- |
-| Unit + integration | Vitest     | Workspaces (colocated `src/**/*.test.ts`) | Source, no build (integration uses testcontainers) | Every PR / `npm run test`                                |
-| Web UI             | Playwright | Frontend behaviour in isolation           | Prod-like web build (mocked APIs)                  | Every PR / `npm run test:web`                            |
-| E2E                | Playwright | Full user flows incl. auth, a11y          | Full stack through edge at `localhost:8080`        | Every PR / `npm run test:e2e`                            |
-| Load               | Artillery  | HTTP + browser flows                      | Prod-like locally or deployed envs                 | Pre-release / nightly smoke / `npm run test:load`        |
-| Mutation           | Stryker    | Per-workspace, turbo-scoped               | Source (vitest runner)                             | Scoped in PRs, full on merge to `dev` / `npm run mutate` |
+| Suite              | Tool       | Scope                                     | Runs against                                       | When                                                                  |
+| ------------------ | ---------- | ----------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------- |
+| Unit + integration | Vitest     | Workspaces (colocated `src/**/*.test.ts`) | Source, no build (integration uses testcontainers) | Every PR / `npm run test`                                             |
+| Web UI             | Playwright | Frontend behaviour in isolation           | Prod-like web build (mocked APIs)                  | Every PR / `npm run test:web`                                         |
+| E2E                | Playwright | Full user flows incl. auth, a11y          | Full stack through edge at `localhost:8080`        | Every PR / `npm run test:e2e`                                         |
+| Load               | Artillery  | HTTP + browser flows                      | Prod-like locally or deployed envs                 | Pre-release / nightly smoke / `npm run test:load`                     |
+| Mutation           | Stryker    | Per-workspace, turbo-scoped               | Source (vitest runner)                             | Scoped in PRs, full on merge to `dev` / `npm run mutate`              |
 | API smoke          | Bruno      | Key endpoints                             | Local or dev env                                   | Nightly + on demand / `npm run test:api` (`check:api` in `check:all`) |
