@@ -47,4 +47,3 @@ export async function requestJson(
   if (!res.ok) throw requestError(init.method ?? 'GET', path, res.status, text);
   return text ? JSON.parse(text) : null;
 }
-
