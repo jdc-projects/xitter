@@ -31,7 +31,11 @@ export default defineConfig({
     // Stack wrapper: starts `npm run start`, waits for services AND the
     // workers, applies the deterministic seed (idempotent), then idles -
     // the suite expects a seeded, lived-in environment (T13).
+    // Playwright runs the command from the CONFIG dir; npm-walk-up makes
+    // the web suite's command work from there, but tsx resolves its entry
+    // literally - anchor to the repo root.
     command: 'tsx packages/scripts/src/e2e-stack.ts',
+    cwd: '../../../',
     // Probe the web app port, NOT the edge (:8080) - traefik holds the edge
     // open whenever the docker stack is up, which would falsely signal ready
     // and skip starting the apps under test.
