@@ -16,6 +16,8 @@ import {
 interface Harness {
   metrics: ServiceMetrics;
   respond(url: string | undefined, statusCode: number): Promise<void>;
+  /** Drive only onResponse - simulates a reply before onRequest recorded a start. */
+  respondWithoutStart(url: string | undefined, statusCode: number): Promise<void>;
   metricsText(): Promise<string>;
 }
 
@@ -46,6 +48,10 @@ function harness(serviceName: string): Harness {
     async respond(url, statusCode) {
       const request: MetricRequest = url === undefined ? {} : { routeOptions: { url } };
       onRequest?.(request, {}, () => undefined);
+      onResponse?.(request, { statusCode }, () => undefined);
+    },
+    async respondWithoutStart(url, statusCode) {
+      const request: MetricRequest = url === undefined ? {} : { routeOptions: { url } };
       onResponse?.(request, { statusCode }, () => undefined);
     },
     async metricsText() {
@@ -89,13 +95,14 @@ describe('createServiceMetrics', () => {
 
     expect(text).toContain('xitter_http_request_duration_seconds_bucket');
     // Buckets are cumulative, so one observation lands in every bucket incl. +Inf.
-    expect(text).toMatch(/xitter_http_request_duration_seconds_bucket\{service="feed"[^}]*le="\+Inf"\} 1/);
+    // prom-client exports the le label first, before the metric's own labels.
+    expect(text).toMatch(/xitter_http_request_duration_seconds_bucket\{[^}]*le="\+Inf"[^}]*\} 1/);
   });
 
   it('ignores responses without a recorded start', async () => {
     const app = harness('media');
-    // No onRequest call - e.g. an early reply before the hook ran.
-    await app.respond('/api/media/v1/uploads', 200);
+    // An early reply with no onRequest start recorded must not be counted.
+    await app.respondWithoutStart('/api/media/v1/uploads', 200);
 
     const text = await app.metricsText();
 

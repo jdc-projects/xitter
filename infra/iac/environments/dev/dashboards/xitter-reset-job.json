@@ -1,0 +1,161 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "tags": ["xitter"],
+  "time": { "from": "now-24h", "to": "now" },
+  "timezone": "browser",
+  "title": "xitter · Reset job",
+  "uid": "xitter-reset-job",
+  "version": 1,
+  "panels": [
+    {
+      "datasource": { "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dateTimeAsIso",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 0 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "max(kube_job_status_completion_time{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"}) * 1000",
+          "legendFormat": "last completed run",
+          "refId": "A"
+        }
+      ],
+      "title": "Last completed run (UTC)",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 90000 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
+      "id": 2,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "max(kube_job_status_duration{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"})",
+          "legendFormat": "run duration",
+          "refId": "A"
+        }
+      ],
+      "title": "Last run duration",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 0 },
+      "id": 3,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "sum(kube_job_status_failed{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"} * on (job_name, namespace) (time() - kube_job_status_completion_time{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"} < 86400)) or vector(0)",
+          "legendFormat": "failed runs (24h)",
+          "refId": "A"
+        }
+      ],
+      "title": "Failed runs in the last 24h",
+      "type": "stat"
+    },
+    {
+      "datasource": { "type": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "fillOpacity": 20, "lineWidth": 1 } },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 6 },
+      "id": 4,
+      "options": {
+        "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "sum(kube_job_status_succeeded{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"})",
+          "legendFormat": "succeeded",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus" },
+          "expr": "sum(kube_job_status_failed{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"})",
+          "legendFormat": "failed",
+          "refId": "B"
+        }
+      ],
+      "title": "Reset job outcomes over time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 14 },
+      "id": 5,
+      "options": {
+        "content": "The nightly reset CronJob ships with #13 - until then these panels render empty by design. Phase durations and reseed row counts are added when the job exposes them.",
+        "mode": "markdown"
+      },
+      "title": "Note",
+      "type": "text"
+    }
+  ]
+}

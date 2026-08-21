@@ -16,6 +16,9 @@ locals {
   common_env = [
     { name = "XITTER_ENV", value = var.environment },
     { name = "OTEL_EXPORTER_OTLP_ENDPOINT", value = local.otel_endpoint },
+    # Sentry release = the deployed image tag (spec 06); the DSN itself is a
+    # per-workload secret (observability.tf) injected via secret_env below.
+    { name = "SENTRY_RELEASE", value = var.image_tag },
   ]
 
   worker_metrics_ports = {
@@ -125,6 +128,12 @@ module "api_service" {
     ],
     # Media S3 credentials (T5) - only the media service talks to RustFS.
     lookup(local.service_extra_secret_env, each.key, []),
+    # Sentry DSN (T11) - every API service reports errors (spec 06).
+    contains(local.sentry_wired, each.key) ? [{
+      name        = "SENTRY_DSN"
+      secret_name = kubernetes_secret.sentry_dsn[each.key].metadata[0].name
+      secret_key  = "SENTRY_DSN"
+    }] : [],
   )
 
   depends_on = [kubernetes_manifest.postgres, kubernetes_manifest.kafka]
@@ -190,6 +199,8 @@ module "worker" {
     # media-process reads RustFS with the same credentials as the service
     # (envFrom on Knative: secret keys are already named as the env vars).
     each.key == "media-process" ? [{ name = "XITTER_MEDIA_S3_ACCESS_KEY", secret_name = kubernetes_secret.media_s3.metadata[0].name, secret_key = "XITTER_MEDIA_S3_ACCESS_KEY" }] : [],
+    # Sentry DSN (T11) - workers report errors like the services (spec 06).
+    contains(local.sentry_wired, each.key) ? [{ name = "SENTRY_DSN", secret_name = kubernetes_secret.sentry_dsn[each.key].metadata[0].name, secret_key = "SENTRY_DSN" }] : [],
   )
 
   depends_on = [kubernetes_manifest.kafka_topics]
@@ -222,6 +233,16 @@ module "web" {
     # localhost Valkey and login cannot persist sessions.
     { name = "XITTER_VALKEY_URL", value = local.valkey_url },
   ])
+
+  # Sentry DSN (T11): used server-side via initSentry and relayed to the
+  # browser SDK through the layout's config script tag (spec 06).
+  secret_env = [
+    {
+      name        = "SENTRY_DSN"
+      secret_name = kubernetes_secret.sentry_dsn["web"].metadata[0].name
+      secret_key  = "SENTRY_DSN"
+    },
+  ]
 }
 
 # ---------------------------------------------------------------------------
@@ -276,6 +297,12 @@ module "cms" {
       name        = "PAYLOAD_SECRET"
       secret_name = kubernetes_secret.cms.metadata[0].name
       secret_key  = "PAYLOAD_SECRET"
+    },
+    # Sentry DSN (T11) - cms reports server-side errors (spec 06).
+    {
+      name        = "SENTRY_DSN"
+      secret_name = kubernetes_secret.sentry_dsn["cms"].metadata[0].name
+      secret_key  = "SENTRY_DSN"
     },
   ]
 
