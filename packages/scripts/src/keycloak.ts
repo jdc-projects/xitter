@@ -301,6 +301,27 @@ export async function initDemoRealm(options: DemoRealmOptions = {}): Promise<Dem
     await ensureAudienceMapper(kc, realm, uuid, worker.audiences);
   }
 
+  // Admin tooling client (T10): a machine principal for bruno/scripts that
+  // carries the admin role on its service account - its tokens satisfy the
+  // `@Internal({ admin: true })` gate on the services' internal admin
+  // endpoints. The panel browser cannot hold a secret, so it uses the
+  // admin realm instead; this client is the non-browser path.
+  await ensureRole(kc, realm, 'system-admin');
+  const adminClientUuid = await ensureClient(kc, realm, 'svc-admin', {
+    serviceAccount: true,
+    secret: envString('XITTER_ADMIN_CLIENT_SECRET', 'svc-admin-local-secret'),
+  });
+  await ensureAudienceMapper(kc, realm, adminClientUuid, [...SERVICE_CLIENTS]);
+  const adminServiceAccount = await kc.clients.getServiceAccountUser({
+    realm,
+    id: adminClientUuid,
+  });
+  if (adminServiceAccount?.id) {
+    await assignRole(kc, realm, adminServiceAccount.id, 'system-admin');
+  } else {
+    throw new Error('svc-admin client service account not found');
+  }
+
   const users: DemoUser[] = [];
   for (let i = 1; i <= userCount; i++) {
     users.push(await ensureUser(kc, realm, `${userPrefix}${i}`, password, 'demo-user'));
@@ -367,8 +388,17 @@ export async function initLocalAdminRealm(): Promise<void> {
 
   await ensureRealm(kc, realm);
   await ensureRole(kc, realm, 'app-admin');
+  // The admin panel's role (spec 07: system-admin gates the admin panel,
+  // app-admin the CMS; ADR 0006 lets both log in to admin/CMS).
+  await ensureRole(kc, realm, 'system-admin');
 
-  await ensureClient(kc, realm, 'admin-panel', { public: true, redirectUris: [`${edgeUrl()}/*`] });
+  await ensureClient(kc, realm, 'admin-panel', {
+    public: true,
+    // PKCE code flow from the panel: through the edge (e2e/prod-like) and
+    // directly against the vite dev server (local dev parity with the cms
+    // client's redirect list).
+    redirectUris: [`${edgeUrl()}/*`, `${localUrl('admin')}/*`],
+  });
   // Confidential client used twice: the CMS's OIDC browser login (code flow)
   // and machine access to drafts/promotion (client credentials). Direct-port
   // access is allowed too so the CMS works without the edge proxy.
@@ -387,9 +417,12 @@ export async function initLocalAdminRealm(): Promise<void> {
     throw new Error('cms client service account not found');
   }
 
-  await ensureUser(kc, realm, 'localadmin', 'LocalAdmin123!', 'app-admin');
-  // Role-less user: the local stand-in for "admin realm user without
-  // app-admin" - used to prove the CMS rejects them at login.
+  // localadmin is the local stand-in for the homelab operator: both admin
+  // roles, so the CMS (app-admin gate) and the admin panel pass them.
+  const localAdmin = await ensureUser(kc, realm, 'localadmin', 'LocalAdmin123!', 'app-admin');
+  await assignRole(kc, realm, localAdmin.userId, 'system-admin');
+  // Role-less user: the local stand-in for "admin realm user without an
+  // admin role" - used to prove the panel rejects them at login.
   await ensureUser(kc, realm, 'localuser', 'LocalUser123!');
 }
 

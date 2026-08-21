@@ -6,6 +6,8 @@ export interface ResetNoticeProps extends Omit<AlertProps, 'title' | 'children'>
   /** Where "read more" points to; defaults to the About page. */
   aboutHref?: string;
   compact?: boolean;
+  /** Set false on the About page itself - a read-more link to the current page is noise. */
+  link?: boolean;
 }
 
 /**
@@ -15,6 +17,7 @@ export interface ResetNoticeProps extends Omit<AlertProps, 'title' | 'children'>
 export function ResetNotice({
   aboutHref = '/about',
   compact = false,
+  link = true,
   ...alertProps
 }: ResetNoticeProps) {
   return (
@@ -30,15 +33,17 @@ export function ResetNotice({
           Everything you post here is wiped every night at 00:00 UTC. Do not enter personal or
           sensitive information - this is a public demo.
         </Text>
-        <Button
-          component="a"
-          href={aboutHref}
-          variant="subtle"
-          size={compact ? 'xs' : 'sm'}
-          w="fit-content"
-        >
-          Read more about how this works
-        </Button>
+        {link ? (
+          <Button
+            component="a"
+            href={aboutHref}
+            variant="subtle"
+            size={compact ? 'xs' : 'sm'}
+            w="fit-content"
+          >
+            Read more about how this works
+          </Button>
+        ) : null}
       </Stack>
     </Alert>
   );

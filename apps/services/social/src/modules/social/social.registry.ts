@@ -1,6 +1,9 @@
 import { OpenAPIRegistry, extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
 import {
+  adminFollowGraphSchema,
+  adminUserPageSchema,
+  adminUsersListQuerySchema,
   createProfileRequestSchema,
   errorSchema,
   profileLookupRequestSchema,
@@ -34,6 +37,13 @@ socialApi.registerComponent('securitySchemes', 'bearerAuth', {
   type: 'http',
   scheme: 'bearer',
   bearerFormat: 'JWT',
+});
+
+socialApi.registerComponent('securitySchemes', 'adminToken', {
+  type: 'http',
+  scheme: 'bearer',
+  description:
+    'Admin principal: an admin-realm user token (admin-panel client, ADMIN_ROLES realm role) or a svc-admin service token carrying an admin role.',
 });
 
 socialApi.registerComponent('securitySchemes', 'serviceToken', {
@@ -233,4 +243,33 @@ socialApi.registerPath({
   description:
     'Truncate profiles + graph (reset job); deterministic reseed runs via the seed script.',
   responses: { 200: jsonResponse('Acknowledged', z.object({ ok: z.boolean() })) },
+});
+
+// Internal admin endpoints (T10): read-only user inspection, admin-role-gated.
+socialApi.registerPath({
+  method: 'get',
+  path: '/internal/admin/users',
+  tags: ['admin'],
+  security: [{ adminToken: [] }, { serviceToken: [] }],
+  description:
+    'Moderation user list: profiles with follow-graph counts, username-ascending, optional username filter.',
+  request: { query: adminUsersListQuerySchema },
+  responses: {
+    200: jsonResponse('User page', adminUserPageSchema),
+    400: jsonResponse('Invalid cursor or filter', errorSchema),
+  },
+});
+
+socialApi.registerPath({
+  method: 'get',
+  path: '/internal/admin/users/{userId}/follow-graph',
+  tags: ['admin'],
+  security: [{ adminToken: [] }, { serviceToken: [] }],
+  description:
+    'One user, their graph counts, and the first pages of followers and following (inspection only - no mutation routes exist).',
+  request: { params: idParams },
+  responses: {
+    200: jsonResponse('Follow graph', adminFollowGraphSchema),
+    404: jsonResponse('User not found', errorSchema),
+  },
 });

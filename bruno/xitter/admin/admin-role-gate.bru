@@ -1,0 +1,42 @@
+meta {
+  name: Admin endpoints (role gate)
+  seq: 2
+}
+
+docs {
+  The negative half of the admin pair: a verified demo-user token is NOT an
+  admin principal, so the internal admin endpoints must refuse it with 403
+  (not 401 - the token is valid, the role is missing). This is the API-side
+  enforcement behind the panel's login gate.
+}
+
+script:pre-request {
+  const form =
+    "grant_type=password&client_id=web" +
+    "&username=" +
+    encodeURIComponent(bru.getEnvVar("username") || "demo1") +
+    "&password=" +
+    encodeURIComponent(bru.getEnvVar("password") || "DemoPass123!");
+  const res = await bru.sendRequest({
+    method: "POST",
+    url: `${bru.getEnvVar("keycloak")}/realms/${bru.getEnvVar("realm")}/protocol/openid-connect/token`,
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    data: form,
+  });
+  const json = typeof res.data === "string" ? JSON.parse(res.data) : res.data;
+  bru.setEnvVar("token", json.access_token);
+}
+
+get {
+  url: {{seedBase}}/api/posts/internal/admin/posts
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+assert {
+  res.status: 403
+}

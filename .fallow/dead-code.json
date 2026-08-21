@@ -8,6 +8,9 @@
     "completeness": "complete"
   },
   "unused_files": [
+    "apps/services/media/vitest.mutation.config.ts",
+    "apps/services/posts/vitest.mutation.config.ts",
+    "apps/services/social/vitest.mutation.config.ts",
     "bruno/xitter/scripts/login.js",
     "packages/scripts/src/rustfs.ts"
   ],
@@ -18,7 +21,6 @@
   "unused_types": [],
   "private_type_leaks": [],
   "unused_dependencies": [
-    "apps/admin/package.json:@refinedev/antd",
     "apps/cms/package.json:@payloadcms/live-preview-react",
     "apps/cms/package.json:sharp",
     "apps/services/feed/package.json:@fastify/helmet",
@@ -36,12 +38,15 @@
     "apps/services/search/package.json:@nestjs/terminus",
     "apps/services/search/package.json:@xitter/events",
     "apps/services/search/package.json:fastify",
+    "apps/services/search/package.json:pg",
     "apps/services/social/package.json:@fastify/helmet",
     "apps/services/social/package.json:@nestjs/terminus",
     "apps/services/social/package.json:fastify",
     "apps/web/package.json:dayjs",
     "apps/workers/fanout/package.json:prom-client",
     "apps/workers/media-process/package.json:kafkajs",
+    "apps/workers/search-index/package.json:@xitter/api-contracts",
+    "apps/workers/search-index/package.json:kafkajs",
     "packages/observability/package.json:@opentelemetry/instrumentation",
     "packages/observability/package.json:pino-pretty",
     "packages/scripts/package.json:@xitter/api-contracts",
@@ -98,10 +103,7 @@
     "packages/api-client/src/services.ts:MediaClient.internalGetAsset",
     "packages/api-client/src/services.ts:MediaClient.internalRecordVariants",
     "packages/api-client/src/services.ts:MediaClient.internalReportFailure",
-    "packages/api-client/src/services.ts:MediaClient.internalLookup",
-    "packages/service-kit/src/service-content.ts:ServiceContentSource.posts",
-    "packages/service-kit/src/service-content.ts:ServiceContentSource.profiles",
-    "packages/service-kit/src/service-content.ts:ServiceContentSource.blockedAuthorIds"
+    "packages/api-client/src/services.ts:MediaClient.internalLookup"
   ],
   "unused_store_members": [],
   "unprovided_injects": [],

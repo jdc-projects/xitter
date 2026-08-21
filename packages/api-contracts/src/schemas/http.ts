@@ -9,6 +9,7 @@ import {
   feedEntryInputSchema,
   hydratedFeedItemSchema,
   interactionKindSchema,
+  internalMediaAssetSchema,
   mediaAssetSchema,
   mediaIdSchema,
   mediaVariantCoreSchema,
@@ -16,6 +17,7 @@ import {
   postSchema,
   postViewerStateSchema,
   profileSchema,
+  profileWithCountsSchema,
   userIdSchema,
   usernameSchema,
 } from './domain.js';
@@ -384,4 +386,114 @@ export const resetStatusSchema = z
   .strict()
   .openapi('ResetStatus');
 
-export type ResetStatus = z.infer<typeof resetStatusSchema>;
+export type ResetStatus = z.infer<typeof resetStatusSchema>;// ---------------------------------------------------------------------------
+// Internal admin endpoints (admin-role-gated, spec 03 §admin). These live at
+// /api/{service}/internal/admin/... and are called by the admin panel (an
+// admin-realm user token) and machine tooling (the svc-admin service token).
+// ---------------------------------------------------------------------------
+
+export const ADMIN_LIMIT_MAX = 100;
+
+// Shared cursor-pagination shape for the admin list queries (the page size
+// ceiling is panel-scale by decree, spec 03 §admin).
+const adminPageQuery = {
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(ADMIN_LIMIT_MAX).default(20),
+};
+
+/** Posts list filters for the moderation view. `deleted` absent = all. */
+export const adminPostsListQuerySchema = z
+  .object({
+    authorId: userIdSchema.optional(),
+    text: z.string().min(1).max(POST_TEXT_MAX).optional(),
+    deleted: z.enum(['true', 'false']).optional(),
+    ...adminPageQuery,
+  })
+  .strict();
+
+export type AdminPostsListQuery = z.infer<typeof adminPostsListQuerySchema>;
+
+export const adminPostPageSchema = cursorPagination(postSchema).openapi('AdminPostPage');
+
+/** Moderation deletes may be soft (hide, restorable) or hard (row gone). */
+export const adminDeletePostQuerySchema = z
+  .object({
+    hard: z.enum(['true', 'false']).default('false'),
+  })
+  .strict();
+
+export type AdminDeletePostQuery = z.infer<typeof adminDeletePostQuerySchema>;
+
+/** Media list filters for the moderation view. */
+export const adminMediaListQuerySchema = z
+  .object({
+    ownerId: userIdSchema.optional(),
+    status: z.enum(['pending', 'ready', 'failed']).optional(),
+    ...adminPageQuery,
+  })
+  .strict();
+
+export type AdminMediaListQuery = z.infer<typeof adminMediaListQuerySchema>;
+
+export const adminMediaPageSchema =
+  cursorPagination(internalMediaAssetSchema).openapi('AdminMediaPage');
+
+/** Users list filters (social internal admin view). */
+export const adminUsersListQuerySchema = z
+  .object({
+    username: usernameSchema.optional(),
+    ...adminPageQuery,
+  })
+  .strict();
+
+export type AdminUsersListQuery = z.infer<typeof adminUsersListQuerySchema>;
+
+export const adminUserPageSchema =
+  cursorPagination(profileWithCountsSchema).openapi('AdminUserPage');
+
+/** Follow-graph view: the profile plus first pages of both edge directions. */
+export const adminFollowGraphSchema = z
+  .object({
+    profile: profileWithCountsSchema,
+    followers: z.array(profileSchema),
+    following: z.array(profileSchema),
+  })
+  .strict()
+  .openapi('AdminFollowGraph');
+
+export type AdminFollowGraph = z.infer<typeof adminFollowGraphSchema>;
+
+/** One audit entry: who did what to which object, when (posts/media DBs). */
+export const adminAuditEntrySchema = z
+  .object({
+    id: z.uuid(),
+    actorId: z.string().min(1),
+    actorName: z.string().min(1),
+    action: z.enum(['post.soft-delete', 'post.hard-delete', 'post.restore', 'media.delete']),
+    targetId: z.string().min(1),
+    detail: z.record(z.string(), z.unknown()).nullable(),
+    createdAt: z.iso.datetime(),
+  })
+  .openapi('AdminAuditEntry');
+
+export type AdminAuditEntry = z.infer<typeof adminAuditEntrySchema>;
+
+export const adminAuditPageSchema =
+  cursorPagination(adminAuditEntrySchema).openapi('AdminAuditPage');
+
+/** Per-service health as the admin dashboard renders it (Terminus details). */
+export const adminHealthSchema = z
+  .object({
+    service: z.string().min(1),
+    status: z.enum(['ok', 'error']),
+    uptimeSeconds: z.number().int().nonnegative(),
+    version: z.string().min(1),
+    checks: z.record(
+      z.string(),
+      z.object({ status: z.enum(['up', 'down']), message: z.string().optional() }),
+    ),
+  })
+  .strict()
+  .openapi('AdminHealth');
+
+export type AdminHealth = z.infer<typeof adminHealthSchema>;origin/dev

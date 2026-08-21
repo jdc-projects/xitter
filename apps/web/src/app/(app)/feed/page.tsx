@@ -1,6 +1,7 @@
-import { Alert, Container, Stack, Title } from '@mantine/core';
+import { Alert, Container, Group, Stack, Title } from '@mantine/core';
 import { requireSession } from '@/lib/auth/session';
 import { PostComposer } from '@/components/post-composer';
+import { RetryRefreshButton } from '@/components/retry-refresh-button';
 import { FeedView } from './feed-view';
 import { loadFeed } from './load-feed';
 
@@ -18,7 +19,10 @@ export default async function FeedPage() {
 
         {initial === null ? (
           <Alert color="red" data-testid="feed-error">
-            The feed could not load right now. Try again shortly.
+            <Group justify="space-between" gap="sm">
+              <span>The feed could not load right now. Try again shortly.</span>
+              <RetryRefreshButton />
+            </Group>
           </Alert>
         ) : (
           <FeedView

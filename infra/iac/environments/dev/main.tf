@@ -28,6 +28,10 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.0"
     }
+    sentry = {
+      source  = "jianyuan/sentry"
+      version = "~> 0.15"
+    }
   }
 }
 
@@ -42,6 +46,14 @@ provider "helm" {
 }
 
 provider "random" {}
+
+# Sentry (T11): per-app projects + DSNs, self-hosted at sentry.jd-chapman.dev.
+# The org-scoped token comes from the homelab's sentry remote state - the same
+# source iac/grafana uses for its own project.
+provider "sentry" {
+  token    = data.terraform_remote_state.sentry.outputs.sentry_auth_token
+  base_url = "https://${data.terraform_remote_state.sentry.outputs.sentry_domain}/api/"
+}
 
 # The ingress module provisions Keycloak clients where auth_mode is set, so a
 # real keycloak provider is required (credentials come from the homelab's

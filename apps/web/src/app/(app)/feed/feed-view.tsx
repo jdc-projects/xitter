@@ -20,12 +20,18 @@ export interface FeedViewProps {
  * pagination (Load more) + the ws-driven new-items banner (spec 03: the
  * notification is a refetch hint, never a data push).
  */
-export function FeedView({ initialEntries, initialCursor, viewerId }: FeedViewProps) {
+/**
+ * Feed pagination state machine: page 1 (server-rendered, reset on
+ * revalidation), cursor appends, and the retry's failed-mode memory. Kept
+ * out of FeedView so the component stays under the complexity budget.
+ */
+function useFeedPages(initialEntries: TimelineEntry[], initialCursor: string | null) {
   const [pages, setPages] = useState<TimelineEntry[][]>([initialEntries]);
   const [cursor, setCursor] = useState<string | null>(initialCursor);
-  const [newCount, setNewCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Which fetch mode the retry button should replay ('append' | 'refresh'). */
+  const [failedMode, setFailedMode] = useState<'append' | 'refresh' | null>(null);
 
   // Server revalidation (a delete) re-renders page 1 - sync the reset during
   // render (same pattern as the composer's draft clearing).
@@ -36,36 +42,60 @@ export function FeedView({ initialEntries, initialCursor, viewerId }: FeedViewPr
     setCursor(initialCursor);
   }
 
-  useFeedUpdates((count) => setNewCount((current) => current + count));
-
-  const entries = pages.flat();
-
   async function loadMore() {
     if (loading || !cursor) return;
     setLoading(true);
     setError(null);
+    setFailedMode(null);
     const page = await feedPageAction(cursor);
-    if (page.error) setError(page.error);
-    else {
+    if (page.error) {
+      setError(page.error);
+      setFailedMode('append');
+    } else {
       setPages((current) => [...current, page.entries]);
       setCursor(page.nextCursor);
     }
     setLoading(false);
   }
 
-  async function showNew() {
+  async function refresh() {
     if (loading) return;
     setLoading(true);
     setError(null);
+    setFailedMode(null);
     const page = await feedPageAction(); // page 1
-    if (page.error) setError(page.error);
-    else {
+    if (page.error) {
+      setError(page.error);
+      setFailedMode('refresh');
+    } else {
       setPages([page.entries]);
       setCursor(page.nextCursor);
-      setNewCount(0);
     }
     setLoading(false);
   }
+
+  return {
+    pages,
+    cursor,
+    loading,
+    error,
+    failedMode,
+    loadMore,
+    refresh,
+  };
+}
+
+export function FeedView({ initialEntries, initialCursor, viewerId }: FeedViewProps) {
+  const { pages, cursor, loading, error, failedMode, loadMore, refresh } = useFeedPages(
+    initialEntries,
+    initialCursor,
+  );
+  const [newCount, setNewCount] = useState(0);
+
+  // ws notify hint → count, refetched on Show (spec 03: never a data push).
+  useFeedUpdates((count) => setNewCount((current) => current + count));
+
+  const entries = pages.flat();
 
   return (
     <>
@@ -75,7 +105,11 @@ export function FeedView({ initialEntries, initialCursor, viewerId }: FeedViewPr
             <span>
               {newCount} new {newCount === 1 ? 'update' : 'updates'}
             </span>
-            <Button size="compact-xs" variant="light" onClick={() => void showNew()}>
+            <Button
+              size="compact-xs"
+              variant="light"
+              onClick={() => void (setNewCount(0), refresh())}
+            >
               Show
             </Button>
           </Group>
@@ -122,7 +156,21 @@ export function FeedView({ initialEntries, initialCursor, viewerId }: FeedViewPr
 
       {error ? (
         <Alert color="red" data-testid="feed-error">
-          {error}
+          <Group justify="space-between" gap="sm">
+            <span>{error}</span>
+            {/* Replay whichever fetch actually failed - the mode can differ
+              from the current cursor state (e.g. a failed Show-new while
+              scrolled). */}
+            <Button
+              size="compact-xs"
+              variant="light"
+              loading={loading}
+              onClick={() => void (failedMode === 'append' ? loadMore() : refresh())}
+              data-testid="feed-retry"
+            >
+              Try again
+            </Button>
+          </Group>
         </Alert>
       ) : null}
     </>

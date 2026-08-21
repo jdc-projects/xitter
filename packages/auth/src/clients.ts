@@ -16,7 +16,9 @@ export const SERVICE_CLIENTS = [
 /**
  * Machine clients outside the service set with the scoped audiences they may
  * call on `internal/*` endpoints: workers hit only the services they feed,
- * the reset job hits everything (docs/specs/architecture/03-service-interfaces.md).
+ * the reset job hits everything, the admin tooling client (bruno / scripts /
+ * future jobs) hits the five services that own moderation data
+ * (docs/specs/architecture/03-service-interfaces.md).
  */
 export const WORKER_CLIENTS: readonly { clientId: string; audiences: readonly string[] }[] = [
   { clientId: 'svc-worker-fanout', audiences: ['svc-social', 'svc-posts', 'svc-feed'] },
@@ -28,6 +30,7 @@ export const WORKER_CLIENTS: readonly { clientId: string; audiences: readonly st
     audiences: ['svc-search', 'svc-social'],
   },
   { clientId: 'svc-reset', audiences: [...SERVICE_CLIENTS] },
+  { clientId: 'svc-admin', audiences: [...SERVICE_CLIENTS] },
 ];
 
 /** Every client allowed to hold internal (M2M) tokens. */

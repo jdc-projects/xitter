@@ -3,6 +3,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { createEventProducer } from '@xitter/events';
 import { env } from '../../env.js';
 import { PrismaClient } from '../../generated/prisma/client.js';
+import { AdminController } from './admin.controller.js';
 import { InternalController } from './internal.controller.js';
 import { KafkaSocialEvents, SOCIAL_EVENTS, type SocialEvents } from './social-events.js';
 import { SocialController } from './social.controller.js';
@@ -44,7 +45,7 @@ export class SocialLifecycle implements OnApplicationShutdown {
 }
 
 @Module({
-  controllers: [SocialController, InternalController],
+  controllers: [SocialController, InternalController, AdminController],
   providers: [prismaProvider, eventsProvider, SocialRepository, SocialService, SocialLifecycle],
 })
 export class SocialModule {}

@@ -1,7 +1,10 @@
 import { OpenAPIRegistry, extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
 import {
-  createInteractionRequestSchema,
+  adminAuditPageSchema,
+  adminDeletePostQuerySchema,
+  adminPostPageSchema,
+  adminPostsListQuerySchema,
   createPostRequestSchema,
   errorSchema,
   interactionSchema,
@@ -11,7 +14,6 @@ import {
   postIdSchema,
   postSchema,
   userIdSchema,
-  viewerStateResponseSchema,
 } from '@xitter/api-contracts';
 
 extendZodWithOpenApi(z);
@@ -41,6 +43,13 @@ postsApi.registerComponent('securitySchemes', 'serviceToken', {
   type: 'http',
   scheme: 'bearer',
   description: 'Client-credentials service token (audience = svc-posts).',
+});
+
+postsApi.registerComponent('securitySchemes', 'adminToken', {
+  type: 'http',
+  scheme: 'bearer',
+  description:
+    'Admin principal: an admin-realm user token (admin-panel client, ADMIN_ROLES realm role) or a svc-admin service token carrying an admin role.',
 });
 
 postsApi.registerPath({
@@ -178,7 +187,7 @@ postsApi.registerPath({
     400: jsonResponse('Validation error (bad or over-cap postIds)', errorSchema),
   },
 });
-
+origin/dev
 // Internal endpoints: no version segment, service tokens only (spec 03).
 postsApi.registerPath({
   method: 'post',
@@ -201,4 +210,74 @@ postsApi.registerPath({
   description:
     'Truncate posts + interactions (reset job); deterministic reseed runs via the seed script.',
   responses: { 200: jsonResponse('Acknowledged', z.object({ ok: z.boolean() })) },
+});
+
+// Internal admin endpoints (T10): admin-role-gated. Two principals satisfy
+// the gate - an admin-realm user token (the panel's PKCE login) or a
+// demo-realm service token carrying an ADMIN_ROLES role (svc-admin).
+postsApi.registerPath({
+  method: 'get',
+  path: '/internal/admin/posts',
+  tags: ['admin'],
+  security: [{ adminToken: [] }, { serviceToken: [] }],
+  description:
+    'Moderation list. Filters: authorId, text (case-insensitive contains), deleted (`true`/`false`; absent = both, tombstones included).',
+  request: { query: adminPostsListQuerySchema },
+  responses: {
+    200: jsonResponse('Posts page (may include tombstones)', adminPostPageSchema),
+    400: jsonResponse('Invalid cursor or filter', errorSchema),
+  },
+});
+
+postsApi.registerPath({
+  method: 'get',
+  path: '/internal/admin/posts/{postId}',
+  tags: ['admin'],
+  security: [{ adminToken: [] }, { serviceToken: [] }],
+  description: 'Any post, deleted or not - moderation must see tombstones.',
+  request: { params: postParams },
+  responses: {
+    200: jsonResponse('Post', postSchema),
+    404: jsonResponse('Not found', errorSchema),
+  },
+});
+
+postsApi.registerPath({
+  method: 'delete',
+  path: '/internal/admin/posts/{postId}',
+  tags: ['admin'],
+  security: [{ adminToken: [] }, { serviceToken: [] }],
+  description:
+    'Moderation delete. Default soft (`?hard=false`): hidden everywhere, restorable. `?hard=true`: row + interactions gone. Both emit `posts.post.deleted` so feeds drop the post like an author delete. Audit-logged.',
+  request: { params: postParams, query: adminDeletePostQuerySchema },
+  responses: {
+    204: { description: 'Deleted' },
+    404: jsonResponse('Not found', errorSchema),
+  },
+});
+
+postsApi.registerPath({
+  method: 'post',
+  path: '/internal/admin/posts/{postId}/restore',
+  tags: ['admin'],
+  security: [{ adminToken: [] }, { serviceToken: [] }],
+  description:
+    'Restore a soft-deleted post. Visible again on every read path; `posts.post.created` re-emitted so feeds re-materialise at the original position.',
+  request: { params: postParams },
+  responses: {
+    200: jsonResponse('Restored post', postSchema),
+    404: jsonResponse('Not found (or not deleted)', errorSchema),
+  },
+});
+
+postsApi.registerPath({
+  method: 'get',
+  path: '/internal/admin/audit',
+  tags: ['admin'],
+  security: [{ adminToken: [] }, { serviceToken: [] }],
+  description: 'Moderation audit trail for posts data (who deleted/restored what, when).',
+  request: { query: pageQuery },
+  responses: {
+    200: jsonResponse('Audit page', adminAuditPageSchema),
+  },
 });

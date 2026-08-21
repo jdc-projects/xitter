@@ -1,5 +1,38 @@
 {
   "finding_counts": {
+    "apps/admin/src/components/layout.tsx": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/admin/src/data/data-provider.ts": {
+      "complexity_high": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "apps/admin/src/pages/callback.tsx": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "apps/admin/src/pages/health.tsx": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "apps/admin/src/pages/posts/show.tsx": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "apps/admin/src/pages/users/show.tsx": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
     "apps/cms/src/app/(auth)/auth/oidc/callback/route.ts": {
       "crap_critical": {
         "count": 1
@@ -21,7 +54,7 @@
       }
     },
     "apps/web/src/app/(app)/feed/feed-view.tsx": {
-      "crap_high": {
+      "crap_moderate": {
         "count": 1
       }
     },
@@ -119,7 +152,10 @@
       }
     },
     "packages/auth-nest/src/auth.guard.ts": {
-      "complexity_moderate": {
+      "complexity_high": {
+        "count": 1
+      },
+      "crap_high": {
         "count": 1
       },
       "crap_moderate": {
@@ -156,29 +192,17 @@
         "count": 1
       }
     },
-    "packages/scripts/src/corpus.ts": {
-      "complexity_moderate": {
-        "count": 2
-      },
+    "packages/scripts/src/keycloak.ts": {
       "crap_moderate": {
-        "count": 2
+        "count": 4
       }
     },
-    "packages/scripts/src/reset-job.ts": {
+    "packages/scripts/src/lib/wait.ts": {
       "crap_moderate": {
-        "count": 2
+        "count": 1
       }
     },
     "packages/scripts/src/seed.ts": {
-      "complexity_high": {
-        "count": 1
-      },
-      "complexity_moderate": {
-        "count": 1
-      },
-      "crap_high": {
-        "count": 1
-      },
       "crap_moderate": {
         "count": 1
       }
@@ -201,7 +225,5 @@
     }
   },
   "runtime_coverage_findings": [],
-  "target_keys": [
-    "packages/auth-nest/src/http.ts:high impact"
-  ]
+  "target_keys": []
 }

@@ -11,6 +11,9 @@ export function serviceEnvSchema(service: 'social' | 'posts' | 'media' | 'feed' 
     PORT: z.coerce.number().int().positive().default(localPort(service)),
     KEYCLOAK_BASE_URL: z.string().url().default(localUrl('keycloak')),
     DEMO_REALM: z.string().min(1).default('xitter-demo'),
+    // Admin realm (ADR 0006: primary homelab realm, xitter-local-admin
+    // locally): issuer for the admin-role-gated internal admin routes.
+    ADMIN_REALM: z.string().min(1).default('xitter-local-admin'),
     DATABASE_URL: z.string().min(1).default(serviceDbUrl(service)),
     KAFKA_BROKERS: z.string().min(1).default(kafkaBrokers()),
     VALKEY_URL: z.string().url().default(valkeyUrl()),

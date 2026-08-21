@@ -38,6 +38,18 @@ export async function runEventWorker(options: EventWorkerOptions): Promise<void>
   await metrics.started;
   logger.info(`metrics on :${options.metricsPort}`);
 
+  // Rebalance events for the Kafka dashboard (spec 06, #12): GROUP_JOIN fires
+  // on the initial assignment and on every subsequent group rebalance.
+  const rebalances = new client.Counter({
+    name: 'xitter_kafka_rebalances_total',
+    help: 'Consumer group (re)joins: initial assignment plus every rebalance',
+    labelNames: ['group'],
+    registers: [metrics.registry],
+  });
+  consumer.consumer.on(consumer.consumer.events.GROUP_JOIN, () => {
+    rebalances.inc({ group: options.groupId });
+  });
+
   const lag = startConsumerLagTracker(options, metrics.registry, logger);
 
   const runOptions: EventConsumerRunOptions = options.resumeFrom
