@@ -48,23 +48,35 @@ const internal = {
 const search = new SearchClient({ baseUrl: env.SEARCH_INTERNAL_URL, internal });
 const social = new SocialClient({ baseUrl: env.SOCIAL_INTERNAL_URL, internal });
 
-// Resume positions (`topic:partition` -> next offset to consume). Failure
-// here is non-fatal: worst case the worker replays (idempotent) or starts
-// from the log end (only when checkpoints and group offsets are both gone).
-const resumeFrom = await search
-  .internalGetCheckpoints(CONSUMER_GROUPS.searchIndexWorker)
-  .then((result) => {
-    const map = new Map<string, number>();
-    for (const position of result.positions) {
-      map.set(position.topicPartition, position.offset + 1);
+// Resume positions (`topic:partition` -> next offset to consume). Fetched
+// with patience: turbo starts services and workers in parallel, so the
+// search service may still be booting when we get here - an instant
+// give-up lands the worker on a fresh-group full replay (fromBeginning),
+// minutes of catch-up during which new posts sit unconsumed (observed as
+// search e2e convergence failures). Retry until the service answers or the
+// window closes; only then fall back to no resume positions.
+const CHECKPOINT_FETCH_WINDOW_MS = 90_000;
+async function fetchResumePositions(): Promise<Map<string, number>> {
+  const deadline = Date.now() + CHECKPOINT_FETCH_WINDOW_MS;
+  for (;;) {
+    try {
+      const result = await search.internalGetCheckpoints(CONSUMER_GROUPS.searchIndexWorker);
+      const map = new Map<string, number>();
+      for (const position of result.positions) {
+        map.set(position.topicPartition, position.offset + 1);
+      }
+      if (map.size > 0) logger.info(`resuming from ${map.size} checkpoint(s)`);
+      return map;
+    } catch (err) {
+      if (Date.now() > deadline) {
+        logger.warn({ err }, 'checkpoint fetch failed - starting without resume positions');
+        return new Map<string, number>();
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
     }
-    if (map.size > 0) logger.info(`resuming from ${map.size} checkpoint(s)`);
-    return map;
-  })
-  .catch((err: unknown) => {
-    logger.warn({ err }, 'checkpoint fetch failed - starting without resume positions');
-    return new Map<string, number>();
-  });
+  }
+}
+const resumeFrom = await fetchResumePositions();
 
 await runEventWorker({
   service: 'search-index-worker',
