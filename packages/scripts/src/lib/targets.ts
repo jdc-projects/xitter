@@ -23,11 +23,11 @@ export function keycloakBase(): string {
   return envString('XITTER_SEED_KEYCLOAK_URL', localUrl('keycloak'));
 }
 
-export function demoRealm(): string {
+function demoRealm(): string {
   return envString('XITTER_DEMO_REALM', 'xitter-demo');
 }
 
-export function tokenEndpoint(): string {
+function tokenEndpoint(): string {
   return `${keycloakBase()}/realms/${demoRealm()}/protocol/openid-connect/token`;
 }
 

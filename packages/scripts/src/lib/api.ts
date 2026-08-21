@@ -4,16 +4,19 @@
  * Bodies are JSON values (stringified here); binary uploads use raw fetch.
  */
 
-export class RequestError extends Error {
-  constructor(
-    readonly method: string,
-    readonly path: string,
-    readonly status: number,
-    body: string,
-  ) {
-    super(`${method} ${path} -> ${status}: ${body}`);
-    this.name = 'RequestError';
-  }
+interface RequestError extends Error {
+  method: string;
+  path: string;
+  status: number;
+}
+
+function requestError(method: string, path: string, status: number, body: string): RequestError {
+  const err = new Error(`${method} ${path} -> ${status}: ${body}`) as RequestError;
+  err.name = 'RequestError';
+  err.method = method;
+  err.path = path;
+  err.status = status;
+  return err;
 }
 
 export interface JsonRequest {
@@ -41,6 +44,7 @@ export async function requestJson(
     body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
   });
   const text = await res.text();
-  if (!res.ok) throw new RequestError(init.method ?? 'GET', path, res.status, text);
+  if (!res.ok) throw requestError(init.method ?? 'GET', path, res.status, text);
   return text ? JSON.parse(text) : null;
 }
+

@@ -10,8 +10,8 @@ import { faker } from '@faker-js/faker';
 /** Recorded in docs/specs/data/02-seeding.md as the determinism contract. */
 export const SEED_CONSTANT = 42;
 
-export const DEFAULT_USER_COUNT = 10;
-export const DEFAULT_POSTS_PER_USER = 12;
+const DEFAULT_USER_COUNT = 10;
+const DEFAULT_POSTS_PER_USER = 12;
 /** ~30% of the ordered user pairs (each user follows ~3 of the other 9). */
 export const DEFAULT_FOLLOW_DENSITY = 0.3;
 
@@ -242,7 +242,8 @@ interface SlotPlan {
   standalone: PostSlot[];
   threads: ThreadPlan[];
   imageKeys: Set<string>;
-}const keyOf = (ref: PostRef): string => `${ref.authorIndex}/${ref.ordinal}`;
+}
+const keyOf = (ref: PostRef): string => `${ref.authorIndex}/${ref.ordinal}`;
 
 function planSlots(userCount: number, postsPerUser: number): SlotPlan {
   // taken[author][ordinal] marks a slot consumed by images/roots/replies.
@@ -337,9 +338,7 @@ function buildInteractions(userCount: number, posts: CorpusPost[]): CorpusIntera
   const standalone = posts.filter((p) => p.replyTo === null);
 
   // Reposts (must surface as repost feed entries): standalone posts only.
-  const repostTargets = faker.helpers
-    .arrayElements(standalone, REPOST_COUNT)
-    .sort(byAuthorOrdinal);
+  const repostTargets = faker.helpers.arrayElements(standalone, REPOST_COUNT).sort(byAuthorOrdinal);
   for (const post of repostTargets) {
     claim(pickActor(post.authorIndex), post, 'repost');
   }
@@ -386,8 +385,7 @@ function buildInteractions(userCount: number, posts: CorpusPost[]): CorpusIntera
   return out;
 }
 
-const kindOrder = (kind: InteractionKind): number =>
-  ({ like: 0, bookmark: 1, repost: 2 })[kind];
+const kindOrder = (kind: InteractionKind): number => ({ like: 0, bookmark: 1, repost: 2 })[kind];
 
 const byAuthorOrdinal = (a: PostRef, b: PostRef): number =>
   a.authorIndex - b.authorIndex || a.ordinal - b.ordinal;

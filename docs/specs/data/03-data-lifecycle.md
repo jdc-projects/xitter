@@ -77,9 +77,9 @@ Notes:
 
 ### Observability of the reset
 
-- The reset job is instrumented like any service: per-step duration, success/failure, counts wiped.
-- Reset completion (and reseed status) is surfaced in admin system health and reflected in user-facing copy expectations ([../product/02-features.md](../product/02-features.md)).
-- A failed step halts the run, alerts, and leaves the system in a safe (empty or partially wiped) state rather than silently continuing.
+- The reset job is instrumented like any service: per-step duration, success/failure, counts wiped (`xitter_reset_*` metrics — see [../operations/02-data-reset.md](../operations/02-data-reset.md)).
+- Reset completion (and reseed status) is recorded to Valkey after every run and served by the feed service at `GET /api/feed/internal/reset-status`, surfaced in admin system health and reflected in user-facing copy expectations ([../product/02-features.md](../product/02-features.md)).
+- A failed step halts the run, alerts, and leaves the system in a safe (empty or partially wiped) state rather than silently continuing. Workers are always resumed, even on failure.
 
 ## Retention
 

@@ -41,8 +41,7 @@ const hasProfile = (present: boolean): Route => ({
   respond: (url) => (present ? { id: 'x', username: url.pathname.split('/').at(-1) } : null),
 });
 
-const userPosts =
-  (counts: number[]): Route =>
+const userPosts = (counts: number[]): Route =>
   ({
     method: 'GET',
     test: /\/api\/posts\/v1\/users\/sub-\d+\/posts$/,
@@ -119,9 +118,9 @@ describe('runSeed probe', () => {
       userPosts(counts),
     ]);
 
-    await expect(
-      runSeed({ corpus, users, fetchImpl, log: () => undefined }),
-    ).rejects.toThrow(/partial corpus - run a reset first/);
+    await expect(runSeed({ corpus, users, fetchImpl, log: () => undefined })).rejects.toThrow(
+      /partial corpus - run a reset first/,
+    );
   });
 
   it('reports corpus volumes for logging/verification', () => {

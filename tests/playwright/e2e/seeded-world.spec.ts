@@ -21,19 +21,16 @@ const CONVERGENCE = { timeout: 90_000 };
 /** Demo-user token via the password grant (seeder-only client path). */
 async function apiToken(username: string): Promise<string> {
   const keycloak = process.env.XITTER_SEED_KEYCLOAK_URL ?? localUrl('keycloak');
-  const res = await fetch(
-    `${keycloak}/realms/xitter-demo/protocol/openid-connect/token`,
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'password',
-        client_id: 'web',
-        username,
-        password: PASSWORD,
-      }),
-    },
-  );
+  const res = await fetch(`${keycloak}/realms/xitter-demo/protocol/openid-connect/token`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'password',
+      client_id: 'web',
+      username,
+      password: PASSWORD,
+    }),
+  });
   expect(res.ok, `login ${username}: ${res.status}`).toBeTruthy();
   return ((await res.json()) as { access_token: string }).access_token;
 }
@@ -80,9 +77,16 @@ test('conversation threads from the corpus are reply-connected', async ({ reques
   const token = await apiToken('demo1');
   // Any thread root: a standalone post that the corpus gave replies to.
   const root = corpus.posts.find(
-    (p) => p.replyTo === null && corpus.posts.some((r) => r.replyTo && r.replyTo.authorIndex === p.authorIndex && r.replyTo.ordinal === p.ordinal),
+    (p) =>
+      p.replyTo === null &&
+      corpus.posts.some(
+        (r) =>
+          r.replyTo && r.replyTo.authorIndex === p.authorIndex && r.replyTo.ordinal === p.ordinal,
+      ),
   )!;
-  const byName = await request.get(`/api/social/v1/profiles/username/${corpus.users[root.authorIndex]!.username}`);
+  const byName = await request.get(
+    `/api/social/v1/profiles/username/${corpus.users[root.authorIndex]!.username}`,
+  );
   const profile = (await byName.json()) as { id: string };
   const posts = await request.get(`/api/posts/v1/users/${profile.id}/posts?limit=50`, {
     headers: { authorization: `Bearer ${token}` },
@@ -96,16 +100,15 @@ test('conversation threads from the corpus are reply-connected', async ({ reques
   });
   const replyPage = (await replies.json()) as { items: unknown[] };
   const expected = corpus.posts.filter(
-    (r) => r.replyTo && r.replyTo.authorIndex === root.authorIndex && r.replyTo.ordinal === root.ordinal,
+    (r) =>
+      r.replyTo && r.replyTo.authorIndex === root.authorIndex && r.replyTo.ordinal === root.ordinal,
   ).length;
   expect(replyPage.items.length).toBeGreaterThanOrEqual(expected);
 });
 
 test('seeded likes and bookmarks are queryable', async ({ request }) => {
   // demo2's bookmarks: at least the corpus bookmarks it created.
-  const bookmarkers = corpus.interactions.filter(
-    (i) => i.kind === 'bookmark' && i.userIndex === 1,
-  );
+  const bookmarkers = corpus.interactions.filter((i) => i.kind === 'bookmark' && i.userIndex === 1);
   const token = await apiToken('demo2');
   await expect
     .poll(async () => {

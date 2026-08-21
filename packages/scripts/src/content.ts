@@ -133,7 +133,12 @@ async function upsertCollection(
       );
       updated += 1;
     } else {
-      await api(`/cms/api/${collection}?draft=false`, { method: 'POST', body: data }, token, fetchImpl);
+      await api(
+        `/cms/api/${collection}?draft=false`,
+        { method: 'POST', body: data },
+        token,
+        fetchImpl,
+      );
       created += 1;
     }
   }
@@ -270,7 +275,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       break;
     case 'reset':
       await resetCmsContent().then((r) =>
-        console.log(`cms content: ${r.deleted} deleted, ${r.created} created, ${r.updated} updated`),
+        console.log(
+          `cms content: ${r.deleted} deleted, ${r.created} created, ${r.updated} updated`,
+        ),
       );
       break;
     default:

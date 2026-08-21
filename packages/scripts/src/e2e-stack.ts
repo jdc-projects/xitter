@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+// fallow-ignore-file unused-file -- Playwright e2e webServer command (config), not imported
 /**
  * Playwright e2e webServer command: `npm run start` + deterministic seed.
  *
@@ -10,7 +11,7 @@
  */
 import { spawn } from 'node:child_process';
 import { localPort } from '@xitter/config';
-import { seedWhenStackReady, stackReady } from './lib/seed-stack.js';
+import { seedWhenStackReady } from './lib/seed-stack.js';
 
 const WEB_PORT = localPort('web');
 

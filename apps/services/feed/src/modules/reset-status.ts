@@ -1,4 +1,4 @@
-import { createLogger } from '@xitter/observability';
+import { createLogger, connectValkey } from '@xitter/observability';
 import { RESET_STATUS_KEY } from '@xitter/config';
 import { resetStatusSchema, type ResetStatus } from '@xitter/api-contracts';
 
@@ -56,26 +56,9 @@ export class ValkeyResetStatus implements ResetStatusReader {
 
   private async connect(): Promise<RedisReader> {
     if (this.connection) return this.connection;
-    if (this.connectOverride) {
-      this.connection = await this.connectOverride();
-      return this.connection;
-    }
-    const { Redis } = await import('ioredis');
-    const connection = new Redis(this.url, {
-      maxRetriesPerRequest: 1,
-      enableOfflineQueue: false,
-      connectTimeout: 2_000,
-    });
-    try {
-      await new Promise<void>((resolve, reject) => {
-        connection.once('ready', () => resolve());
-        connection.once('error', (err) => reject(err));
-      });
-    } catch (err) {
-      connection.disconnect();
-      throw err;
-    }
-    this.connection = connection;
+    this.connection = this.connectOverride
+      ? await this.connectOverride()
+      : await connectValkey({ url: this.url });
     return this.connection;
   }
 }

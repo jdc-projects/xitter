@@ -17,12 +17,12 @@ const WORKER_PORTS = [
 ];
 
 /** True when every xitter app port answers (services + workers). */
-export async function stackReady(): Promise<boolean> {
+async function stackReady(): Promise<boolean> {
   const checks = [...SERVICE_PORTS, ...WORKER_PORTS].map((port) => checkPort(port));
   return (await Promise.all(checks)).every(Boolean);
 }
 
-export async function waitForStack(timeoutMs: number): Promise<boolean> {
+async function waitForStack(timeoutMs: number): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (!(await stackReady())) {
     if (Date.now() > deadline) return false;

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// fallow-ignore-file unused-file -- CronJob container entrypoint (image CMD), not imported
 /**
  * CronJob container entry (`node dist/reset-job.js [--seed]`): the shared
  * reset flow (reset-flow.ts) with the in-cluster worker control - workers

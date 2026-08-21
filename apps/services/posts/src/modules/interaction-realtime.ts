@@ -1,5 +1,5 @@
 import { feedUpdatesChannel } from '@xitter/api-contracts';
-import { createLogger } from '@xitter/observability';
+import { connectValkey, createLogger } from '@xitter/observability';
 
 const logger = createLogger({ service: 'posts' });
 
@@ -65,26 +65,8 @@ export class ValkeyInteractionRealtime implements InteractionRealtime {
   private async connect(): Promise<RedisPublisher> {
     if (this.connection) return this.connection;
     // Same posture as the rate limiter: never block an interaction on a
-    // degraded Valkey - await readiness once so the first ping (a real
-    // user's) doesn't race the lazy-connect handshake.
-    const { Redis } = await import('ioredis');
-    const connection = new Redis(this.url, {
-      maxRetriesPerRequest: 1,
-      enableOfflineQueue: false,
-      connectTimeout: 2_000,
-    });
-    try {
-      await new Promise<void>((resolve, reject) => {
-        connection.once('ready', () => resolve());
-        connection.once('error', (err) => reject(err));
-      });
-    } catch (err) {
-      // Never leak the retrying client on a failed handshake; concurrent
-      // notifyAuthor() calls also race here, and the loser must not accumulate.
-      connection.disconnect();
-      throw err;
-    }
-    this.connection = connection;
+    // degraded Valkey - handshake + leak-safety live in connectValkey.
+    this.connection = await connectValkey({ url: this.url });
     return this.connection;
   }
 }

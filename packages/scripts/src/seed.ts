@@ -94,13 +94,23 @@ export async function runSeed(options: SeedOptions = {}): Promise<SeedReport> {
   if (probe === 'seeded') {
     ctx.log('seed: corpus already present - verifying derived stores');
     await verifySeeded(ctx);
-    return { fingerprint: corpus.fingerprint, counts: corpus.counts, skipped: true, created: emptyCreated() };
+    return {
+      fingerprint: corpus.fingerprint,
+      counts: corpus.counts,
+      skipped: true,
+      created: emptyCreated(),
+    };
   }
   if (probe === 'seeded-plus') {
     // Corpus fully present plus unrelated content (e.g. e2e posts created on
     // top): nothing to add, exact-count verification is not meaningful.
     ctx.log('seed: corpus already present (extra content detected) - skipping');
-    return { fingerprint: corpus.fingerprint, counts: corpus.counts, skipped: true, created: emptyCreated() };
+    return {
+      fingerprint: corpus.fingerprint,
+      counts: corpus.counts,
+      skipped: true,
+      created: emptyCreated(),
+    };
   }
   if (probe === 'partial') {
     throw new Error(
@@ -220,7 +230,10 @@ async function probeState(ctx: SeedContext): Promise<ProbeState> {
   for (const [index, user] of ctx.corpus.users.entries()) {
     const userId = ctx.ids.get(user.username)!;
     const [profileRes, postsRes] = await Promise.allSettled([
-      ctx.call('social', { method: 'GET', path: `/api/social/v1/profiles/username/${user.username}` }),
+      ctx.call('social', {
+        method: 'GET',
+        path: `/api/social/v1/profiles/username/${user.username}`,
+      }),
       ctx.call('posts', {
         method: 'GET',
         path: `/api/posts/v1/users/${userId}/posts?limit=${POSTS_PAGE_LIMIT}`,
@@ -234,7 +247,8 @@ async function probeState(ctx: SeedContext): Promise<ProbeState> {
   }
   if (matching === ctx.corpus.users.length) return 'seeded';
   if (matching + atLeast === ctx.corpus.users.length) return 'seeded-plus';
-  if (matching > 0 || atLeast > 0 || (empty > 0 && empty < ctx.corpus.users.length)) return 'partial';
+  if (matching > 0 || atLeast > 0 || (empty > 0 && empty < ctx.corpus.users.length))
+    return 'partial';
   return 'fresh';
 }
 
@@ -309,7 +323,8 @@ export async function verifySeeded(ctx: SeedContext): Promise<void> {
         })
         .then(countPageItems);
       const expectedPosts = ctx.corpus.posts.filter((p) => p.authorIndex === index).length;
-      if (posts !== expectedPosts) problems.push(`${user.username}: ${posts}/${expectedPosts} posts`);
+      if (posts !== expectedPosts)
+        problems.push(`${user.username}: ${posts}/${expectedPosts} posts`);
 
       const following = await ctx
         .call('social', {

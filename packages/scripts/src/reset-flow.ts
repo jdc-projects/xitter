@@ -223,9 +223,9 @@ export async function runResetFlow(options: ResetFlowOptions = {}): Promise<Rese
       steps,
     };
     // Status is best-effort: a Valkey outage must not mask the reset outcome.
-    await stores.writeStatus(status).catch((err) =>
-      log(`reset: status write failed: ${String(err)}`),
-    );
+    await stores
+      .writeStatus(status)
+      .catch((err) => log(`reset: status write failed: ${String(err)}`));
     const registry = buildRegistry(status);
     const metrics = (await registry.metrics()).split('\n').filter(Boolean);
     for (const line of metrics) log(line);
@@ -376,11 +376,8 @@ async function defaultStores(): Promise<StoreControls> {
     },
 
     async wipeBucket() {
-      const {
-        ListObjectsV2Command,
-        DeleteObjectsCommand,
-        S3Client,
-      } = await import('@aws-sdk/client-s3');
+      const { ListObjectsV2Command, DeleteObjectsCommand, S3Client } =
+        await import('@aws-sdk/client-s3');
       const s3 = new S3Client({
         endpoint: process.env.XITTER_MEDIA_S3_ENDPOINT ?? localUrl('rustfs'),
         region: 'us-east-1',
@@ -395,9 +392,7 @@ async function defaultStores(): Promise<StoreControls> {
       const bucket = process.env.XITTER_MEDIA_S3_BUCKET ?? 'xitter-media';
       let deleted = 0;
       for (;;) {
-        const listed = await s3.send(
-          new ListObjectsV2Command({ Bucket: bucket, MaxKeys: 1000 }),
-        );
+        const listed = await s3.send(new ListObjectsV2Command({ Bucket: bucket, MaxKeys: 1000 }));
         const keys = (listed.Contents ?? []).map((o) => ({ Key: o.Key! })).filter((k) => k.Key);
         if (keys.length === 0) break;
         await s3.send(new DeleteObjectsCommand({ Bucket: bucket, Delete: { Objects: keys } }));
@@ -507,7 +502,11 @@ async function openValkey(url: string): Promise<ValkeyLike> {
  * local reset we warn so the operator stops the stack first.
  */
 export function localWorkerControl(log: (message: string) => void): WorkerControl {
-  const ports = [localPort('fanoutMetrics'), localPort('mediaProcessMetrics'), localPort('searchIndexMetrics')];
+  const ports = [
+    localPort('fanoutMetrics'),
+    localPort('mediaProcessMetrics'),
+    localPort('searchIndexMetrics'),
+  ];
   return {
     async quiesce() {
       const alive = await Promise.all(ports.map((port) => portAnswers(port)));

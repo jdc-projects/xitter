@@ -115,11 +115,11 @@ resource "kubernetes_cron_job_v1" "reset" {
   }
 
   spec {
-    schedule                   = var.reset_schedule
-    concurrency_policy         = "Forbid"
-    starting_deadline_seconds  = 600
+    schedule                      = var.reset_schedule
+    concurrency_policy            = "Forbid"
+    starting_deadline_seconds     = 600
     successful_jobs_history_limit = 3
-    failed_jobs_history_limit  = 3
+    failed_jobs_history_limit     = 3
 
     job_template {
       metadata {
@@ -142,8 +142,8 @@ resource "kubernetes_cron_job_v1" "reset" {
             restart_policy       = "Never"
 
             container {
-              name            = local.reset_name
-              image           = "${var.image_registry}/xitter-reset:${var.image_tag}"
+              name              = local.reset_name
+              image             = "${var.image_registry}/xitter-reset:${var.image_tag}"
               image_pull_policy = "Always"
 
               args = var.reset_reseed ? ["--seed"] : []
