@@ -170,10 +170,9 @@ test('search indexes the corpus (derived store, not written directly)', async ({
   const needle = words[0]!;
   await expect
     .poll(async () => {
-      const res = await page.request.get(
-        `/api/search/v1/search/posts?q=${encodeURIComponent(needle)}`,
-        { headers: { authorization: `Bearer ${token}` } },
-      );
+      const res = await page.request.get(`/api/search/v1/posts?q=${encodeURIComponent(needle)}`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
       if (!res.ok()) return -1; // transient edge rate-limit / restart: poll on
       const body = (await res.json().catch(() => null)) as { items?: unknown[] } | null;
       return body?.items?.length ?? -1;

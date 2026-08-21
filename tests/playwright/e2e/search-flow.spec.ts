@@ -87,9 +87,11 @@ test('search finds a composed post and deletes remove it from results', async ({
   // Poll the search API (no page navigation - a mid-navigation locator
   // count reads undefined) until the index tombstone lands, then assert
   // on one settled page render. The API is user-gated: poll with the
-  // session's bearer so res.ok() reflects the index, not a 401.
+  // session's bearer so res.ok() reflects the index, not a 401. (Public
+  // search path is /v1/posts under the service prefix - api-contracts'
+  // canonical route.)
   const token = await accessToken(page);
-  const searchApi = `/api/search/v1/search/posts?q=${encodeURIComponent('quokka')}`;
+  const searchApi = `/api/search/v1/posts?q=${encodeURIComponent('quokka')}`;
   const deadline = Date.now() + 60_000;
   for (;;) {
     const res = await page.request.get(searchApi, {
