@@ -5,8 +5,9 @@ import { loginViaKeycloak } from './helpers';
 /**
  * Accessibility smoke checks (WCAG 2.2 AA via axe-core). Each new page adds a
  * case here as it lands - see docs/specs/testing for the full strategy.
+ * `/no-such-page` covers the shared 404 surface (unauthenticated render).
  */
-const pages = ['/', '/about', '/login'];
+const pages = ['/', '/about', '/login', '/no-such-page'];
 
 for (const path of pages) {
   test(`${path} has no serious axe violations`, async ({ page }) => {

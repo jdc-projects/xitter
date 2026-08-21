@@ -9,7 +9,7 @@ sequenceDiagram
     participant V as Visitor
     participant W as Web
     V->>W: GET /
-    W-->>V: Landing page: CMS intro, reset notice, links to About + login
+    W-->>V: Landing page: public header (home / About / Log in), CMS intro, reset notice, login CTA
     V->>W: GET /about
     W-->>V: About page: what/why/how, reset schedule, demo credentials, FAQ, PII warning
     Note over V,W: Any attempt to open /feed, /post, /profile/* etc. redirects to login

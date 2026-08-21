@@ -48,8 +48,13 @@
         "count": 1
       }
     },
+    "apps/web/src/app/(app)/bookmarks/page.tsx": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
     "apps/web/src/app/(app)/feed/feed-view.tsx": {
-      "crap_high": {
+      "crap_moderate": {
         "count": 1
       }
     },
@@ -60,6 +65,9 @@
     },
     "apps/web/src/app/(app)/post/[postId]/page.tsx": {
       "crap_critical": {
+        "count": 1
+      },
+      "crap_high": {
         "count": 1
       }
     },
@@ -72,7 +80,7 @@
       }
     },
     "apps/web/src/app/(app)/profile/[username]/load-profile.ts": {
-      "crap_high": {
+      "crap_critical": {
         "count": 1
       }
     },
@@ -83,6 +91,11 @@
     },
     "apps/web/src/app/(app)/profile/[username]/profile-actions.tsx": {
       "crap_high": {
+        "count": 1
+      }
+    },
+    "apps/web/src/app/(app)/search/page.tsx": {
+      "crap_moderate": {
         "count": 1
       }
     },
@@ -114,7 +127,7 @@
     },
     "apps/web/src/lib/posts/actions.ts": {
       "crap_critical": {
-        "count": 1
+        "count": 2
       },
       "crap_high": {
         "count": 2
@@ -124,7 +137,7 @@
       }
     },
     "apps/workers/fanout/src/handlers.ts": {
-      "complexity_moderate": {
+      "complexity_high": {
         "count": 1
       }
     },
@@ -155,6 +168,11 @@
       }
     },
     "packages/auth/src/verify.ts": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "packages/events/src/consumer.ts": {
       "crap_moderate": {
         "count": 1
       }
@@ -195,11 +213,17 @@
       },
       "crap_high": {
         "count": 2
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "packages/ui/src/components/PostCard.tsx": {
+      "crap_moderate": {
+        "count": 1
       }
     }
   },
   "runtime_coverage_findings": [],
-  "target_keys": [
-    "apps/web/src/lib/posts/actions.ts:untested risk"
-  ]
+  "target_keys": []
 }
