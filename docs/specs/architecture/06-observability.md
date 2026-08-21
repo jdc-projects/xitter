@@ -35,7 +35,7 @@ Observability is part of development work, not an afterthought: dashboards and a
 ## Sentry
 
 | Aspect          | Rule                                                                                          |
-| --------------- | ---------------------------------------------------------------------------------------------- |
+| --------------- | --------------------------------------------------------------------------------------------- |
 | DSNs            | Per app/service/worker, injected as a secret at deploy (see [07-security.md](07-security.md)) |
 | Release tagging | Sentry release = the deployed image tag (`sha-<short>` from CI, or the promoted release tag)  |
 | Environment     | `XITTER_ENV` maps directly to the Sentry environment (`dev`, `prod`)                          |
@@ -45,12 +45,12 @@ Projects are provisioned by Tofu (`jianyuan/sentry` provider, one project per wo
 
 ## Dashboards (required)
 
-| Dashboard                  | Contents                                                                    |
-| -------------------------- | --------------------------------------------------------------------------- |
-| API overview (per service) | R/E/D, p50/p95/p99 per route; upstream dependency time is trace-derived (Tempo link), not a Prometheus panel |
-| Feed freshness / lag       | Newest-entry age, fanout worker backlog → time-to-feed SLO                  |
-| Kafka consumer lag         | Lag per consumer group × topic, rebalance events                            |
-| Reset job                  | Nightly reset success/failure, phase durations, reseed row counts           |
+| Dashboard                  | Contents                                                                                                                 |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| API overview (per service) | R/E/D, p50/p95/p99 per route; upstream dependency time is trace-derived (Tempo link), not a Prometheus panel             |
+| Feed freshness / lag       | Newest-entry age, fanout worker backlog → time-to-feed SLO                                                               |
+| Kafka consumer lag         | Lag per consumer group × topic, rebalance events                                                                         |
+| Reset job                  | Nightly reset success/failure, phase durations, reseed row counts                                                        |
 | Web vitals                 | CWV (LCP/INP/CLS) per page, JS error rate — served by Sentry's Web Vitals views from the browser SDK, not Grafana panels |
 
 Dashboards are `GrafanaDashboard` CRs in the environment root module (the grafana-operator files them into a folder named after the namespace). The reset-job dashboard renders empty until #13 ships the CronJob.

@@ -24,11 +24,9 @@ interface Harness {
 function harness(serviceName: string): Harness {
   const metrics = createServiceMetrics(serviceName);
   let onRequest:
-    | ((req: MetricRequest, reply: unknown, next: (err?: Error) => void) => void)
-    | undefined;
+    ((req: MetricRequest, reply: unknown, next: (err?: Error) => void) => void) | undefined;
   let onResponse:
-    | ((req: MetricRequest, reply: MetricReply, next: (err?: Error) => void) => void)
-    | undefined;
+    ((req: MetricRequest, reply: MetricReply, next: (err?: Error) => void) => void) | undefined;
 
   const instance: FastifyMetricsInstance = {
     addHook(name, hook) {

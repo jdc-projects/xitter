@@ -71,7 +71,11 @@ export function createServiceMetrics(serviceName: string): ServiceMetrics {
   // the request object.
   const startedAt = new WeakMap<object, bigint>();
 
-  const plugin = (instance: FastifyMetricsInstance, _opts: unknown, done: (err?: Error) => void) => {
+  const plugin = (
+    instance: FastifyMetricsInstance,
+    _opts: unknown,
+    done: (err?: Error) => void,
+  ) => {
     instance.addHook('onRequest', (request, _reply, next) => {
       startedAt.set(request, process.hrtime.bigint());
       next();
