@@ -99,10 +99,6 @@ export function HealthPage() {
               href={`http://localhost:${workerMetricsPorts[worker.name]}/metrics`}
               target="_blank"
               rel="noreferrer"
-              // antd's default link blue (#1677ff) fails WCAG AA on the
-              // default background at this size; the darker anchor colour
-              // clears 4.5:1.
-              style={{ color: '#0958d9' }}
             >
               {worker.name} metrics
             </Typography.Link>
