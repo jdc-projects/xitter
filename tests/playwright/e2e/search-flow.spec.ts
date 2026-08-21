@@ -17,8 +17,8 @@ async function login(page: Page, username: string) {
 }
 
 /** Reload-poll the results page until the snippet appears (index lag). */
-async function searchUntilFound(page: Page, q: string, snippet: string) {
-  const deadline = Date.now() + 30_000;
+async function searchUntilFound(page: Page, q: string, snippet: string, timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs;
   for (;;) {
     await page.goto(`/search?q=${encodeURIComponent(q)}`);
     const results = page.getByTestId('search-results');
@@ -62,6 +62,10 @@ async function accessToken(page: Page): Promise<string> {
 }
 
 test('search finds a composed post and deletes remove it from results', async ({ page }) => {
+  // Indexing converges in tens of seconds on a fully-loaded local stack
+  // (all services + workers + parallel specs); the two convergence windows
+  // below need more than the default 60s test budget.
+  test.setTimeout(150_000);
   await login(page, 'demo2');
   const needle = `t8 searchable quokka ${crypto.randomUUID()}`;
 
@@ -70,7 +74,7 @@ test('search finds a composed post and deletes remove it from results', async ({
   await page.getByTestId('composer-textarea').fill(needle);
   await page.getByTestId('composer-submit').click();
 
-  await searchUntilFound(page, 'quokka', needle);
+  await searchUntilFound(page, 'quokka', needle, 60_000);
   const item = page.locator('[data-testid^="post-item-"]', { hasText: needle }).first();
   await expect(item).toBeVisible();
   const postId = (await item.getAttribute('data-testid'))!.replace('post-item-', '');
@@ -86,7 +90,7 @@ test('search finds a composed post and deletes remove it from results', async ({
   // session's bearer so res.ok() reflects the index, not a 401.
   const token = await accessToken(page);
   const searchApi = `/api/search/v1/search/posts?q=${encodeURIComponent('quokka')}`;
-  const deadline = Date.now() + 45_000;
+  const deadline = Date.now() + 60_000;
   for (;;) {
     const res = await page.request.get(searchApi, {
       headers: { authorization: `Bearer ${token}` },

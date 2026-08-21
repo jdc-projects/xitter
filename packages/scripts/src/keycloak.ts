@@ -76,6 +76,7 @@ async function ensureRealm(kc: KcAdminClient, realm: string): Promise<void> {
   const realms = await withRetry(() => kc.realms.find(), 'list realms');
   if (realms.some((r) => r.realm === realm)) {
     console.log(`realm ${realm}: exists`);
+    await syncBruteForcePosture(kc, realm);
     return;
   }
   await withRetry(
@@ -92,15 +93,45 @@ async function ensureRealm(kc: KcAdminClient, realm: string): Promise<void> {
         ssoSessionIdleTimeout: 3600,
         ssoSessionMaxLifespan: 43200,
         // T14 login defence: keep brute-force protection on when the reset
-        // recreates the realm (timings stay at Keycloak's own defaults,
-        // which is what keycloak.tf spells out). The fine-grained fields
-        // are rejected by the realm-create endpoint - only the switch is
-        // settable here; the next tofu apply restores the full config.
+        // recreates the realm. The fine-grained fields are rejected by the
+        // realm-create endpoint - only the switch is settable here; the
+        // tuning is applied right after (and by tofu in-cluster).
         bruteForceProtected: true,
       }),
     `create realm ${realm}`,
   );
   console.log(`realm ${realm}: created`);
+  await syncBruteForcePosture(kc, realm);
+}
+
+/**
+ * Keep the brute-force posture identical to keycloak.tf (the reset-rebuilt
+ * realm and the tofu-managed one must not drift). The create endpoint
+ * rejects these fields, so they land via an update. quickLoginCheck is
+ * disabled: Keycloak 25.0.3+ flags any two logins for the same user inside
+ * the window as an attack signal and temporarily disables the account even
+ * when both attempts succeed with correct credentials - the e2e suite's
+ * parallel demo logins and the seeder's password grants tripped it
+ * constantly. Failure-count lockouts (30) stay active.
+ */
+async function syncBruteForcePosture(kc: KcAdminClient, realm: string): Promise<void> {
+  await withRetry(
+    () =>
+      kc.realms.update(
+        { realm },
+        {
+          bruteForceProtected: true,
+          permanentLockout: false,
+          maxLoginFailures: 30,
+          waitIncrementSeconds: 60,
+          quickLoginCheckMilliSeconds: 0,
+          minimumQuickLoginWaitSeconds: 60,
+          maxFailureWaitSeconds: 900,
+          failureResetTimeSeconds: 43200,
+        },
+      ),
+    `sync brute-force posture ${realm}`,
+  );
 }
 
 interface EnsureClientOptions {

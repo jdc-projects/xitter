@@ -66,6 +66,7 @@ test('every demo account owns its corpus posts', async ({ request }) => {
 });
 
 test('feeds hold the fanout-derived corpus entries', async ({ page }) => {
+  test.setTimeout(120_000); // CONVERGENCE is 90s - the default 60s cut it off
   await login(page, 'demo1');
   // page.request shares cookies, not the app's bearer token - mint one.
   const token = await apiToken('demo1');
@@ -121,6 +122,7 @@ test('conversation threads from the corpus are reply-connected', async ({ reques
 });
 
 test('seeded likes and bookmarks are queryable', async ({ request }) => {
+  test.setTimeout(120_000); // CONVERGENCE is 90s - the default 60s cut it off
   // demo2's bookmarks: at least the corpus bookmarks it created.
   const bookmarkers = corpus.interactions.filter((i) => i.kind === 'bookmark' && i.userIndex === 1);
   const token = await apiToken('demo2');
@@ -158,6 +160,7 @@ test('seeded images render through the media pipeline', async ({ request }) => {
 });
 
 test('search indexes the corpus (derived store, not written directly)', async ({ page }) => {
+  test.setTimeout(120_000); // CONVERGENCE is 90s - the default 60s cut it off
   await login(page, 'demo1');
   const token = await apiToken('demo1');
   // Pick a distinctive corpus word (long words are rare enough).
