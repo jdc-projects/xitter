@@ -43,10 +43,15 @@
                 }
               }
             },
-            "required": ["code", "message"]
+            "required": [
+              "code",
+              "message"
+            ]
           }
         },
-        "required": ["error"]
+        "required": [
+          "error"
+        ]
       },
       "CreatePostRequest": {
         "type": "object",
@@ -73,7 +78,9 @@
             "example": "b1c2d3e4-0000-4000-8000-000000000002"
           }
         },
-        "required": ["text"],
+        "required": [
+          "text"
+        ],
         "additionalProperties": false
       },
       "CreateInteractionRequest": {
@@ -81,10 +88,16 @@
         "properties": {
           "kind": {
             "type": "string",
-            "enum": ["like", "bookmark", "repost"]
+            "enum": [
+              "like",
+              "bookmark",
+              "repost"
+            ]
           }
         },
-        "required": ["kind"],
+        "required": [
+          "kind"
+        ],
         "additionalProperties": false
       },
       "ViewerStateResponse": {
@@ -110,11 +123,18 @@
                   "type": "boolean"
                 }
               },
-              "required": ["postId", "liked", "reposted", "bookmarked"]
+              "required": [
+                "postId",
+                "liked",
+                "reposted",
+                "bookmarked"
+              ]
             }
           }
         },
-        "required": ["items"],
+        "required": [
+          "items"
+        ],
         "additionalProperties": false
       }
     },
@@ -123,7 +143,9 @@
   "paths": {
     "/posts": {
       "post": {
-        "tags": ["posts"],
+        "tags": [
+          "posts"
+        ],
         "security": [
           {
             "bearerAuth": []
@@ -178,7 +200,11 @@
                           },
                           "status": {
                             "type": "string",
-                            "enum": ["pending", "ready", "failed"]
+                            "enum": [
+                              "pending",
+                              "ready",
+                              "failed"
+                            ]
                           },
                           "variants": {
                             "type": "array",
@@ -187,7 +213,10 @@
                               "properties": {
                                 "kind": {
                                   "type": "string",
-                                  "enum": ["original", "thumb"]
+                                  "enum": [
+                                    "original",
+                                    "thumb"
+                                  ]
                                 },
                                 "objectKey": {
                                   "type": "string",
@@ -235,7 +264,13 @@
                             "format": "date-time"
                           }
                         },
-                        "required": ["id", "ownerId", "status", "variants", "createdAt"]
+                        "required": [
+                          "id",
+                          "ownerId",
+                          "status",
+                          "variants",
+                          "createdAt"
+                        ]
                       }
                     },
                     "replyToId": {
@@ -266,7 +301,11 @@
                           "minimum": 0
                         }
                       },
-                      "required": ["replies", "likes", "reposts"]
+                      "required": [
+                        "replies",
+                        "likes",
+                        "reposts"
+                      ]
                     },
                     "createdAt": {
                       "type": "string",
@@ -328,7 +367,9 @@
     },
     "/posts/{postId}": {
       "delete": {
-        "tags": ["posts"],
+        "tags": [
+          "posts"
+        ],
         "security": [
           {
             "bearerAuth": []
@@ -374,7 +415,9 @@
         }
       },
       "get": {
-        "tags": ["posts"],
+        "tags": [
+          "posts"
+        ],
         "security": [
           {
             "bearerAuth": []
@@ -431,7 +474,11 @@
                           },
                           "status": {
                             "type": "string",
-                            "enum": ["pending", "ready", "failed"]
+                            "enum": [
+                              "pending",
+                              "ready",
+                              "failed"
+                            ]
                           },
                           "variants": {
                             "type": "array",
@@ -440,7 +487,10 @@
                               "properties": {
                                 "kind": {
                                   "type": "string",
-                                  "enum": ["original", "thumb"]
+                                  "enum": [
+                                    "original",
+                                    "thumb"
+                                  ]
                                 },
                                 "objectKey": {
                                   "type": "string",
@@ -488,7 +538,13 @@
                             "format": "date-time"
                           }
                         },
-                        "required": ["id", "ownerId", "status", "variants", "createdAt"]
+                        "required": [
+                          "id",
+                          "ownerId",
+                          "status",
+                          "variants",
+                          "createdAt"
+                        ]
                       }
                     },
                     "replyToId": {
@@ -519,7 +575,11 @@
                           "minimum": 0
                         }
                       },
-                      "required": ["replies", "likes", "reposts"]
+                      "required": [
+                        "replies",
+                        "likes",
+                        "reposts"
+                      ]
                     },
                     "createdAt": {
                       "type": "string",
@@ -561,7 +621,9 @@
     },
     "/users/{userId}/posts": {
       "get": {
-        "tags": ["posts"],
+        "tags": [
+          "posts"
+        ],
         "security": [
           {
             "bearerAuth": []
@@ -644,7 +706,11 @@
                                 },
                                 "status": {
                                   "type": "string",
-                                  "enum": ["pending", "ready", "failed"]
+                                  "enum": [
+                                    "pending",
+                                    "ready",
+                                    "failed"
+                                  ]
                                 },
                                 "variants": {
                                   "type": "array",
@@ -653,7 +719,10 @@
                                     "properties": {
                                       "kind": {
                                         "type": "string",
-                                        "enum": ["original", "thumb"]
+                                        "enum": [
+                                          "original",
+                                          "thumb"
+                                        ]
                                       },
                                       "objectKey": {
                                         "type": "string",
@@ -701,7 +770,13 @@
                                   "format": "date-time"
                                 }
                               },
-                              "required": ["id", "ownerId", "status", "variants", "createdAt"]
+                              "required": [
+                                "id",
+                                "ownerId",
+                                "status",
+                                "variants",
+                                "createdAt"
+                              ]
                             }
                           },
                           "replyToId": {
@@ -732,7 +807,11 @@
                                 "minimum": 0
                               }
                             },
-                            "required": ["replies", "likes", "reposts"]
+                            "required": [
+                              "replies",
+                              "likes",
+                              "reposts"
+                            ]
                           },
                           "createdAt": {
                             "type": "string",
@@ -762,7 +841,10 @@
                       "nullable": true
                     }
                   },
-                  "required": ["items", "nextCursor"]
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ]
                 }
               }
             }
@@ -772,7 +854,9 @@
     },
     "/posts/{postId}/replies": {
       "get": {
-        "tags": ["posts"],
+        "tags": [
+          "posts"
+        ],
         "security": [
           {
             "bearerAuth": []
@@ -855,7 +939,11 @@
                                 },
                                 "status": {
                                   "type": "string",
-                                  "enum": ["pending", "ready", "failed"]
+                                  "enum": [
+                                    "pending",
+                                    "ready",
+                                    "failed"
+                                  ]
                                 },
                                 "variants": {
                                   "type": "array",
@@ -864,7 +952,10 @@
                                     "properties": {
                                       "kind": {
                                         "type": "string",
-                                        "enum": ["original", "thumb"]
+                                        "enum": [
+                                          "original",
+                                          "thumb"
+                                        ]
                                       },
                                       "objectKey": {
                                         "type": "string",
@@ -912,7 +1003,13 @@
                                   "format": "date-time"
                                 }
                               },
-                              "required": ["id", "ownerId", "status", "variants", "createdAt"]
+                              "required": [
+                                "id",
+                                "ownerId",
+                                "status",
+                                "variants",
+                                "createdAt"
+                              ]
                             }
                           },
                           "replyToId": {
@@ -943,7 +1040,11 @@
                                 "minimum": 0
                               }
                             },
-                            "required": ["replies", "likes", "reposts"]
+                            "required": [
+                              "replies",
+                              "likes",
+                              "reposts"
+                            ]
                           },
                           "createdAt": {
                             "type": "string",
@@ -973,7 +1074,10 @@
                       "nullable": true
                     }
                   },
-                  "required": ["items", "nextCursor"]
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ]
                 }
               }
             }
@@ -993,7 +1097,9 @@
     },
     "/posts/{postId}/interactions": {
       "post": {
-        "tags": ["interactions"],
+        "tags": [
+          "interactions"
+        ],
         "security": [
           {
             "bearerAuth": []
@@ -1031,7 +1137,11 @@
                   "properties": {
                     "kind": {
                       "type": "string",
-                      "enum": ["like", "bookmark", "repost"]
+                      "enum": [
+                        "like",
+                        "bookmark",
+                        "repost"
+                      ]
                     },
                     "postId": {
                       "type": "string",
@@ -1048,7 +1158,12 @@
                       "format": "date-time"
                     }
                   },
-                  "required": ["kind", "postId", "userId", "createdAt"]
+                  "required": [
+                    "kind",
+                    "postId",
+                    "userId",
+                    "createdAt"
+                  ]
                 }
               }
             }
@@ -1088,7 +1203,9 @@
     },
     "/posts/{postId}/interactions/{kind}": {
       "delete": {
-        "tags": ["interactions"],
+        "tags": [
+          "interactions"
+        ],
         "security": [
           {
             "bearerAuth": []
@@ -1109,7 +1226,11 @@
           {
             "schema": {
               "type": "string",
-              "enum": ["like", "bookmark", "repost"]
+              "enum": [
+                "like",
+                "bookmark",
+                "repost"
+              ]
             },
             "required": true,
             "name": "kind",
@@ -1145,7 +1266,9 @@
     },
     "/bookmarks": {
       "get": {
-        "tags": ["interactions"],
+        "tags": [
+          "interactions"
+        ],
         "security": [
           {
             "bearerAuth": []
@@ -1218,7 +1341,11 @@
                                 },
                                 "status": {
                                   "type": "string",
-                                  "enum": ["pending", "ready", "failed"]
+                                  "enum": [
+                                    "pending",
+                                    "ready",
+                                    "failed"
+                                  ]
                                 },
                                 "variants": {
                                   "type": "array",
@@ -1227,7 +1354,10 @@
                                     "properties": {
                                       "kind": {
                                         "type": "string",
-                                        "enum": ["original", "thumb"]
+                                        "enum": [
+                                          "original",
+                                          "thumb"
+                                        ]
                                       },
                                       "objectKey": {
                                         "type": "string",
@@ -1275,7 +1405,13 @@
                                   "format": "date-time"
                                 }
                               },
-                              "required": ["id", "ownerId", "status", "variants", "createdAt"]
+                              "required": [
+                                "id",
+                                "ownerId",
+                                "status",
+                                "variants",
+                                "createdAt"
+                              ]
                             }
                           },
                           "replyToId": {
@@ -1306,7 +1442,11 @@
                                 "minimum": 0
                               }
                             },
-                            "required": ["replies", "likes", "reposts"]
+                            "required": [
+                              "replies",
+                              "likes",
+                              "reposts"
+                            ]
                           },
                           "createdAt": {
                             "type": "string",
@@ -1336,7 +1476,10 @@
                       "nullable": true
                     }
                   },
-                  "required": ["items", "nextCursor"]
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ]
                 }
               }
             }
@@ -1346,7 +1489,9 @@
     },
     "/viewer-state": {
       "get": {
-        "tags": ["interactions"],
+        "tags": [
+          "interactions"
+        ],
         "security": [
           {
             "bearerAuth": []
@@ -1390,7 +1535,9 @@
     },
     "/internal/posts/lookup": {
       "post": {
-        "tags": ["internal"],
+        "tags": [
+          "internal"
+        ],
         "security": [
           {
             "serviceToken": []
@@ -1414,7 +1561,9 @@
                     "maxItems": 100
                   }
                 },
-                "required": ["postIds"],
+                "required": [
+                  "postIds"
+                ],
                 "additionalProperties": false
               }
             }
@@ -1464,7 +1613,11 @@
                                 },
                                 "status": {
                                   "type": "string",
-                                  "enum": ["pending", "ready", "failed"]
+                                  "enum": [
+                                    "pending",
+                                    "ready",
+                                    "failed"
+                                  ]
                                 },
                                 "variants": {
                                   "type": "array",
@@ -1473,7 +1626,10 @@
                                     "properties": {
                                       "kind": {
                                         "type": "string",
-                                        "enum": ["original", "thumb"]
+                                        "enum": [
+                                          "original",
+                                          "thumb"
+                                        ]
                                       },
                                       "objectKey": {
                                         "type": "string",
@@ -1521,7 +1677,13 @@
                                   "format": "date-time"
                                 }
                               },
-                              "required": ["id", "ownerId", "status", "variants", "createdAt"]
+                              "required": [
+                                "id",
+                                "ownerId",
+                                "status",
+                                "variants",
+                                "createdAt"
+                              ]
                             }
                           },
                           "replyToId": {
@@ -1552,7 +1714,11 @@
                                 "minimum": 0
                               }
                             },
-                            "required": ["replies", "likes", "reposts"]
+                            "required": [
+                              "replies",
+                              "likes",
+                              "reposts"
+                            ]
                           },
                           "createdAt": {
                             "type": "string",
@@ -1578,7 +1744,9 @@
                       }
                     }
                   },
-                  "required": ["items"],
+                  "required": [
+                    "items"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -1589,7 +1757,9 @@
     },
     "/internal/reseed": {
       "post": {
-        "tags": ["internal"],
+        "tags": [
+          "internal"
+        ],
         "security": [
           {
             "serviceToken": []
@@ -1608,7 +1778,9 @@
                       "type": "boolean"
                     }
                   },
-                  "required": ["ok"]
+                  "required": [
+                    "ok"
+                  ]
                 }
               }
             }

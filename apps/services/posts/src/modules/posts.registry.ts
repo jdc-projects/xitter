@@ -5,6 +5,7 @@ import {
   createPostRequestSchema,
   errorSchema,
   interactionSchema,
+  pageQuerySchema,
   postLookupRequestSchema,
   postLookupResponseSchema,
   postIdSchema,
@@ -17,11 +18,6 @@ extendZodWithOpenApi(z);
 
 const postParams = z.object({ postId: postIdSchema });
 const userParams = z.object({ userId: userIdSchema });
-
-const pageQuery = z.object({
-  cursor: z.string().min(1).optional(),
-  limit: z.coerce.number().int().min(1).max(50).default(20),
-});
 
 const postPage = z.object({
   items: z.array(postSchema),
@@ -97,7 +93,7 @@ postsApi.registerPath({
   tags: ['posts'],
   security: [{ bearerAuth: [] }],
   description: "Author's visible posts, newest first (replies included).",
-  request: { params: userParams, query: pageQuery },
+  request: { params: userParams, query: pageQuerySchema },
   responses: {
     200: jsonResponse('Post page', postPage),
   },
@@ -109,7 +105,7 @@ postsApi.registerPath({
   tags: ['posts'],
   security: [{ bearerAuth: [] }],
   description: 'Replies to a post in chronological (oldest first) order.',
-  request: { params: postParams, query: pageQuery },
+  request: { params: postParams, query: pageQuerySchema },
   responses: {
     200: jsonResponse('Replies page', postPage),
     404: jsonResponse('Parent not found (or deleted)', errorSchema),
@@ -159,7 +155,7 @@ postsApi.registerPath({
   security: [{ bearerAuth: [] }],
   description:
     "The caller's bookmarked posts, newest bookmark first. Private: only the caller's own bookmarks are ever listed. Soft-deleted posts drop out.",
-  request: { query: pageQuery },
+  request: { query: pageQuerySchema },
   responses: {
     200: jsonResponse('Bookmarks page', postPage),
   },

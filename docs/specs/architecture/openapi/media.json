@@ -36,7 +36,10 @@
             "format": "uri"
           }
         },
-        "required": ["mediaId", "uploadUrl"]
+        "required": [
+          "mediaId",
+          "uploadUrl"
+        ]
       },
       "Error": {
         "type": "object",
@@ -57,10 +60,15 @@
                 }
               }
             },
-            "required": ["code", "message"]
+            "required": [
+              "code",
+              "message"
+            ]
           }
         },
-        "required": ["error"]
+        "required": [
+          "error"
+        ]
       },
       "CreateMediaUploadRequest": {
         "type": "object",
@@ -75,7 +83,10 @@
             "exclusiveMinimum": true
           }
         },
-        "required": ["mimeType", "bytes"],
+        "required": [
+          "mimeType",
+          "bytes"
+        ],
         "additionalProperties": false
       },
       "RecordVariantsRequest": {
@@ -88,7 +99,10 @@
               "properties": {
                 "kind": {
                   "type": "string",
-                  "enum": ["original", "thumb"]
+                  "enum": [
+                    "original",
+                    "thumb"
+                  ]
                 },
                 "objectKey": {
                   "type": "string",
@@ -116,11 +130,20 @@
                   "exclusiveMinimum": true
                 }
               },
-              "required": ["kind", "objectKey", "mimeType", "bytes", "width", "height"]
+              "required": [
+                "kind",
+                "objectKey",
+                "mimeType",
+                "bytes",
+                "width",
+                "height"
+              ]
             }
           }
         },
-        "required": ["variants"],
+        "required": [
+          "variants"
+        ],
         "additionalProperties": false
       }
     },
@@ -129,7 +152,9 @@
   "paths": {
     "/uploads": {
       "post": {
-        "tags": ["media"],
+        "tags": [
+          "media"
+        ],
         "security": [
           {
             "bearerAuth": []
@@ -191,7 +216,9 @@
     },
     "/media/{mediaId}/complete": {
       "post": {
-        "tags": ["media"],
+        "tags": [
+          "media"
+        ],
         "security": [
           {
             "bearerAuth": []
@@ -228,7 +255,11 @@
                     },
                     "status": {
                       "type": "string",
-                      "enum": ["pending", "ready", "failed"]
+                      "enum": [
+                        "pending",
+                        "ready",
+                        "failed"
+                      ]
                     },
                     "variants": {
                       "type": "array",
@@ -237,7 +268,10 @@
                         "properties": {
                           "kind": {
                             "type": "string",
-                            "enum": ["original", "thumb"]
+                            "enum": [
+                              "original",
+                              "thumb"
+                            ]
                           },
                           "objectKey": {
                             "type": "string",
@@ -285,7 +319,13 @@
                       "format": "date-time"
                     }
                   },
-                  "required": ["id", "ownerId", "status", "variants", "createdAt"]
+                  "required": [
+                    "id",
+                    "ownerId",
+                    "status",
+                    "variants",
+                    "createdAt"
+                  ]
                 }
               }
             }
@@ -315,7 +355,9 @@
     },
     "/media/{mediaId}": {
       "get": {
-        "tags": ["media"],
+        "tags": [
+          "media"
+        ],
         "security": [
           {
             "bearerAuth": []
@@ -352,7 +394,11 @@
                     },
                     "status": {
                       "type": "string",
-                      "enum": ["pending", "ready", "failed"]
+                      "enum": [
+                        "pending",
+                        "ready",
+                        "failed"
+                      ]
                     },
                     "variants": {
                       "type": "array",
@@ -361,7 +407,10 @@
                         "properties": {
                           "kind": {
                             "type": "string",
-                            "enum": ["original", "thumb"]
+                            "enum": [
+                              "original",
+                              "thumb"
+                            ]
                           },
                           "objectKey": {
                             "type": "string",
@@ -409,7 +458,13 @@
                       "format": "date-time"
                     }
                   },
-                  "required": ["id", "ownerId", "status", "variants", "createdAt"]
+                  "required": [
+                    "id",
+                    "ownerId",
+                    "status",
+                    "variants",
+                    "createdAt"
+                  ]
                 }
               }
             }
@@ -429,7 +484,9 @@
     },
     "/internal/media/lookup": {
       "post": {
-        "tags": ["internal"],
+        "tags": [
+          "internal"
+        ],
         "security": [
           {
             "serviceToken": []
@@ -457,7 +514,10 @@
                     "maxItems": 4
                   }
                 },
-                "required": ["ownerId", "mediaIds"],
+                "required": [
+                  "ownerId",
+                  "mediaIds"
+                ],
                 "additionalProperties": false
               }
             }
@@ -487,7 +547,11 @@
                           },
                           "status": {
                             "type": "string",
-                            "enum": ["pending", "ready", "failed"]
+                            "enum": [
+                              "pending",
+                              "ready",
+                              "failed"
+                            ]
                           },
                           "variants": {
                             "type": "array",
@@ -496,7 +560,10 @@
                               "properties": {
                                 "kind": {
                                   "type": "string",
-                                  "enum": ["original", "thumb"]
+                                  "enum": [
+                                    "original",
+                                    "thumb"
+                                  ]
                                 },
                                 "objectKey": {
                                   "type": "string",
@@ -544,11 +611,19 @@
                             "format": "date-time"
                           }
                         },
-                        "required": ["id", "ownerId", "status", "variants", "createdAt"]
+                        "required": [
+                          "id",
+                          "ownerId",
+                          "status",
+                          "variants",
+                          "createdAt"
+                        ]
                       }
                     }
                   },
-                  "required": ["items"]
+                  "required": [
+                    "items"
+                  ]
                 }
               }
             }
@@ -558,7 +633,9 @@
     },
     "/internal/media/{mediaId}/variants": {
       "post": {
-        "tags": ["internal"],
+        "tags": [
+          "internal"
+        ],
         "security": [
           {
             "serviceToken": []
@@ -604,7 +681,11 @@
                     },
                     "status": {
                       "type": "string",
-                      "enum": ["pending", "ready", "failed"]
+                      "enum": [
+                        "pending",
+                        "ready",
+                        "failed"
+                      ]
                     },
                     "variants": {
                       "type": "array",
@@ -613,7 +694,10 @@
                         "properties": {
                           "kind": {
                             "type": "string",
-                            "enum": ["original", "thumb"]
+                            "enum": [
+                              "original",
+                              "thumb"
+                            ]
                           },
                           "objectKey": {
                             "type": "string",
@@ -661,7 +745,13 @@
                       "format": "date-time"
                     }
                   },
-                  "required": ["id", "ownerId", "status", "variants", "createdAt"]
+                  "required": [
+                    "id",
+                    "ownerId",
+                    "status",
+                    "variants",
+                    "createdAt"
+                  ]
                 }
               }
             }
@@ -681,7 +771,9 @@
     },
     "/internal/media/{mediaId}": {
       "get": {
-        "tags": ["internal"],
+        "tags": [
+          "internal"
+        ],
         "security": [
           {
             "serviceToken": []
@@ -718,7 +810,11 @@
                     },
                     "status": {
                       "type": "string",
-                      "enum": ["pending", "ready", "failed"]
+                      "enum": [
+                        "pending",
+                        "ready",
+                        "failed"
+                      ]
                     },
                     "variants": {
                       "type": "array",
@@ -727,7 +823,10 @@
                         "properties": {
                           "kind": {
                             "type": "string",
-                            "enum": ["original", "thumb"]
+                            "enum": [
+                              "original",
+                              "thumb"
+                            ]
                           },
                           "objectKey": {
                             "type": "string",
@@ -822,7 +921,9 @@
     },
     "/internal/media/{mediaId}/failure": {
       "post": {
-        "tags": ["internal"],
+        "tags": [
+          "internal"
+        ],
         "security": [
           {
             "serviceToken": []
@@ -851,7 +952,9 @@
                     "minLength": 1
                   }
                 },
-                "required": ["error"]
+                "required": [
+                  "error"
+                ]
               }
             }
           }
@@ -875,7 +978,11 @@
                     },
                     "status": {
                       "type": "string",
-                      "enum": ["pending", "ready", "failed"]
+                      "enum": [
+                        "pending",
+                        "ready",
+                        "failed"
+                      ]
                     },
                     "variants": {
                       "type": "array",
@@ -884,7 +991,10 @@
                         "properties": {
                           "kind": {
                             "type": "string",
-                            "enum": ["original", "thumb"]
+                            "enum": [
+                              "original",
+                              "thumb"
+                            ]
                           },
                           "objectKey": {
                             "type": "string",
@@ -932,7 +1042,13 @@
                       "format": "date-time"
                     }
                   },
-                  "required": ["id", "ownerId", "status", "variants", "createdAt"]
+                  "required": [
+                    "id",
+                    "ownerId",
+                    "status",
+                    "variants",
+                    "createdAt"
+                  ]
                 }
               }
             }
@@ -952,7 +1068,9 @@
     },
     "/internal/reseed": {
       "post": {
-        "tags": ["internal"],
+        "tags": [
+          "internal"
+        ],
         "security": [
           {
             "serviceToken": []
@@ -971,7 +1089,9 @@
                       "type": "boolean"
                     }
                   },
-                  "required": ["ok"]
+                  "required": [
+                    "ok"
+                  ]
                 }
               }
             }

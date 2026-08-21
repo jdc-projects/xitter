@@ -203,6 +203,16 @@ export const postLookupResponseSchema = z
 export type PostLookupRequest = z.infer<typeof postLookupRequestSchema>;
 export type PostLookupResponse = z.infer<typeof postLookupResponseSchema>;
 
+// Shared cursor-page query params (feed/posts/search list endpoints): the
+// services' controllers and OpenAPI registries parse the identical shape.
+// Query params arrive as strings, hence the coercion.
+export const pageQuerySchema = z.object({
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+});
+
+export type PageQuery = z.infer<typeof pageQuerySchema>;
+
 // Internal (fanout worker → posts): the followee's recent posts for the
 // follow backfill (spec 04). Same page shape as the public author timeline.
 export const internalAuthorPostsRequestSchema = z
