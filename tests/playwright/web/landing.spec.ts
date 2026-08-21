@@ -42,3 +42,26 @@ test('landing renders fallback copy when the CMS is down', async ({ page }) => {
 
   await expect(page.getByText(/microservices playground for learning/i)).toBeVisible();
 });
+
+test('landing carries the demo: credentials entry point and stack strip (#37)', async ({ page }) => {
+  await page.goto('/');
+
+  // Demo credentials are public by design (spec 04) - surfaced on the
+  // landing itself, not only on /login and /about.
+  const credentials = page.getByTestId('demo-credentials');
+  await expect(credentials).toBeVisible();
+  await expect(credentials.getByText('demo1–demo10')).toBeVisible();
+  await expect(credentials.getByText('DemoPass123!')).toBeVisible();
+  await credentials.getByTestId('landing-login-cta').click();
+  await expect(page).toHaveURL(/\/login$/);
+
+  // Under-the-hood strip: code-rendered facts about the platform.
+  await page.goto('/');
+  const stack = page.getByTestId('landing-stack');
+  await expect(stack).toBeVisible();
+  await expect(stack.getByText('5 NestJS services')).toBeVisible();
+  await expect(stack.getByText('3 Kafka workers')).toBeVisible();
+  await expect(stack.getByText(/OpenTofu deploys/)).toBeVisible();
+  await stack.getByTestId('landing-stack-about-link').click();
+  await expect(page).toHaveURL(/\/about$/);
+});
