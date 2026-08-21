@@ -98,7 +98,26 @@ export function createEventConsumer(options: EventConsumerOptions): EventConsume
             );
             return;
           }
-          await handler(envelope, payload);
+          // Handlers are idempotent (at-least-once contract), so a short
+          // inline retry rides out transient upstream blips (single
+          // ECONNRESET / Keycloak keep-alive race on M2M token fetch)
+          // without crashing the consumer - observed killing the
+          // search-index worker mid-e2e-run, leaving its derived store
+          // silently stalled. Persistent failures still exhaust kafkajs'
+          // own retries and crash as before.
+          for (let attempt = 0; ; attempt++) {
+            try {
+              await handler(envelope, payload);
+              return;
+            } catch (err) {
+              if (attempt >= 2) throw err;
+              console.warn(
+                `handler error on ${payload.topic}[${payload.partition}]@${payload.message.offset} (attempt ${attempt + 1}/3) - retrying`,
+                err,
+              );
+              await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+            }
+          }
         },
       });
     },
