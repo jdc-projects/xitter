@@ -16,9 +16,11 @@ import { PrismaClient } from './generated/prisma/client.js';
       audience: 'svc-search',
       redisUrl: env.VALKEY_URL,
       trustEdgeHeaders: env.AUTH_TRUST_EDGE_HEADERS,
+      adminIssuer: realmUrls(env.KEYCLOAK_BASE_URL, env.ADMIN_REALM).issuer,
     }),
     SearchModule,
     HealthModule.forRoot({
+      serviceName: 'search',
       prismaFactory: () =>
         new PrismaClient({
           adapter: new PrismaPg({

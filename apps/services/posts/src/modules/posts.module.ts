@@ -4,6 +4,7 @@ import { realmUrls } from '@xitter/auth';
 import { createEventProducer } from '@xitter/events';
 import { env } from '../env.js';
 import { PrismaClient } from '../generated/prisma/client.js';
+import { AdminController } from './admin.controller.js';
 import {
   INTERACTION_REALTIME,
   ValkeyInteractionRealtime,
@@ -63,36 +64,31 @@ const mediaCheckerProvider: Provider = {
     }),
 };
 
-// Author ws pings (likes/reposts) publish straight to Valkey (#8).
-const interactionRealtimeProvider: Provider = {
-  provide: INTERACTION_REALTIME,
-  useFactory: (): InteractionRealtime => new ValkeyInteractionRealtime(env.VALKEY_URL),
-};
-
-/** Disconnect order: stop emitting + pinging, then close the DB pool. */
+/** Disconnect order: stop emitting, then close the DB pool. */
 @Injectable()
 export class PostsLifecycle implements OnApplicationShutdown {
   constructor(
     @Inject(POSTS_PRISMA) private readonly db: PostsPrismaClient,
     @Inject(POSTS_EVENTS) private readonly events: PostsEvents,
-    @Inject(INTERACTION_REALTIME) private readonly realtime: InteractionRealtime,
   ) {}
 
   async onApplicationShutdown(): Promise<void> {
     await this.events.shutdown().catch(() => undefined);
-    await this.realtime.stop?.().catch(() => undefined);
     await this.db.$disconnect().catch(() => undefined);
   }
 }
 
 @Module({
-  controllers: [PostsController, InternalController],
+  controllers: [PostsController, InternalController, AdminController],
   providers: [
     prismaProvider,
     eventsProvider,
     relationshipCheckerProvider,
     mediaCheckerProvider,
-    interactionRealtimeProvider,
+    {
+      provide: INTERACTION_REALTIME,
+      useFactory: (): InteractionRealtime => new ValkeyInteractionRealtime(env.VALKEY_URL),
+    },
     PostsRepository,
     PostsService,
     PostsLifecycle,

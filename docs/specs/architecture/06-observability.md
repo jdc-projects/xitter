@@ -13,10 +13,10 @@ Observability is part of development work, not an afterthought: dashboards and a
 
 ## Metrics
 
-- **RED metrics per API** via prom-client: request rate, error rate, duration histogram — labelled by service, route template, and status class; exported on `/metrics`.
-- **Worker metrics**: consumer lag per group/topic, batch sizes, processing duration, eventId-dedupe hit rate.
-- **Platform metrics**: feed freshness (age of newest entry per user cohort), reset job run status.
-- Scrape config via Prometheus `ServiceMonitor`s (and equivalent pod annotations for Knative worker revisions), declared in Tofu.
+- **RED metrics per API** via prom-client: request rate (`xitter_http_requests_total`), error rate and duration histogram (`xitter_http_request_duration_seconds`) — labelled by service, route template, and status class; exported on `/metrics` alongside the app port by the shared bootstrap.
+- **Worker metrics**: consumer lag per group/topic (`xitter_kafka_consumer_lag{topic,partition}`), rebalance events (`xitter_kafka_rebalances_total{group}`), batch sizes, processing duration, eventId-dedupe hit rate.
+- **Platform metrics**: feed freshness (`xitter_feed_newest_entry_age_seconds`, read from the feed store on every scrape), reset job run status (kube-state-metrics job series once #13 lands the CronJob).
+- Scrape config via Prometheus `ServiceMonitor`s for the services and `PodMonitor`s for the Knative workers (their metrics ports have no k8s Service to select), declared in Tofu.
 
 ## Health probes
 
@@ -41,15 +41,19 @@ Observability is part of development work, not an afterthought: dashboards and a
 | Environment     | `XITTER_ENV` maps directly to the Sentry environment (`dev`, `prod`)                          |
 | Scope           | Service name + trace id attached; release-health enabled for web                              |
 
+Projects are provisioned by Tofu (`jianyuan/sentry` provider, one project per workload under the `xitter` team); each workload's `SENTRY_DSN` secret and `SENTRY_RELEASE` env are part of the environment root module. web additionally reports from the browser via `@sentry/nextjs`: the server relays the runtime DSN/release/environment to `instrumentation-client.ts` through a JSON script tag, because build-time inlining cannot see deploy-time secrets.
+
 ## Dashboards (required)
 
-| Dashboard                  | Contents                                                                    |
-| -------------------------- | --------------------------------------------------------------------------- |
-| API overview (per service) | R/E/D, p50/p95/p99 per route, upstream dependency time (pg, other services) |
-| Feed freshness / lag       | Newest-entry age distribution, fanout worker backlog → time-to-feed SLO     |
-| Kafka consumer lag         | Lag per consumer group × topic, rebalance events                            |
-| Reset job                  | Nightly reset success/failure, phase durations, reseed row counts           |
-| Web vitals                 | CWV (LCP/INP/CLS) per page, JS error rate                                   |
+| Dashboard                  | Contents                                                                                                                 |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| API overview (per service) | R/E/D, p50/p95/p99 per route; upstream dependency time is trace-derived (Tempo link), not a Prometheus panel             |
+| Feed freshness / lag       | Newest-entry age, fanout worker backlog → time-to-feed SLO                                                               |
+| Kafka consumer lag         | Lag per consumer group × topic, rebalance events                                                                         |
+| Reset job                  | Nightly reset success/failure, phase durations, reseed row counts                                                        |
+| Web vitals                 | CWV (LCP/INP/CLS) per page, JS error rate — served by Sentry's Web Vitals views from the browser SDK, not Grafana panels |
+
+Dashboards are `GrafanaDashboard` CRs in the environment root module (the grafana-operator files them into a folder named after the namespace). The reset-job dashboard renders empty until #13 ships the CronJob.
 
 ## Alerts (required)
 
@@ -57,9 +61,11 @@ Observability is part of development work, not an afterthought: dashboards and a
 | --------------------- | ------------------------------------------------------------------------------------- |
 | API 5xx rate          | >1% of requests over 5m on any service                                                |
 | API p95 latency SLO   | >500ms over 10m (API endpoints)                                                       |
-| Page p95 SLO          | >2s over 10m (web page loads)                                                         |
+| Page p95 SLO          | >2s over 10m (web page loads, measured at the edge)                                   |
 | Consumer lag          | Group lag above threshold for 10m (per-group tunable; fanout is the SLO-critical one) |
 | Reset job failure     | Nightly CronJob not `Succeeded` by 01:00 UTC                                          |
 | Cert / ingress errors | Edge 5xx on ingress routes, cert expiry <14d, TLS validation failures                 |
+
+Rules live as one `PrometheusRule` per environment root module. Routing rides the homelab convention: alerts carry a `severity` label (`warning`/`critical`) and the homelab Alertmanager config routes them to its email receiver (`severity = none` goes to null), so no xitter-specific notification resources exist.
 
 Alert routing (notification channels, on-call expectations) is defined in the [operations specs](../operations/).

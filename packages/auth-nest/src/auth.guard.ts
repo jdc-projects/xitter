@@ -1,17 +1,19 @@
 import { CanActivate, ExecutionContext, HttpException, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { HEALTH_ROUTES } from '@xitter/config';
-import { INTERNAL_CLIENTS, type TokenVerifier } from '@xitter/auth';
+import { INTERNAL_CLIENTS, isAdminRole, type TokenVerifier } from '@xitter/auth';
 import {
+  ADMIN_VERIFIER,
   AUTH_OPTIONS,
   INTERNAL_KEY,
   IS_PUBLIC_KEY,
   SERVICE_VERIFIER,
   USER_VERIFIER,
   type AuthModuleOptions,
+  type InternalRouteMetadata,
   type RequestUser,
 } from './auth.tokens.js';
-import { authorizedParty, bearerToken, edgeIdentity, unauthenticated } from './http.js';
+import { authorizedParty, bearerToken, edgeIdentity, forbidden, unauthenticated } from './http.js';
 
 type RequestWithUser = { headers: Record<string, unknown>; url?: string; user?: RequestUser };
 
@@ -23,6 +25,11 @@ type RequestWithUser = { headers: Record<string, unknown>; url?: string; user?: 
  * - `@Internal()`: client-credentials **service** token whose audience is
  *   this service's own client id (workers, reset job, other services). Edge
  *   identity headers are never trusted here.
+ * - `@Internal({ admin: true })`: admin principals - either an admin-realm
+ *   user token (the panel's PKCE login, azp = the admin-panel client) or a
+ *   demo-realm service token (azp per-route/client allowlist). Both paths
+ *   require an ADMIN_ROLES realm role; a verified token without one is 403,
+ *   not 401, so operators can tell a bad credential from a missing grant.
  * - `@Public()`: no auth (health checks).
  *
  * In cluster mode (`trustEdgeHeaders`), edge-injected identity headers are
@@ -41,6 +48,7 @@ export class AuthGuard implements CanActivate {
     @Inject(AUTH_OPTIONS) private readonly options: AuthModuleOptions,
     @Inject(USER_VERIFIER) private readonly userVerifier: TokenVerifier,
     @Inject(SERVICE_VERIFIER) private readonly serviceVerifier: TokenVerifier,
+    @Inject(ADMIN_VERIFIER) private readonly adminVerifier: TokenVerifier | null,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -48,10 +56,11 @@ export class AuthGuard implements CanActivate {
     if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [handler, controller])) {
       return true;
     }
-    const isInternal = this.reflector.getAllAndOverride<boolean>(INTERNAL_KEY, [
-      handler,
-      controller,
-    ]);
+    const internal = this.reflector.getAllAndOverride<InternalRouteMetadata | undefined>(
+      INTERNAL_KEY,
+      [handler, controller],
+    );
+    const isInternal = internal !== undefined;
 
     const request = context.switchToHttp().getRequest<RequestWithUser>();
 
@@ -79,13 +88,15 @@ export class AuthGuard implements CanActivate {
 
     try {
       const auth = isInternal
-        ? await this.verifyServiceToken(token)
+        ? internal === true
+          ? await this.verifyServiceRouteToken(token)
+          : await this.verifyInternalToken(token, internal)
         : await this.verifyUserToken(token);
       request.user = {
         subject: auth.subject,
         username: auth.username,
         roles: auth.roles,
-        service: isInternal === true,
+        service: auth.service,
       };
       return true;
     } catch (err) {
@@ -101,16 +112,92 @@ export class AuthGuard implements CanActivate {
     if (!azp || !allowed.includes(azp)) {
       throw unauthenticated('Token not issued to an allowed client');
     }
-    return auth;
+    return this.principal(auth, false);
   }
 
-  private async verifyServiceToken(token: string) {
+  /** Legacy `@Internal()` routes: service token against the flat allowlist. */
+  private async verifyServiceRouteToken(token: string) {
+    const { auth } = await this.verifyServiceToken(token);
+    return this.principal(auth, true);
+  }
+
+  /** Verifies + azp-checks a demo-realm service token (flat default allowlist). */
+  private async verifyServiceToken(token: string): Promise<{
+    auth: { subject: string; username: string; roles: string[] };
+    azp: string;
+  }> {
     const auth = await this.serviceVerifier.verify(token);
     const azp = authorizedParty(auth.claims);
     const allowed = this.options.serviceClients ?? INTERNAL_CLIENTS;
     if (!azp || !allowed.includes(azp)) {
       throw unauthenticated('Service token required');
     }
-    return auth;
+    return { auth, azp };
+  }
+
+  /**
+   * Optioned internal routes. `admin` routes admit two principals (ADR 0006
+   * realm split: the browser panel lives in the admin realm and cannot hold
+   * M2M secrets, so it presents its PKCE user token; machine callers present
+   * a demo-realm service token like every other internal route). Both must
+   * carry an admin realm role. Non-admin optioned routes are plain service
+   * routes with a narrowed azp allowlist (the L5 per-endpoint scoping).
+   */
+  private async verifyInternalToken(token: string, options: Exclude<InternalRouteMetadata, true>) {
+    if (options.admin) {
+      return this.verifyAdminToken(token);
+    }
+    const { auth, azp } = await this.verifyServiceToken(token);
+    if (options.clients && !options.clients.includes(azp)) {
+      throw unauthenticated('Service token required');
+    }
+    return this.principal(auth, true);
+  }
+
+  private async verifyAdminToken(token: string) {
+    // Machine path first: a demo-realm service token (audience = this
+    // service) with an admin role on its claims - the `svc-admin` client.
+    const serviceToken = await this.serviceVerifier
+      .verify(token)
+      .then((auth) => ({ auth, azp: authorizedParty(auth.claims) }))
+      .catch(() => undefined);
+    if (serviceToken) {
+      const allowed = this.options.serviceClients ?? INTERNAL_CLIENTS;
+      if (!serviceToken.azp || !allowed.includes(serviceToken.azp)) {
+        throw unauthenticated('Service token required');
+      }
+      if (!isAdminRole(serviceToken.auth.roles)) {
+        throw forbidden('Admin role required');
+      }
+      return this.principal(serviceToken.auth, true);
+    }
+
+    // Human path: an admin-realm user token (issuer differs, azp = the
+    // admin-panel client, no svc-* audience exists for it by design).
+    if (!this.options.adminIssuer || !this.adminVerifier) {
+      throw unauthenticated('Admin token required');
+    }
+    const auth = await this.adminVerifier.verify(token);
+    const azp = authorizedParty(auth.claims);
+    const allowed = this.options.adminClients ?? ['admin-panel'];
+    if (!azp || !allowed.includes(azp)) {
+      throw unauthenticated('Token not issued to the admin panel client');
+    }
+    if (!isAdminRole(auth.roles)) {
+      throw forbidden('Admin role required');
+    }
+    return this.principal(auth, false);
+  }
+
+  private principal(
+    auth: { subject: string; username: string; roles: string[] },
+    service: boolean,
+  ) {
+    return {
+      subject: auth.subject,
+      username: auth.username,
+      roles: auth.roles,
+      service,
+    };
   }
 }

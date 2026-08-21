@@ -115,6 +115,29 @@ Acceptance-style catalogue of every user-facing feature area. "Must" = required 
 | 11.3 | Inspect users (profiles, relationships).                                           |
 | 11.4 | View system health (services, queues, index lag, last reset).                      |
 | 11.5 | Admin actions take effect everywhere a normal delete does (feed, search, threads). |
+| 11.6 | Moderation is audit-logged (who deleted what, when) and surfaced in the panel.     |
+| 11.7 | The panel is unreachable without an admin role (system-admin / app-admin).         |
+
+As built: the panel is a static SPA served under `/admin` (edge route, base
+path not stripped). Sign-in is a single OIDC authorization-code + PKCE
+redirect against the admin realm (ADR 0006) — the panel never sees a
+password. Accounts without an admin role authenticate but are rejected at
+the callback gate and by every API call (the services re-verify the role on
+their internal admin endpoints — the panel gate is UX, not the boundary).
+
+- **Posts moderation**: list with author/text/deleted-state filters;
+  soft delete (restorable tombstone, the default), hard delete, restore.
+  Soft-deleted posts read as 404 for users everywhere a normal delete does.
+- **Media moderation**: list with owner/status filters, variant preview,
+  delete — the media service cascades RustFS object deletion (original +
+  variants).
+- **Users**: read-only list with username filter and a follow-graph view
+  (profile, counts, followers/following). The panel mutates no user content.
+- **Health**: one dashboard over each service's Terminus detail (each
+  service stays the authority on its own dependencies), worker metrics
+  links (workers expose scrapes, not APIs), and a last-reset tile —
+  reported as "pending" until the reset status feed lands (feature 12).
+- **Audit log**: merged view of the posts/media audit stores, newest first.
 
 ## 12. Data lifecycle
 

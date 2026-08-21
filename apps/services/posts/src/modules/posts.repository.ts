@@ -10,9 +10,18 @@ export type PostsPrismaClient = PrismaClient & { $disconnect(): Promise<void> };
 
 export type PostRow = Prisma.PostGetPayload<Record<string, never>>;
 
+export type PostsDb = Pick<PrismaClient, 'post' | 'interaction' | 'auditLog' | '$transaction'>;
 export type InteractionRow = Prisma.InteractionGetPayload<Record<string, never>>;
 
-export type PostsDb = Pick<PrismaClient, 'post' | 'interaction' | '$transaction'>;
+export interface AuditRowInput {
+  actorId: string;
+  actorName: string;
+  action: string;
+  targetId: string;
+  detail?: Record<string, unknown> | null;
+}
+
+type AuditRow = Prisma.AuditLogGetPayload<Record<string, never>>;
 
 type PostPageOrder = 'newest-first' | 'oldest-first';
 
@@ -270,6 +279,106 @@ export class PostsRepository {
       where: { userId, postId: { in: postIds } },
       select: { kind: true, postId: true },
     });
+  }
+
+  // -- Admin moderation (T10) -------------------------------------------------
+
+  /**
+   * Moderation list: author/text/deleted filters, newest first, tombstones
+   * included per the `deleted` tri-state (absent = both).
+   */
+  adminPosts(
+    filters: { authorId?: string; text?: string; deleted?: 'true' | 'false' },
+    cursor: string | undefined,
+    limit: number,
+  ): Promise<{ items: PostRow[]; nextCursor: string | null }> {
+    const where: Prisma.PostWhereInput = {
+      ...(filters.authorId ? { authorId: filters.authorId } : {}),
+      ...(filters.text ? { text: { contains: filters.text, mode: 'insensitive' } } : {}),
+      ...(filters.deleted === 'true'
+        ? { deletedAt: { not: null } }
+        : filters.deleted === 'false'
+          ? { deletedAt: null }
+          : {}),
+    };
+    return this.page(where, cursor, limit, 'newest-first');
+  }
+
+  /** Moderation soft delete + audit entry in one transaction. */
+  adminSoftDelete(id: string, actor: AuditRowInput): Promise<PostRow | null> {
+    return this.db.$transaction(async (tx) => {
+      const existing = await tx.post.findFirst({ where: { id, deletedAt: null } });
+      if (!existing) return null;
+      const deleted = await tx.post.update({ where: { id }, data: { deletedAt: new Date() } });
+      if (deleted.replyToId) {
+        await tx.post
+          .update({ where: { id: deleted.replyToId }, data: { replyCount: { decrement: 1 } } })
+          .catch(() => undefined); // parent hard-deleted: counter is moot
+      }
+      await tx.auditLog.create({ data: { ...actor, targetId: id, detail: { hard: false } } });
+      return deleted;
+    });
+  }
+
+  /**
+   * Hard delete: the row, its interactions, and - for replies - the parent's
+   * counter go away; audit survives in the same transaction.
+   */
+  adminHardDelete(id: string, actor: AuditRowInput): Promise<PostRow | null> {
+    return this.db.$transaction(async (tx) => {
+      const existing = await tx.post.findUnique({ where: { id } });
+      if (!existing) return null;
+      if (existing.replyToId) {
+        await tx.post
+          .update({ where: { id: existing.replyToId }, data: { replyCount: { decrement: 1 } } })
+          .catch(() => undefined);
+      }
+      await tx.interaction.deleteMany({ where: { postId: id } });
+      await tx.post.delete({ where: { id } });
+      await tx.auditLog.create({ data: { ...actor, targetId: id, detail: { hard: true } } });
+      return existing;
+    });
+  }
+
+  /** Moderation restore + audit entry; null when the post was not deleted. */
+  adminRestore(id: string, actor: AuditRowInput): Promise<PostRow | null> {
+    return this.db.$transaction(async (tx) => {
+      const existing = await tx.post.findFirst({ where: { id, deletedAt: { not: null } } });
+      if (!existing) return null;
+      const restored = await tx.post.update({ where: { id }, data: { deletedAt: null } });
+      if (restored.replyToId) {
+        await tx.post
+          .update({ where: { id: restored.replyToId }, data: { replyCount: { increment: 1 } } })
+          .catch(() => undefined);
+      }
+      await tx.auditLog.create({ data: { ...actor, targetId: id, detail: { hard: false } } });
+      return restored;
+    });
+  }
+
+  /** Moderation audit trail, newest first. */
+  async adminAudit(
+    cursor: string | undefined,
+    limit: number,
+  ): Promise<{ items: AuditRow[]; nextCursor: string | null }> {
+    const position = cursor ? decodeCursor(cursor) : null;
+    const boundary = position ? new Date(position.createdAt) : null;
+    const rows = await this.db.auditLog.findMany({
+      where: boundary
+        ? {
+            OR: [
+              { createdAt: { lt: boundary } },
+              { createdAt: boundary, id: { lt: position!.id } },
+            ],
+          }
+        : {},
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
+    });
+    const hasMore = rows.length > limit;
+    const items = hasMore ? rows.slice(0, limit) : rows;
+    const last = items.at(-1);
+    return { items, nextCursor: hasMore && last ? encodeCursor(last) : null };
   }
 
   toCounts(row: PostRow): { replies: number; likes: number; reposts: number } {

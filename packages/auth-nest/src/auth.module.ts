@@ -2,6 +2,7 @@ import { Global, Module, Provider } from '@nestjs/common';
 import { createLogger } from '@xitter/observability';
 import { createTokenVerifier } from '@xitter/auth';
 import {
+  ADMIN_VERIFIER,
   AUTH_OPTIONS,
   SERVICE_VERIFIER,
   USER_VERIFIER,
@@ -41,6 +42,11 @@ export class AuthModule {
       {
         provide: SERVICE_VERIFIER,
         useValue: createTokenVerifier({ issuer: options.issuer, audience: options.audience }),
+      },
+      // Null when no admin realm is configured: admin routes then fail closed.
+      {
+        provide: ADMIN_VERIFIER,
+        useValue: options.adminIssuer ? createTokenVerifier({ issuer: options.adminIssuer }) : null,
       },
       AuthGuard,
       RateLimitGuard,

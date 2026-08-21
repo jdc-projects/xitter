@@ -1,5 +1,38 @@
 {
   "finding_counts": {
+    "apps/admin/src/components/layout.tsx": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "apps/admin/src/data/data-provider.ts": {
+      "complexity_high": {
+        "count": 1
+      },
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "apps/admin/src/pages/callback.tsx": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "apps/admin/src/pages/health.tsx": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "apps/admin/src/pages/posts/show.tsx": {
+      "crap_high": {
+        "count": 1
+      }
+    },
+    "apps/admin/src/pages/users/show.tsx": {
+      "crap_moderate": {
+        "count": 1
+      }
+    },
     "apps/cms/src/app/(auth)/auth/oidc/callback/route.ts": {
       "crap_critical": {
         "count": 1
@@ -11,11 +44,6 @@
       }
     },
     "apps/services/posts/src/modules/posts.repository.ts": {
-      "crap_moderate": {
-        "count": 1
-      }
-    },
-    "apps/web/src/app/(app)/bookmarks/page.tsx": {
       "crap_moderate": {
         "count": 1
       }
@@ -33,9 +61,6 @@
     "apps/web/src/app/(app)/post/[postId]/page.tsx": {
       "crap_critical": {
         "count": 1
-      },
-      "crap_high": {
-        "count": 1
       }
     },
     "apps/web/src/app/(app)/profile/[username]/actions.ts": {
@@ -47,7 +72,7 @@
       }
     },
     "apps/web/src/app/(app)/profile/[username]/load-profile.ts": {
-      "crap_critical": {
+      "crap_high": {
         "count": 1
       }
     },
@@ -58,11 +83,6 @@
     },
     "apps/web/src/app/(app)/profile/[username]/profile-actions.tsx": {
       "crap_high": {
-        "count": 1
-      }
-    },
-    "apps/web/src/app/(app)/search/page.tsx": {
-      "crap_moderate": {
         "count": 1
       }
     },
@@ -94,7 +114,7 @@
     },
     "apps/web/src/lib/posts/actions.ts": {
       "crap_critical": {
-        "count": 2
+        "count": 1
       },
       "crap_high": {
         "count": 2
@@ -104,7 +124,7 @@
       }
     },
     "apps/workers/fanout/src/handlers.ts": {
-      "complexity_high": {
+      "complexity_moderate": {
         "count": 1
       }
     },
@@ -119,7 +139,10 @@
       }
     },
     "packages/auth-nest/src/auth.guard.ts": {
-      "complexity_moderate": {
+      "complexity_high": {
+        "count": 1
+      },
+      "crap_high": {
         "count": 1
       },
       "crap_moderate": {
@@ -132,11 +155,6 @@
       }
     },
     "packages/auth/src/verify.ts": {
-      "crap_moderate": {
-        "count": 1
-      }
-    },
-    "packages/events/src/consumer.ts": {
       "crap_moderate": {
         "count": 1
       }
@@ -158,7 +176,7 @@
     },
     "packages/scripts/src/keycloak.ts": {
       "crap_moderate": {
-        "count": 3
+        "count": 4
       }
     },
     "packages/scripts/src/lib/wait.ts": {
@@ -177,19 +195,11 @@
       },
       "crap_high": {
         "count": 2
-      },
-      "crap_moderate": {
-        "count": 1
-      }
-    },
-    "packages/ui/src/components/PostCard.tsx": {
-      "crap_moderate": {
-        "count": 1
       }
     }
   },
   "runtime_coverage_findings": [],
   "target_keys": [
-    "packages/auth-nest/src/http.ts:high impact"
+    "apps/web/src/lib/posts/actions.ts:untested risk"
   ]
 }

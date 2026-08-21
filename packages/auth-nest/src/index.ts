@@ -15,6 +15,13 @@ export {
   AUTH_OPTIONS,
   USER_VERIFIER,
   SERVICE_VERIFIER,
+  ADMIN_VERIFIER,
 } from './auth.tokens.js';
-export type { AuthModuleOptions, RateLimitOptions, RequestUser } from './auth.tokens.js';
+export type {
+  AuthModuleOptions,
+  InternalRouteOptions,
+  InternalRouteMetadata,
+  RateLimitOptions,
+  RequestUser,
+} from './auth.tokens.js';
 export { bearerToken, edgeIdentity, authorizedParty, errorBody } from './http.js';
