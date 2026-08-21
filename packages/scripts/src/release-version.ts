@@ -209,22 +209,32 @@ function fail(message: string): never {
   process.exit(1);
 }
 
-function main(): void {
-  const args = process.argv.slice(2);
-  const explicitIndex = args.indexOf('--explicit');
-  const explicit =
-    explicitIndex >= 0 ? (args[explicitIndex + 1] ?? fail('--explicit requires a value')) : null;
-  const outDirIndex = args.indexOf('--out-dir');
-  const outDir =
-    outDirIndex >= 0 ? (args[outDirIndex + 1] ?? fail('--out-dir requires a value')) : '.release';
+interface CliOptions {
+  explicit: string | null;
+  outDir: string;
+}
 
-  const previousTag = latestTag();
+function parseArgs(args: string[]): CliOptions {
+  const flag = (name: string): string | undefined => {
+    const index = args.indexOf(name);
+    return index >= 0 ? args[index + 1] : undefined;
+  };
+  return {
+    explicit: flag('--explicit') ?? null,
+    outDir: flag('--out-dir') ?? '.release',
+  };
+}
+
+/** The released version: explicit override (validated) or derived from history. */
+export function resolveVersion(
+  explicit: string | null,
+  commits: ConventionalCommit[],
+  previousTag: string | null,
+): SemVer {
   const previous =
     previousTag === null
       ? null
       : (parseSemVer(previousTag) ?? fail(`existing tag ${previousTag} is not semver`));
-  const commits = commitsSince(previousTag);
-
   const version =
     explicit === null
       ? deriveNextVersion(commits, previous)
@@ -232,8 +242,17 @@ function main(): void {
   if (version.prerelease === null && previous !== null && compareVersions(version, previous) <= 0) {
     fail(`${formatSemVer(version)} is not greater than the latest tag ${previousTag}`);
   }
+  return version;
+}
 
+function main(): void {
+  const { explicit, outDir } = parseArgs(process.argv.slice(2));
+
+  const previousTag = latestTag();
+  const commits = commitsSince(previousTag);
+  const version = resolveVersion(explicit, commits, previousTag);
   const notes = renderNotes(version, previousTag, commits);
+
   const result = {
     version: formatSemVer(version),
     previousTag,
