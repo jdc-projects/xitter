@@ -1,11 +1,12 @@
-import { Alert, Anchor, Box, Container, Stack, Text, Title } from '@mantine/core';
+import { Alert, Container, Stack, Text, Title } from '@mantine/core';
 import type { Metadata } from 'next';
 import { requireSession } from '@/lib/auth/session';
-import { PostListItem } from '@/components/post-list-item';
+import type { PostCardItem } from '@/components/paginated-post-list';
 import { SearchBox } from '@/components/search-box';
 import { loadSearch, type SearchResultPage } from './load-search';
+import { SearchResults } from './search-results';
 
-type SearchParams = Promise<{ q?: string; cursor?: string }>;
+type SearchParams = Promise<{ q?: string }>;
 
 export async function generateMetadata({
   searchParams,
@@ -41,42 +42,24 @@ function ResultBody({
       </Text>
     );
   }
-  return (
-    <>
-      <Stack gap="md" data-testid="search-results">
-        {result.entries.map(({ post, author }) => (
-          <PostListItem
-            key={post.id}
-            post={post}
-            author={author}
-            // Plain search result: no repost context (component omits the
-            // attribution when undefined).
-            canDelete={post.authorId === viewerId}
-          />
-        ))}
-      </Stack>
-      {result.nextCursor ? (
-        <Box>
-          <Anchor
-            href={`/search?q=${encodeURIComponent(query)}&cursor=${result.nextCursor}`}
-            size="sm"
-            data-testid="search-load-more"
-          >
-            Load more
-          </Anchor>
-        </Box>
-      ) : null}
-    </>
-  );
+  // Plain search result: no repost context (component omits the attribution
+  // when undefined).
+  const items: PostCardItem[] = result.entries.map(({ post, author, viewer }) => ({
+    post,
+    author,
+    viewer,
+    canDelete: post.authorId === viewerId,
+  }));
+  return <SearchResults query={query} initialItems={items} initialCursor={result.nextCursor} />;
 }
 
 /**
  * Search results (#9): the header box submits `q` here (GET, so results
- * are linkable). Pagination is the same cursor-anchor walk as the post
- * thread; empty and degraded states cover a cold index right after a reset.
+ * are linkable). Load more appends in place on the shared cursor pattern
+ * (#41); empty and degraded states cover a cold index right after a reset.
  */
 export default async function SearchPage({ searchParams }: { searchParams: SearchParams }) {
-  const { q, cursor } = await searchParams;
+  const { q } = await searchParams;
   const query = q?.trim() ?? '';
   // Gate before fetching; preserve the query in the login round-trip.
   const session = await requireSession(
@@ -84,7 +67,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
   );
 
   const result = query
-    ? await loadSearch(session, query, cursor)
+    ? await loadSearch(session, query)
     : { status: 'ok' as const, entries: [], nextCursor: null };
 
   return (

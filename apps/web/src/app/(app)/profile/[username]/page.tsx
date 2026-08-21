@@ -2,45 +2,20 @@ import { Anchor, Badge, Container, Divider, Group, Stack, Text, Title } from '@m
 import { UserAvatar } from '@xitter/ui';
 import type { Metadata } from 'next';
 import { requireSession } from '@/lib/auth/session';
-import { PostListItem } from '@/components/post-list-item';
+import { toPostCardItems } from '@/lib/posts/cards';
 import { EditProfileForm } from './edit-profile-form';
 import { ProfileActions } from './profile-actions';
+import { ProfileTabLists } from './profile-tab-lists';
 import { loadProfileView, type ProfileTab } from './load-profile';
 
 export const metadata: Metadata = { title: 'Profile' };
 
-type SearchParams = Promise<{ tab?: string; cursor?: string }>;
+type SearchParams = Promise<{ tab?: string }>;
 
 const BADGE_COLOR: Record<string, string> = {
   'badge-follows-you': 'gray',
   'badge-blocked': 'red',
 };
-
-function ProfileList({
-  items,
-}: {
-  items: { id: string; username: string; displayName: string }[];
-}) {
-  if (items.length === 0) {
-    return (
-      <Text size="sm" c="dimmed" data-testid="profile-list-empty">
-        Nobody here yet.
-      </Text>
-    );
-  }
-  return (
-    <Stack gap="xs" mt="sm">
-      {items.map((p) => (
-        <Group key={p.id} gap="sm">
-          <UserAvatar username={p.username} displayName={p.displayName} size="sm" />
-          <Anchor href={`/profile/${p.username}`} size="sm" data-testid="profile-list-item">
-            <strong>{p.displayName}</strong> @{p.username}
-          </Anchor>
-        </Group>
-      ))}
-    </Stack>
-  );
-}
 
 function ProfileTabs({
   active,
@@ -88,6 +63,11 @@ function ProfileTabs({
   );
 }
 
+/**
+ * Profile page (#4): identity header, relationship actions, and the active
+ * tab's list. Load more appends in place on the shared cursor pattern (#41)
+ * - the old `?cursor=` anchor walks scrolled back to the top.
+ */
 export default async function ProfilePage({
   params,
   searchParams,
@@ -97,14 +77,34 @@ export default async function ProfilePage({
 }) {
   const { username } = await params;
   const session = await requireSession(`/profile/${username}`);
-  const { tab = 'posts', cursor } = await searchParams;
+  const { tab = 'posts' } = await searchParams;
 
   const { view, profile, counts, listTab, list, posts, viewerFlags } = await loadProfileView(
     session,
     username,
     tab as ProfileTab,
-    cursor,
   );
+
+  // Card rows for the client-side lists (#41): hydrated server-side, page 1.
+  const authorMap = new Map([[profile.id, profile]]);
+  const postsProps =
+    posts && posts.items.length > 0
+      ? {
+          items: toPostCardItems(posts.items, authorMap, viewerFlags, session.subject),
+          nextCursor: posts.nextCursor,
+        }
+      : null;
+  const peopleProps =
+    list && list.items.length > 0
+      ? {
+          items: list.items.map((person) => ({
+            id: person.id,
+            username: person.username,
+            displayName: person.displayName,
+          })),
+          nextCursor: list.nextCursor,
+        }
+      : null;
 
   return (
     <Container size="sm" py="xl">
@@ -165,58 +165,28 @@ export default async function ProfilePage({
       <ProfileTabs active={tab} profile={profile} counts={counts} />
 
       {tab === 'posts' ? (
-        posts === null || posts.items.length === 0 ? (
+        postsProps ? (
+          <ProfileTabLists username={profile.username} tab="posts" posts={postsProps} people={null} />
+        ) : (
           <Text size="sm" c="dimmed" data-testid="profile-posts-empty">
             No posts yet.
           </Text>
-        ) : (
-          <>
-            <Stack gap="md" data-testid="profile-posts">
-              {posts.items.map((post) => (
-                <PostListItem
-                  key={post.id}
-                  post={post}
-                  author={{
-                    id: profile.id,
-                    username: profile.username,
-                    displayName: profile.displayName,
-                  }}
-                  viewer={viewerFlags.get(post.id)}
-                  canDelete={view.isOwnProfile}
-                  username={profile.username}
-                />
-              ))}
-            </Stack>
-            {posts.nextCursor ? (
-              <Anchor
-                href={`/profile/${profile.username}?tab=posts&cursor=${posts.nextCursor}`}
-                size="sm"
-                mt="md"
-                display="block"
-                data-testid="load-more"
-              >
-                Load more
-              </Anchor>
-            ) : null}
-          </>
         )
       ) : null}
 
-      {listTab && list ? (
-        <>
-          <ProfileList items={list.items} />
-          {list.nextCursor ? (
-            <Anchor
-              href={`/profile/${profile.username}?tab=${listTab}&cursor=${list.nextCursor}`}
-              size="sm"
-              mt="md"
-              display="block"
-              data-testid="load-more"
-            >
-              Load more
-            </Anchor>
-          ) : null}
-        </>
+      {listTab ? (
+        peopleProps ? (
+          <ProfileTabLists
+            username={profile.username}
+            tab={listTab}
+            posts={null}
+            people={peopleProps}
+          />
+        ) : (
+          <Text size="sm" c="dimmed" data-testid="profile-list-empty">
+            Nobody here yet.
+          </Text>
+        )
       ) : null}
     </Container>
   );

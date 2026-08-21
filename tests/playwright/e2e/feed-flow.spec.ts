@@ -157,7 +157,7 @@ test('the feed pages with Load more beyond the first page', async ({ page }) => 
   const items = page.locator('[data-testid^="post-item-"]', { hasText: prefix });
   await expect(items).toHaveCount(20);
 
-  await page.getByTestId('feed-load-more').click();
+  await page.getByTestId('load-more').click();
   await expect(items).toHaveCount(22, { timeout: 15_000 });
 });
 

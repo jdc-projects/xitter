@@ -2,7 +2,12 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
+import type { PersonItem } from '@/components/paginated-people-list';
+import type { PostCardItem } from '@/components/paginated-post-list';
+import type { CursorPage } from '@/components/use-cursor-pages';
+import { getSession } from '@/lib/auth/session';
 import { socialForSession } from '@/lib/social/server';
+import { loadProfilePeoplePage, loadProfilePostsPage } from './load-profile';
 
 export interface ActionResult {
   error?: string;
@@ -98,5 +103,39 @@ export async function updateProfileAction(
     return {};
   } catch {
     return { error: 'Could not save your profile. Try again shortly.' };
+  }
+}
+
+/** Session for pagination actions: unauthenticated users bounce via login. */
+async function sessionForAction(next: string) {
+  const session = await getSession();
+  if (!session) redirect(`/login?next=${encodeURIComponent(next)}`);
+  return session;
+}
+
+/** One more profile-posts page for the client list (#41: append in place). */
+export async function profilePostsPageAction(
+  username: string,
+  cursor: string,
+): Promise<CursorPage<PostCardItem>> {
+  const session = await sessionForAction(`/profile/${username}`);
+  try {
+    return await loadProfilePostsPage(session, username, cursor);
+  } catch {
+    return { items: [], nextCursor: null, error: 'Posts could not load right now.' };
+  }
+}
+
+/** One more following/followers page for the client list (#41). */
+export async function profilePeoplePageAction(
+  username: string,
+  tab: 'following' | 'followers',
+  cursor: string,
+): Promise<CursorPage<PersonItem>> {
+  const session = await sessionForAction(`/profile/${username}?tab=${tab}`);
+  try {
+    return await loadProfilePeoplePage(session, username, tab, cursor);
+  } catch {
+    return { items: [], nextCursor: null, error: 'This list could not load right now.' };
   }
 }
