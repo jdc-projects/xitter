@@ -229,15 +229,25 @@ async function probeState(ctx: SeedContext): Promise<ProbeState> {
   let empty = 0;
   for (const [index, user] of ctx.corpus.users.entries()) {
     const userId = ctx.ids.get(user.username)!;
+    // The reads are user-gated (global AuthGuard) - probe as the user.
+    const token = await ctx.grants.token(user.username);
     const [profileRes, postsRes] = await Promise.allSettled([
-      ctx.call('social', {
-        method: 'GET',
-        path: `/api/social/v1/profiles/username/${user.username}`,
-      }),
-      ctx.call('posts', {
-        method: 'GET',
-        path: `/api/posts/v1/users/${userId}/posts?limit=${POSTS_PAGE_LIMIT}`,
-      }),
+      ctx.call(
+        'social',
+        {
+          method: 'GET',
+          path: `/api/social/v1/profiles/username/${user.username}`,
+        },
+        token,
+      ),
+      ctx.call(
+        'posts',
+        {
+          method: 'GET',
+          path: `/api/posts/v1/users/${userId}/posts?limit=${POSTS_PAGE_LIMIT}`,
+        },
+        token,
+      ),
     ]);
     const expectedPosts = ctx.corpus.posts.filter((p) => p.authorIndex === index).length;
     const count = postsRes.status === 'fulfilled' ? countPageItems(postsRes.value) : -1;
@@ -316,21 +326,30 @@ export async function verifySeeded(ctx: SeedContext): Promise<void> {
     const problems: string[] = [];
     for (const [index, user] of ctx.corpus.users.entries()) {
       const userId = ctx.ids.get(user.username)!;
+      const token = await ctx.grants.token(user.username);
       const posts = await ctx
-        .call('posts', {
-          method: 'GET',
-          path: `/api/posts/v1/users/${userId}/posts?limit=${POSTS_PAGE_LIMIT}`,
-        })
+        .call(
+          'posts',
+          {
+            method: 'GET',
+            path: `/api/posts/v1/users/${userId}/posts?limit=${POSTS_PAGE_LIMIT}`,
+          },
+          token,
+        )
         .then(countPageItems);
       const expectedPosts = ctx.corpus.posts.filter((p) => p.authorIndex === index).length;
       if (posts !== expectedPosts)
         problems.push(`${user.username}: ${posts}/${expectedPosts} posts`);
 
       const following = await ctx
-        .call('social', {
-          method: 'GET',
-          path: `/api/social/v1/profiles/${userId}/following?limit=${POSTS_PAGE_LIMIT}`,
-        })
+        .call(
+          'social',
+          {
+            method: 'GET',
+            path: `/api/social/v1/profiles/${userId}/following?limit=${POSTS_PAGE_LIMIT}`,
+          },
+          token,
+        )
         .then(countPageItems);
       const expectedFollowing = ctx.corpus.follows.filter((f) => f.followerIndex === index).length;
       if (following !== expectedFollowing) {
@@ -338,7 +357,6 @@ export async function verifySeeded(ctx: SeedContext): Promise<void> {
       }
 
       if (Date.now() > deadline) {
-        const token = await ctx.grants.token(user.username);
         const feed = await ctx
           .call('feed', { method: 'GET', path: '/api/feed/v1/feed?limit=50' }, token)
           .then(countPageItems);

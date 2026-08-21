@@ -9,6 +9,8 @@
  *    homelab "primary" realm, gating admin/CMS login on an app-admin role.
  */
 import KcAdminClient from '@keycloak/keycloak-admin-client';
+import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 import { envInt, envString, loadRepoEnv, localUrl } from '@xitter/config';
 import { SERVICE_CLIENTS, WORKER_CLIENTS } from '@xitter/auth';
 import { keycloakBaseUrl } from './lib/wait.js';
@@ -374,21 +376,26 @@ export async function resetDemoRealm(options: DemoRealmOptions = {}): Promise<vo
 
 const command = process.argv[2] ?? 'init';
 
-switch (command) {
-  case 'init':
-    await initDemoRealm();
-    await initLocalAdminRealm();
-    break;
-  case 'init-demo':
-    await initDemoRealm();
-    break;
-  case 'init-admin':
-    await initLocalAdminRealm();
-    break;
-  case 'reset-demo':
-    await resetDemoRealm();
-    break;
-  default:
-    console.error(`Unknown command: ${command}. Use init | init-demo | init-admin | reset-demo.`);
-    process.exit(1);
+// Only dispatch when run as the entry file: seed/reset-flow import this
+// module and may carry their own argv (e.g. `reset:live -- --seed`), which
+// the switch must not try to interpret as a keycloak command.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  switch (command) {
+    case 'init':
+      await initDemoRealm();
+      await initLocalAdminRealm();
+      break;
+    case 'init-demo':
+      await initDemoRealm();
+      break;
+    case 'init-admin':
+      await initLocalAdminRealm();
+      break;
+    case 'reset-demo':
+      await resetDemoRealm();
+      break;
+    default:
+      console.error(`Unknown command: ${command}. Use init | init-demo | init-admin | reset-demo.`);
+      process.exit(1);
+  }
 }

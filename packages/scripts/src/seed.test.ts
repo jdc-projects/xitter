@@ -64,6 +64,12 @@ describe('runSeed probe', () => {
       return acc;
     }, []);
     const fetchImpl = fakeFetch([
+      {
+        // probe/verify reads are user-gated: the grant hits the token endpoint
+        method: 'POST',
+        test: /\/protocol\/openid-connect\/token$/,
+        respond: () => ({ access_token: 'seed-test-token' }),
+      },
       hasProfile(true),
       userPosts(expected),
       {
@@ -110,6 +116,11 @@ describe('runSeed probe', () => {
       Number(url.pathname.match(/demo(\d+)/)![1]) <= expected.length / 2;
 
     const fetchImpl = fakeFetch([
+      {
+        method: 'POST',
+        test: /\/protocol\/openid-connect\/token$/,
+        respond: () => ({ access_token: 'seed-test-token' }),
+      },
       {
         method: 'GET',
         test: /\/api\/social\/v1\/profiles\/username\/demo\d+$/,
