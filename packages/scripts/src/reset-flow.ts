@@ -357,16 +357,30 @@ async function defaultStores(): Promise<StoreControls> {
 
   return {
     async reseedServices() {
-      const token = await resetToken.get();
       const done: string[] = [];
       for (const service of SERVICES) {
-        await requestJson(
-          serviceBase(service),
-          `/api/${service}/internal/reseed`,
-          { method: 'POST' },
-          token,
-        );
-        done.push(service);
+        // The svc-reset token is validated against realm keys that
+        // Keycloak may still serve stale (old realm, just recreated) for a
+        // beat - a 401 here is transient and clears within ~1s. Retry a
+        // few times before failing the run; the call is idempotent.
+        let lastError: unknown;
+        for (let attempt = 1; attempt <= 4; attempt++) {
+          try {
+            await requestJson(
+              serviceBase(service),
+              `/api/${service}/internal/reseed`,
+              { method: 'POST' },
+              await resetToken.get(),
+            );
+            done.push(service);
+            lastError = undefined;
+            break;
+          } catch (err) {
+            lastError = err;
+            await new Promise((resolve) => setTimeout(resolve, 500 * attempt));
+          }
+        }
+        if (lastError) throw lastError;
       }
       return done;
     },
@@ -585,9 +599,17 @@ export function localWorkerControl(log: (message: string) => void): WorkerContro
       stoppedAny = true;
     },
     async resume() {
-      if (!stoppedAny) return;
+      // Ensure workers are running at the END of the flow, whether we
+      // stopped them, they were already down, or a previous failed run
+      // never restored them - the seed step needs them consuming.
+      const alive = (await Promise.all(ports.map((port) => portAnswers(port)))).filter(Boolean);
+      if (alive.length === ports.length && !stoppedAny) return;
+      if (stoppedAny) {
+        log('reset: restarting local workers (npm run start:workers)');
+      } else {
+        log(`reset: ${ports.length - alive.length} worker(s) not running - starting them`);
+      }
       stoppedAny = false;
-      log('reset: restarting local workers (npm run start:workers)');
       const { spawn } = await import('node:child_process');
       const { findRepoRoot } = await import('@xitter/config');
       const child = spawn('npm', ['run', 'start:workers'], {

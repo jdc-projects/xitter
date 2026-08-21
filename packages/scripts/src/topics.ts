@@ -55,12 +55,13 @@ loadRepoEnv();
 
 const command = process.argv[2] ?? 'create';
 
-if (command !== 'create') {
-  console.error(`Unknown command: ${command}. Use create.`);
-  process.exit(1);
-}
-
+// Only dispatch when run as the entry file: the reset flow imports
+// ensureTopics and carries its own argv, which this CLI must not interpret.
 if (process.argv[1] && process.argv[1].endsWith('topics.ts')) {
+  if (command !== 'create') {
+    console.error(`Unknown command: ${command}. Use create.`);
+    process.exit(1);
+  }
   const kafka = new Kafka({
     clientId: 'xitter-topics',
     brokers: [`localhost:${localPort('kafka')}`],
