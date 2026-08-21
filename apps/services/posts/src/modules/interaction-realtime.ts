@@ -26,6 +26,7 @@ export class NullInteractionRealtime implements InteractionRealtime {
     return Promise.resolve();
   }
 
+  // fallow-ignore-next-line unused-class-member -- interface parity for the optional stop() seam, keeping the null double substitutable
   stop(): Promise<void> {
     return Promise.resolve();
   }
@@ -58,6 +59,7 @@ export class ValkeyInteractionRealtime implements InteractionRealtime {
     }
   }
 
+  // fallow-ignore-next-line unused-class-member -- releases the Valkey connection at shutdown (optional stop() seam; PostsLifecycle wiring lands with it)
   async stop(): Promise<void> {
     await this.connection?.quit().catch(() => undefined);
   }

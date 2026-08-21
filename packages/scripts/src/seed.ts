@@ -15,7 +15,13 @@
  */
 import { envInt, loadRepoEnv } from '@xitter/config';
 import { applyCmsContent } from './content.js';
-import { buildCorpus, type CorpusCounts, type CorpusPost, type SeedCorpus } from './corpus.js';
+import {
+  buildCorpus,
+  type CorpusCounts,
+  type CorpusPost,
+  type CorpusUser,
+  type SeedCorpus,
+} from './corpus.js';
 import { demoPng } from './lib/images.js';
 import { requestJson } from './lib/api.js';
 import { PasswordGrant, serviceBase, type ApiTarget } from './lib/targets.js';
@@ -90,38 +96,55 @@ export async function runSeed(options: SeedOptions = {}): Promise<SeedReport> {
   };
 
   // --- Probe: fresh / seeded / partial -------------------------------------
+  const existing = await skipIfSeeded(ctx);
+  if (existing) return existing;
+
+  // --- Phases 1-6, then verify (derived stores converge via the workers) ----
+  const created = await seedCorpusContent(ctx);
+  await verifySeeded(ctx);
+  ctx.log(`seed: verified (fingerprint ${corpus.fingerprint.slice(0, 12)})`);
+  return { fingerprint: corpus.fingerprint, counts: corpus.counts, skipped: false, created };
+}
+
+/** No-op report for a corpus that is already fully present. */
+function skippedReport(corpus: SeedCorpus): SeedReport {
+  return {
+    fingerprint: corpus.fingerprint,
+    counts: corpus.counts,
+    skipped: true,
+    created: emptyCreated(),
+  };
+}
+
+/**
+ * Short-circuit for a probed environment: an exact corpus verifies and
+ * reports a no-op, corpus-plus-extras only reports, and a partial corpus
+ * refuses to patch. `null` means fresh - seed it.
+ */
+async function skipIfSeeded(ctx: SeedContext): Promise<SeedReport | null> {
   const probe = await probeState(ctx);
   if (probe === 'seeded') {
     ctx.log('seed: corpus already present - verifying derived stores');
     await verifySeeded(ctx);
-    return {
-      fingerprint: corpus.fingerprint,
-      counts: corpus.counts,
-      skipped: true,
-      created: emptyCreated(),
-    };
+    return skippedReport(ctx.corpus);
   }
   if (probe === 'seeded-plus') {
     // Corpus fully present plus unrelated content (e.g. e2e posts created on
     // top): nothing to add, exact-count verification is not meaningful.
     ctx.log('seed: corpus already present (extra content detected) - skipping');
-    return {
-      fingerprint: corpus.fingerprint,
-      counts: corpus.counts,
-      skipped: true,
-      created: emptyCreated(),
-    };
+    return skippedReport(ctx.corpus);
   }
   if (probe === 'partial') {
     throw new Error(
       'seed: environment holds a partial corpus - run a reset first (npm run reset / the nightly reset job)',
     );
   }
+  return null;
+}
 
-  const created = emptyCreated();
-
-  // --- 1. Profiles (spec order: users -> profiles) --------------------------
-  for (const user of corpus.users) {
+/** Phase 1 (spec order: users -> profiles). Keyed upsert per corpus user. */
+async function ensureProfiles(ctx: SeedContext): Promise<number> {
+  for (const user of ctx.corpus.users) {
     const token = await ctx.grants.token(user.username);
     await ctx.call(
       'social',
@@ -132,40 +155,52 @@ export async function runSeed(options: SeedOptions = {}): Promise<SeedReport> {
       },
       token,
     );
-    created.profiles += 1;
   }
-  ctx.log(`seed: ${created.profiles} profiles ensured`);
+  ctx.log(`seed: ${ctx.corpus.users.length} profiles ensured`);
+  return ctx.corpus.users.length;
+}
 
-  // --- 2. Follow graph -------------------------------------------------------
-  for (const follow of corpus.follows) {
-    const follower = corpus.users[follow.followerIndex]!;
-    const followee = corpus.users[follow.followeeIndex]!;
+/** Phase 2: the follow graph (idempotent follow upserts). */
+async function seedFollowGraph(ctx: SeedContext): Promise<number> {
+  for (const follow of ctx.corpus.follows) {
+    const follower = ctx.corpus.users[follow.followerIndex]!;
+    const followee = ctx.corpus.users[follow.followeeIndex]!;
     const token = await ctx.grants.token(follower.username);
     await ctx.call(
       'social',
       { method: 'POST', path: `/api/social/v1/profiles/${ctx.ids.get(followee.username)}/follow` },
       token,
     );
-    created.follows += 1;
   }
-  ctx.log(`seed: ${created.follows} follows created`);
+  ctx.log(`seed: ${ctx.corpus.follows.length} follows created`);
+  return ctx.corpus.follows.length;
+}
 
-  // --- 3. Media uploads through the real pipeline ----------------------------
-  // upload slot -> presigned PUT -> completion -> worker processing.
-  const mediaBySlot = new Map<string, string>();
-  for (const post of corpus.posts.filter((p) => p.mediaCount > 0)) {
-    const mediaId = await uploadDemoImage(post, ctx);
-    mediaBySlot.set(slotKey(post), mediaId);
-    created.mediaUploads += 1;
+/**
+ * Phase 3: media uploads through the real pipeline - upload slot ->
+ * presigned PUT -> completion -> worker processing.
+ */
+async function seedMedia(
+  ctx: SeedContext,
+): Promise<{ bySlot: Map<string, string>; count: number }> {
+  const bySlot = new Map<string, string>();
+  for (const post of ctx.corpus.posts.filter((p) => p.mediaCount > 0)) {
+    bySlot.set(slotKey(post), await uploadDemoImage(post, ctx));
   }
-  if (created.mediaUploads > 0) ctx.log(`seed: ${created.mediaUploads} images processed`);
+  if (bySlot.size > 0) ctx.log(`seed: ${bySlot.size} images processed`);
+  return { bySlot, count: bySlot.size };
+}
 
-  // --- 4. Posts (standalone first, then thread replies) ----------------------
-  const postIdBySlot = new Map<string, string>();
-  for (const post of corpus.posts) {
-    const author = corpus.users[post.authorIndex]!;
+/** Phase 4: posts (standalone first, then thread replies). */
+async function seedPosts(
+  ctx: SeedContext,
+  mediaBySlot: Map<string, string>,
+): Promise<{ idBySlot: Map<string, string>; count: number }> {
+  const idBySlot = new Map<string, string>();
+  for (const post of ctx.corpus.posts) {
+    const author = ctx.corpus.users[post.authorIndex]!;
     const token = await ctx.grants.token(author.username);
-    const replyToId = post.replyTo ? postIdBySlot.get(slotKey(post.replyTo)) : null;
+    const replyToId = post.replyTo ? idBySlot.get(slotKey(post.replyTo)) : null;
     if (post.replyTo && !replyToId) {
       throw new Error(`reply target missing for ${author.username}/post-${post.ordinal}`);
     }
@@ -179,14 +214,20 @@ export async function runSeed(options: SeedOptions = {}): Promise<SeedReport> {
       },
       token,
     )) as { id: string };
-    postIdBySlot.set(slotKey(post), createdPost.id);
-    created.posts += 1;
+    idBySlot.set(slotKey(post), createdPost.id);
   }
-  ctx.log(`seed: ${created.posts} posts created (incl. replies)`);
+  ctx.log(`seed: ${idBySlot.size} posts created (incl. replies)`);
+  return { idBySlot, count: idBySlot.size };
+}
 
-  // --- 5. Interactions -------------------------------------------------------
-  for (const interaction of corpus.interactions) {
-    const actor = corpus.users[interaction.userIndex]!;
+/** Phase 5: likes / reposts / bookmarks against the created posts. */
+async function seedInteractions(
+  ctx: SeedContext,
+  postIdBySlot: Map<string, string>,
+): Promise<Pick<SeedReport['created'], 'likes' | 'reposts' | 'bookmarks'>> {
+  const created = { likes: 0, reposts: 0, bookmarks: 0 };
+  for (const interaction of ctx.corpus.interactions) {
+    const actor = ctx.corpus.users[interaction.userIndex]!;
     const postId = postIdBySlot.get(slotKey(interaction.post));
     if (!postId) throw new Error(`interaction target missing (${actor.username})`);
     const token = await ctx.grants.token(actor.username);
@@ -206,15 +247,27 @@ export async function runSeed(options: SeedOptions = {}): Promise<SeedReport> {
   ctx.log(
     `seed: ${created.likes} likes, ${created.reposts} reposts, ${created.bookmarks} bookmarks`,
   );
+  return created;
+}
 
-  // --- 6. Promoted CMS content ------------------------------------------------
-  const cms = await applyCmsContent({ fetchImpl: doFetch });
+/** Phases 1-6 in spec order, returning the created-counts report. */
+async function seedCorpusContent(ctx: SeedContext): Promise<SeedReport['created']> {
+  const created = emptyCreated();
+  created.profiles = await ensureProfiles(ctx);
+  created.follows = await seedFollowGraph(ctx);
+  const media = await seedMedia(ctx);
+  created.mediaUploads = media.count;
+  const posts = await seedPosts(ctx, media.bySlot);
+  created.posts = posts.count;
+  const interactions = await seedInteractions(ctx, posts.idBySlot);
+  created.likes = interactions.likes;
+  created.reposts = interactions.reposts;
+  created.bookmarks = interactions.bookmarks;
+
+  // --- 6. Promoted CMS content -----------------------------------------------
+  const cms = await applyCmsContent({ fetchImpl: ctx.doFetch });
   ctx.log(`seed: cms content ${cms.created} created, ${cms.updated} updated`);
-
-  // --- 7. Verify (derived stores converge via the workers) --------------------
-  await verifySeeded(ctx);
-  ctx.log(`seed: verified (fingerprint ${corpus.fingerprint.slice(0, 12)})`);
-  return { fingerprint: corpus.fingerprint, counts: corpus.counts, skipped: false, created };
+  return created;
 }
 
 // ---------------------------------------------------------------------------
@@ -223,43 +276,64 @@ export async function runSeed(options: SeedOptions = {}): Promise<SeedReport> {
 
 type ProbeState = 'fresh' | 'seeded' | 'seeded-plus' | 'partial';
 
+type UserProbe = 'matching' | 'at-least' | 'empty' | 'absent';
+
+/** Per-user visible post count via the public timeline (user-gated read). */
+async function userPostCount(
+  ctx: SeedContext,
+  user: CorpusUser,
+  userId: string,
+  token?: string,
+): Promise<number> {
+  const authToken = token ?? (await ctx.grants.token(user.username));
+  return ctx
+    .call(
+      'posts',
+      {
+        method: 'GET',
+        path: `/api/posts/v1/users/${userId}/posts?limit=${POSTS_PAGE_LIMIT}`,
+      },
+      authToken,
+    )
+    .then(countPageItems);
+}
+
 async function probeState(ctx: SeedContext): Promise<ProbeState> {
-  let matching = 0;
-  let atLeast = 0;
-  let empty = 0;
+  const seen: Record<UserProbe, number> = { matching: 0, 'at-least': 0, empty: 0, absent: 0 };
   for (const [index, user] of ctx.corpus.users.entries()) {
-    const userId = ctx.ids.get(user.username)!;
-    // The reads are user-gated (global AuthGuard) - probe as the user.
-    const token = await ctx.grants.token(user.username);
-    const [profileRes, postsRes] = await Promise.allSettled([
-      ctx.call(
-        'social',
-        {
-          method: 'GET',
-          path: `/api/social/v1/profiles/username/${user.username}`,
-        },
-        token,
-      ),
-      ctx.call(
-        'posts',
-        {
-          method: 'GET',
-          path: `/api/posts/v1/users/${userId}/posts?limit=${POSTS_PAGE_LIMIT}`,
-        },
-        token,
-      ),
-    ]);
-    const expectedPosts = ctx.corpus.posts.filter((p) => p.authorIndex === index).length;
-    const count = postsRes.status === 'fulfilled' ? countPageItems(postsRes.value) : -1;
-    if (profileRes.status === 'fulfilled' && count === expectedPosts) matching += 1;
-    else if (profileRes.status === 'fulfilled' && count >= expectedPosts) atLeast += 1;
-    else if (profileRes.status === 'rejected' && count === 0) empty += 1;
+    seen[await probeUser(ctx, index, user)] += 1;
   }
-  if (matching === ctx.corpus.users.length) return 'seeded';
-  if (matching + atLeast === ctx.corpus.users.length) return 'seeded-plus';
-  if (matching > 0 || atLeast > 0 || (empty > 0 && empty < ctx.corpus.users.length))
+  const total = ctx.corpus.users.length;
+  if (seen.matching === total) return 'seeded';
+  if (seen.matching + seen['at-least'] === total) return 'seeded-plus';
+  if (seen.matching > 0 || seen['at-least'] > 0 || (seen.empty > 0 && seen.empty < total)) {
     return 'partial';
+  }
   return 'fresh';
+}
+
+/** One user's slice of the probe: exact / at-least / empty / absent. */
+async function probeUser(ctx: SeedContext, index: number, user: CorpusUser): Promise<UserProbe> {
+  const userId = ctx.ids.get(user.username)!;
+  // The reads are user-gated (global AuthGuard) - probe as the user.
+  const token = await ctx.grants.token(user.username);
+  const [profileRes, postsRes] = await Promise.allSettled([
+    ctx.call(
+      'social',
+      {
+        method: 'GET',
+        path: `/api/social/v1/profiles/username/${user.username}`,
+      },
+      token,
+    ),
+    userPostCount(ctx, user, userId, token),
+  ]);
+  const expectedPosts = ctx.corpus.posts.filter((p) => p.authorIndex === index).length;
+  const count = postsRes.status === 'fulfilled' ? postsRes.value : -1;
+  if (profileRes.status === 'fulfilled' && count === expectedPosts) return 'matching';
+  if (profileRes.status === 'fulfilled' && count >= expectedPosts) return 'at-least';
+  if (profileRes.status === 'rejected' && count === 0) return 'empty';
+  return 'absent';
 }
 
 // ---------------------------------------------------------------------------
@@ -325,47 +399,7 @@ export async function verifySeeded(ctx: SeedContext): Promise<void> {
   for (;;) {
     const problems: string[] = [];
     for (const [index, user] of ctx.corpus.users.entries()) {
-      const userId = ctx.ids.get(user.username)!;
-      const token = await ctx.grants.token(user.username);
-      const posts = await ctx
-        .call(
-          'posts',
-          {
-            method: 'GET',
-            path: `/api/posts/v1/users/${userId}/posts?limit=${POSTS_PAGE_LIMIT}`,
-          },
-          token,
-        )
-        .then(countPageItems);
-      const expectedPosts = ctx.corpus.posts.filter((p) => p.authorIndex === index).length;
-      if (posts !== expectedPosts)
-        problems.push(`${user.username}: ${posts}/${expectedPosts} posts`);
-
-      const following = await ctx
-        .call(
-          'social',
-          {
-            method: 'GET',
-            path: `/api/social/v1/profiles/${userId}/following?limit=${POSTS_PAGE_LIMIT}`,
-          },
-          token,
-        )
-        .then(countPageItems);
-      const expectedFollowing = ctx.corpus.follows.filter((f) => f.followerIndex === index).length;
-      if (following !== expectedFollowing) {
-        problems.push(`${user.username}: ${following}/${expectedFollowing} following`);
-      }
-
-      if (Date.now() > deadline) {
-        const feed = await ctx
-          .call('feed', { method: 'GET', path: '/api/feed/v1/feed?limit=50' }, token)
-          .then(countPageItems);
-        const expectedFeed = ctx.corpus.counts.feedEntriesByUser[index]!;
-        // A feed page caps at 50 - larger feeds verify as "a full page".
-        if (expectedFeed > 50 ? feed < 50 : feed !== expectedFeed) {
-          problems.push(`${user.username}: ${feed}/${expectedFeed} feed items`);
-        }
-      }
+      problems.push(...(await verifyUser(ctx, index, user, deadline)));
     }
     if (problems.length === 0) return;
     if (Date.now() > deadline) {
@@ -373,6 +407,52 @@ export async function verifySeeded(ctx: SeedContext): Promise<void> {
     }
     await sleep(1_000);
   }
+}
+
+/**
+ * One user's sanity counts: posts + following must match the corpus
+ * exactly. Past the deadline the feed count is enforced too (a feed page
+ * caps at 50 - larger feeds verify as "a full page").
+ */
+async function verifyUser(
+  ctx: SeedContext,
+  index: number,
+  user: CorpusUser,
+  deadline: number,
+): Promise<string[]> {
+  const problems: string[] = [];
+  const userId = ctx.ids.get(user.username)!;
+  const token = await ctx.grants.token(user.username);
+
+  const posts = await userPostCount(ctx, user, userId);
+  const expectedPosts = ctx.corpus.posts.filter((p) => p.authorIndex === index).length;
+  if (posts !== expectedPosts) problems.push(`${user.username}: ${posts}/${expectedPosts} posts`);
+
+  const following = await ctx
+    .call(
+      'social',
+      {
+        method: 'GET',
+        path: `/api/social/v1/profiles/${userId}/following?limit=${POSTS_PAGE_LIMIT}`,
+      },
+      token,
+    )
+    .then(countPageItems);
+  const expectedFollowing = ctx.corpus.follows.filter((f) => f.followerIndex === index).length;
+  if (following !== expectedFollowing) {
+    problems.push(`${user.username}: ${following}/${expectedFollowing} following`);
+  }
+
+  if (Date.now() > deadline) {
+    const feed = await ctx
+      .call('feed', { method: 'GET', path: '/api/feed/v1/feed?limit=50' }, token)
+      .then(countPageItems);
+    const expectedFeed = ctx.corpus.counts.feedEntriesByUser[index]!;
+    if (expectedFeed > 50 ? feed < 50 : feed !== expectedFeed) {
+      problems.push(`${user.username}: ${feed}/${expectedFeed} feed items`);
+    }
+  }
+  return problems;
 }
 
 // ---------------------------------------------------------------------------

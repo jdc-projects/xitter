@@ -41,6 +41,13 @@ async function inClusterContext(): Promise<K8sContext | null> {
   };
 }
 
+function parseK8sResponse(res: Response, body: string, method: string, path: string): unknown {
+  if (!res.ok) {
+    throw new Error(`k8s ${method} ${path} -> ${res.status}: ${body}`);
+  }
+  return body ? JSON.parse(body) : null;
+}
+
 async function k8sRequest(
   ctx: K8sContext,
   path: string,
@@ -53,11 +60,7 @@ async function k8sRequest(
       ...(init.headers ?? {}),
     },
   });
-  const body = await res.text();
-  if (!res.ok) {
-    throw new Error(`k8s ${init.method ?? 'GET'} ${path} -> ${res.status}: ${body}`);
-  }
-  return body ? JSON.parse(body) : null;
+  return parseK8sResponse(res, await res.text(), init.method ?? 'GET', path);
 }
 
 function setMinScale(ctx: K8sContext, worker: string, value: '0' | '1'): Promise<unknown> {
@@ -87,6 +90,30 @@ async function runningWorkerPods(ctx: K8sContext, worker: string): Promise<numbe
   ).length;
 }
 
+async function totalWorkerPods(ctx: K8sContext): Promise<number> {
+  const counts = await Promise.all(KNATIVE_WORKERS.map((w) => runningWorkerPods(ctx, w)));
+  return counts.reduce((sum, n) => sum + n, 0);
+}
+
+/**
+ * Fail loudly if pods linger: wiping stores under a live worker risks
+ * half-processed events - the timeout aborts before any store is wiped.
+ */
+async function waitForScaleToZero(ctx: K8sContext, log: (message: string) => void): Promise<void> {
+  const deadline = Date.now() + QUIESCE_TIMEOUT_MS;
+  for (;;) {
+    const total = await totalWorkerPods(ctx);
+    if (total === 0) return;
+    if (Date.now() > deadline) {
+      throw new Error(
+        `workers did not scale to zero within ${QUIESCE_TIMEOUT_MS / 1000}s (${total} pods left) - aborting before any store is wiped`,
+      );
+    }
+    log(`reset: waiting for ${total} worker pod(s) to exit...`);
+    await new Promise((resolve) => setTimeout(resolve, 5_000));
+  }
+}
+
 async function k8sWorkerControl(log: (message: string) => void): Promise<WorkerControl> {
   const ctx = (await inClusterContext())!;
   return {
@@ -94,19 +121,7 @@ async function k8sWorkerControl(log: (message: string) => void): Promise<WorkerC
       for (const worker of KNATIVE_WORKERS) {
         await setMinScale(ctx, worker, '0');
       }
-      const deadline = Date.now() + QUIESCE_TIMEOUT_MS;
-      for (;;) {
-        const counts = await Promise.all(KNATIVE_WORKERS.map((w) => runningWorkerPods(ctx, w)));
-        const total = counts.reduce((sum, n) => sum + n, 0);
-        if (total === 0) return;
-        if (Date.now() > deadline) {
-          throw new Error(
-            `workers did not scale to zero within ${QUIESCE_TIMEOUT_MS / 1000}s (${total} pods left) - aborting before any store is wiped`,
-          );
-        }
-        log(`reset: waiting for ${total} worker pod(s) to exit...`);
-        await new Promise((resolve) => setTimeout(resolve, 5_000));
-      }
+      await waitForScaleToZero(ctx, log);
     },
     async resume() {
       for (const worker of KNATIVE_WORKERS) {

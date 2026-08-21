@@ -56,17 +56,22 @@ const social = new SocialClient({ baseUrl: env.SOCIAL_INTERNAL_URL, internal });
 // search e2e convergence failures). Retry until the service answers or the
 // window closes; only then fall back to no resume positions.
 const CHECKPOINT_FETCH_WINDOW_MS = 90_000;
+
+async function fetchCheckpoints(): Promise<Map<string, number>> {
+  const result = await search.internalGetCheckpoints(CONSUMER_GROUPS.searchIndexWorker);
+  const map = new Map<string, number>();
+  for (const position of result.positions) {
+    map.set(position.topicPartition, position.offset + 1);
+  }
+  if (map.size > 0) logger.info(`resuming from ${map.size} checkpoint(s)`);
+  return map;
+}
+
 async function fetchResumePositions(): Promise<Map<string, number>> {
   const deadline = Date.now() + CHECKPOINT_FETCH_WINDOW_MS;
   for (;;) {
     try {
-      const result = await search.internalGetCheckpoints(CONSUMER_GROUPS.searchIndexWorker);
-      const map = new Map<string, number>();
-      for (const position of result.positions) {
-        map.set(position.topicPartition, position.offset + 1);
-      }
-      if (map.size > 0) logger.info(`resuming from ${map.size} checkpoint(s)`);
-      return map;
+      return await fetchCheckpoints();
     } catch (err) {
       if (Date.now() > deadline) {
         logger.warn({ err }, 'checkpoint fetch failed - starting without resume positions');

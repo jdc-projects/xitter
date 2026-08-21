@@ -245,69 +245,123 @@ interface SlotPlan {
 }
 const keyOf = (ref: PostRef): string => `${ref.authorIndex}/${ref.ordinal}`;
 
-function planSlots(userCount: number, postsPerUser: number): SlotPlan {
-  // taken[author][ordinal] marks a slot consumed by images/roots/replies.
+/** Slot bookkeeping shared by the planning phases below. */
+interface SlotAllocator {
+  /** Consume a slot (throws when already taken). */
+  take(authorIndex: number, ordinal: number): PostSlot;
+  /** First unconsumed ordinal for an author. */
+  firstFree(authorIndex: number): number;
+  isTaken(authorIndex: number, ordinal: number): boolean;
+}
+
+/** taken[author][ordinal] marks a slot consumed by images/roots/replies. */
+function createSlotAllocator(userCount: number, postsPerUser: number): SlotAllocator {
   const taken: boolean[][] = Array.from({ length: userCount }, () =>
     Array.from({ length: postsPerUser }, () => false),
   );
-  const take = (authorIndex: number, ordinal: number): PostSlot => {
-    if (taken[authorIndex]![ordinal]) throw new Error(`slot ${authorIndex}/${ordinal} taken`);
-    taken[authorIndex]![ordinal] = true;
-    return { authorIndex, ordinal };
+  return {
+    take(authorIndex, ordinal) {
+      if (taken[authorIndex]![ordinal]) throw new Error(`slot ${authorIndex}/${ordinal} taken`);
+      taken[authorIndex]![ordinal] = true;
+      return { authorIndex, ordinal };
+    },
+    firstFree(authorIndex) {
+      const ordinal = taken[authorIndex]!.indexOf(false);
+      if (ordinal === -1) throw new Error(`no free slot for user ${authorIndex}`);
+      return ordinal;
+    },
+    isTaken: (authorIndex, ordinal) => taken[authorIndex]![ordinal] === true,
   };
-  const firstFree = (authorIndex: number): number => {
-    const ordinal = taken[authorIndex]!.indexOf(false);
-    if (ordinal === -1) throw new Error(`no free slot for user ${authorIndex}`);
-    return ordinal;
-  };
+}
 
-  // Image posts: first ordinal of the first stride users.
+/** Image posts: first ordinal of the first stride users. */
+function planImageSlots(alloc: SlotAllocator, userCount: number): Set<string> {
   const imageKeys = new Set<string>();
   for (let i = 0; i < IMAGE_USER_COUNT && i * IMAGE_USER_STRIDE < userCount; i++) {
-    const authorIndex = i * IMAGE_USER_STRIDE;
-    imageKeys.add(keyOf(take(authorIndex, 0)));
+    imageKeys.add(keyOf(alloc.take(i * IMAGE_USER_STRIDE, 0)));
   }
+  return imageKeys;
+}
 
-  // Thread roots: mid-range ordinals of non-image users, faker-chosen. The
-  // roots themselves stay ordinary standalone posts (they carry text too);
-  // only their ordinals are reserved here so replies can reference them.
+/**
+ * Thread roots: mid-range ordinals of non-image users, faker-chosen. The
+ * roots themselves stay ordinary standalone posts (they carry text too);
+ * only their ordinals are reserved here so replies can reference them.
+ */
+function planThreadRoots(
+  alloc: SlotAllocator,
+  userCount: number,
+  postsPerUser: number,
+): { roots: PostSlot[]; threads: ThreadPlan[] } {
   const rootCandidates: PostSlot[] = [];
   for (let u = 1; u < userCount; u++) {
     for (let o = Math.floor(postsPerUser / 2); o < postsPerUser - 1; o++) {
-      if (!taken[u]![o]) rootCandidates.push({ authorIndex: u, ordinal: o });
+      if (!alloc.isTaken(u, o)) rootCandidates.push({ authorIndex: u, ordinal: o });
     }
   }
   const threadCount = Math.min(THREAD_COUNT, userCount - 1, rootCandidates.length);
-  const repliesPerThread = Math.min(REPLIES_PER_THREAD, Math.max(1, postsPerUser - 2));
-  const rootSlots = faker.helpers
+  const roots = faker.helpers
     .arrayElements(rootCandidates, threadCount)
     .sort((a, b) => a.authorIndex - b.authorIndex || a.ordinal - b.ordinal);
-  const rootKeys = new Set(rootSlots.map(keyOf));
-  const threads: ThreadPlan[] = rootSlots.map((root) => {
-    take(root.authorIndex, root.ordinal);
+  const threads = roots.map((root) => {
+    alloc.take(root.authorIndex, root.ordinal);
     return { root, replies: [] as PostSlot[] };
   });
+  return { roots, threads };
+}
 
-  // Reply chains: every reply answers the thread ROOT directly (a
-  // concentrated conversation - the root's replies page carries them all).
+/**
+ * Reply chains: every reply answers the thread ROOT directly (a
+ * concentrated conversation - the root's replies page carries them all).
+ */
+function attachReplyChains(
+  alloc: SlotAllocator,
+  threads: ThreadPlan[],
+  userCount: number,
+  repliesPerThread: number,
+): void {
   for (const thread of threads) {
     for (let k = 1; k <= repliesPerThread; k++) {
       const authorIndex = (thread.root.authorIndex + k) % userCount;
-      thread.replies.push(take(authorIndex, firstFree(authorIndex)));
+      thread.replies.push(alloc.take(authorIndex, alloc.firstFree(authorIndex)));
     }
   }
+}
 
-  // Standalone = every unclaimed slot PLUS the reserved roots and images.
-  const specialKeys = new Set<string>([...rootKeys, ...imageKeys]);
+/** Standalone = every unclaimed slot PLUS the reserved roots and images. */
+function collectStandalone(
+  alloc: SlotAllocator,
+  userCount: number,
+  postsPerUser: number,
+  specialKeys: Set<string>,
+): PostSlot[] {
   const standalone: PostSlot[] = [];
   for (let u = 0; u < userCount; u++) {
     for (let o = 0; o < postsPerUser; o++) {
-      if (!taken[u]![o] || specialKeys.has(`${u}/${o}`)) {
+      if (!alloc.isTaken(u, o) || specialKeys.has(`${u}/${o}`)) {
         standalone.push({ authorIndex: u, ordinal: o });
       }
     }
   }
-  return { standalone, threads, imageKeys };
+  return standalone;
+}
+
+function planSlots(userCount: number, postsPerUser: number): SlotPlan {
+  const alloc = createSlotAllocator(userCount, postsPerUser);
+  const imageKeys = planImageSlots(alloc, userCount);
+  const { roots, threads } = planThreadRoots(alloc, userCount, postsPerUser);
+  attachReplyChains(
+    alloc,
+    threads,
+    userCount,
+    Math.min(REPLIES_PER_THREAD, Math.max(1, postsPerUser - 2)),
+  );
+  const specialKeys = new Set<string>([...roots.map(keyOf), ...imageKeys]);
+  return {
+    standalone: collectStandalone(alloc, userCount, postsPerUser, specialKeys),
+    threads,
+    imageKeys,
+  };
 }
 
 // ---------------------------------------------------------------------------
