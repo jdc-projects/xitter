@@ -8,7 +8,7 @@ import { createLogger, initSentry, initTracing, registerCollectGauge } from '@xi
 import { AppModule } from './app.module.js';
 import { env } from './env.js';
 import { FeedGateway, FEED_WS_PATH } from './modules/feed.gateway.js';
-import { FeedRepository } from './modules/feed.repository.js';
+import { FEED_PRISMA } from './modules/feed.repository.js';
 
 const logger = createLogger({ service: 'feed' });
 
@@ -33,14 +33,16 @@ bootstrapApiService({
   port: env.PORT,
   module: AppModule,
   // Feed-freshness platform metric (spec 06, #12): age of the newest
-  // materialised entry, read from the DB on every scrape.
+  // materialised entry, read from the store on every scrape. Null (empty
+  // table, e.g. right after a reset) keeps the last exported value.
   configureMetrics: (app, metrics) => {
-    const repository = app.get(FeedRepository);
+    const feedEntry = app.get(FEED_PRISMA).feedEntry;
     registerCollectGauge(metrics, {
       name: 'xitter_feed_newest_entry_age_seconds',
       help: 'Age of the newest materialised feed entry across all users',
       collect: async () => {
-        const newestAt = await repository.newestPostCreatedAt();
+        const newest = await feedEntry.aggregate({ _max: { postCreatedAt: true } });
+        const newestAt = newest._max.postCreatedAt;
         return newestAt ? Math.max(0, (Date.now() - newestAt.getTime()) / 1000) : null;
       },
     });

@@ -120,16 +120,6 @@ export class FeedRepository {
     return this.db.feedEntry.deleteMany({}).then((r) => r.count);
   }
 
-  /**
-   * Newest entry across all feeds - the feed-freshness platform metric
-   * (spec 06, #12). Null when the table is empty (fresh reset).
-   */
-  newestPostCreatedAt(): Promise<Date | null> {
-    return this.db.feedEntry
-      .aggregate({ _max: { postCreatedAt: true } })
-      .then((aggregate) => aggregate._max.postCreatedAt ?? null);
-  }
-
   toNewEntry(input: FeedEntryInput): NewFeedEntry {
     return {
       userId: input.userId,
