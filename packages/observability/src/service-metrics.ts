@@ -84,9 +84,11 @@ export function createServiceMetrics(serviceName: string): ServiceMetrics {
     instance.addHook('onResponse', (request, reply, next) => {
       const start = startedAt.get(request);
       startedAt.delete(request);
-      if (start !== undefined) {
+      if (start !== undefined && request.routeOptions?.url !== '/metrics') {
         // Unmatched requests (404 before routing) have no route template -
-        // a fixed label keeps cardinality bounded.
+        // a fixed label keeps cardinality bounded. Prometheus's own scrapes
+        // are excluded: they would flood every panel with a phantom route
+        // and inflate 5xx-rate denominators.
         const route = request.routeOptions?.url ?? 'unmatched';
         const statusClass = `${Math.floor(reply.statusCode / 100)}xx`;
         const labels = { service: serviceName, route, status_class: statusClass };

@@ -49,12 +49,19 @@ export async function bootstrapApiService(
   app.useGlobalGuards(app.get(AuthGuard));
   app.useGlobalFilters(new ErrorEnvelopeFilter());
 
-  // RED metrics + GET /metrics on the app port (spec 06). The plugin is a
-  // plain Fastify plugin: it never passes through the Nest guard pipeline,
-  // which is what keeps /metrics scrapeable without credentials.
+  // RED metrics + GET /metrics on the app port (spec 06). Invoked against
+  // the ROOT Fastify instance, not via register(): a plain (non
+  // fastify-plugin) function registers into an encapsulated child context
+  // whose hooks never run for Nest's root-context routes - the metrics
+  // would only ever see Prometheus's own /metrics scrapes. It still never
+  // passes through the Nest guard pipeline, which is what keeps /metrics
+  // scrapeable without credentials.
   const metrics = createServiceMetrics(options.service);
   await options.configureMetrics?.(app, metrics);
-  await app.register(metrics.plugin as Parameters<NestFastifyApplication['register']>[0]);
+  const fastifyRoot = app.getHttpAdapter().getInstance() as unknown as Parameters<
+    typeof metrics.plugin
+  >[0];
+  metrics.plugin(fastifyRoot, {}, () => undefined);
 
   app.enableShutdownHooks();
 

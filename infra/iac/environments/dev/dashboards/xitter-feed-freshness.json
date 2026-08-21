@@ -1,44 +1,71 @@
 {
-  "annotations": { "list": [] },
+  "annotations": {
+    "list": []
+  },
   "editable": true,
   "fiscalYearStartMonth": 0,
   "refresh": "30s",
   "schemaVersion": 39,
   "tags": ["xitter"],
-  "time": { "from": "now-6h", "to": "now" },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
   "timezone": "browser",
-  "title": "xitter · Feed freshness / lag",
+  "title": "xitter \u00b7 Feed freshness / lag",
   "uid": "xitter-feed-freshness",
   "version": 1,
   "panels": [
     {
-      "datasource": { "type": "prometheus" },
+      "datasource": {
+        "type": "prometheus"
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "s",
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "orange", "value": 300 },
-              { "color": "red", "value": 900 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 300
+              },
+              {
+                "color": "red",
+                "value": 900
+              }
             ]
           }
         },
         "overrides": []
       },
-      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
       "id": 1,
       "options": {
         "colorMode": "background",
         "graphMode": "area",
         "justifyMode": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto"
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus" },
+          "datasource": {
+            "type": "prometheus"
+          },
           "expr": "xitter_feed_newest_entry_age_seconds",
           "legendFormat": "newest entry age",
           "refId": "A"
@@ -48,12 +75,25 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus" },
+      "datasource": {
+        "type": "prometheus"
+      },
       "fieldConfig": {
-        "defaults": { "unit": "s", "custom": { "fillOpacity": 10, "lineWidth": 1 } },
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 1
+          }
+        },
         "overrides": []
       },
-      "gridPos": { "h": 6, "w": 16, "x": 8, "y": 0 },
+      "gridPos": {
+        "h": 6,
+        "w": 16,
+        "x": 8,
+        "y": 0
+      },
       "id": 2,
       "options": {
         "legend": {
@@ -62,11 +102,16 @@
           "placement": "bottom",
           "showLegend": true
         },
-        "tooltip": { "mode": "multi", "sort": "desc" }
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus" },
+          "datasource": {
+            "type": "prometheus"
+          },
           "expr": "xitter_feed_newest_entry_age_seconds",
           "legendFormat": "newest entry age",
           "refId": "A"
@@ -76,12 +121,25 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus" },
+      "datasource": {
+        "type": "prometheus"
+      },
       "fieldConfig": {
-        "defaults": { "unit": "short", "custom": { "fillOpacity": 20, "lineWidth": 1 } },
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 20,
+            "lineWidth": 1
+          }
+        },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 6
+      },
       "id": 3,
       "options": {
         "legend": {
@@ -90,12 +148,17 @@
           "placement": "bottom",
           "showLegend": true
         },
-        "tooltip": { "mode": "multi", "sort": "desc" }
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus" },
-          "expr": "sum by (topic) (xitter_kafka_consumer_lag)",
+          "datasource": {
+            "type": "prometheus"
+          },
+          "expr": "sum by (topic) (xitter_kafka_consumer_lag{group=\"xitter-fanout-worker\"})",
           "legendFormat": "{{topic}}",
           "refId": "A"
         }
@@ -104,12 +167,25 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus" },
+      "datasource": {
+        "type": "prometheus"
+      },
       "fieldConfig": {
-        "defaults": { "unit": "short", "custom": { "fillOpacity": 10, "lineWidth": 1 } },
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 1
+          }
+        },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 6
+      },
       "id": 4,
       "options": {
         "legend": {
@@ -118,12 +194,17 @@
           "placement": "bottom",
           "showLegend": true
         },
-        "tooltip": { "mode": "multi", "sort": "desc" }
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus" },
-          "expr": "sum by (instance) (xitter_kafka_consumer_lag)",
+          "datasource": {
+            "type": "prometheus"
+          },
+          "expr": "sum by (topic) (xitter_kafka_consumer_lag{group=\"xitter-fanout-worker\"})",
           "legendFormat": "{{instance}}",
           "refId": "A"
         }

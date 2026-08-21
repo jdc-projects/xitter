@@ -237,8 +237,13 @@ resource "kubernetes_manifest" "prometheus_rule" {
           name = "xitter-reset"
           rules = [
             {
+              # completion_time only exists for SUCCESSFUL jobs (k8s sets it
+              # "when the job finishes successfully, and only then"), so a
+              # run that fails every night never produces the series and the
+              # stale alert's RHS goes empty. Absent() keeps the stale
+              # condition armed in that case too.
               alert  = "XitterResetJobStale"
-              expr   = "(hour() >= 1) and on () (time() - max(kube_job_status_completion_time{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"}) > 86400)"
+              expr   = "(hour() >= 1) and on () ((time() - max(kube_job_status_completion_time{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"}) > 86400) or absent(kube_job_status_completion_time{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"}))"
               for    = "15m"
               labels = { severity = "warning" }
               annotations = {
@@ -247,13 +252,15 @@ resource "kubernetes_manifest" "prometheus_rule" {
               }
             },
             {
+              # A failed job has start_time but no completion_time: detect
+              # recent runs (started < 24h ago) that never succeeded.
               alert  = "XitterResetJobFailed"
-              expr   = "max by (job_name) (kube_job_status_succeeded{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"} * on (job_name, namespace) (time() - kube_job_status_completion_time{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"} < 86400)) == 0"
+              expr   = "(time() - kube_job_status_start_time{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"} < 86400) and on (job_name, namespace) (kube_job_status_succeeded{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"} == 0)"
               for    = "5m"
               labels = { severity = "warning" }
               annotations = {
                 summary     = "Nightly reset job failed ({{ $labels.job_name }})"
-                description = "A reset job completed in the last 24h without success."
+                description = "A reset job started in the last 24h never completed successfully."
               }
             },
           ]
@@ -320,7 +327,7 @@ resource "kubernetes_manifest" "grafana_dashboard" {
     }
 
     spec = {
-      allowCrossNamespaceImport = "true"
+      allowCrossNamespaceImport = true
 
       # The homelab Grafana instance's fixed selector (iac/modules/
       # grafana-dashboard is the single source of truth for this label).
