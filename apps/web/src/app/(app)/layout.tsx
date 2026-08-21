@@ -25,6 +25,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               Bookmarks
             </Text>
           ) : null}
+          {/* Public info stays reachable post-login (reset schedule, FAQ). */}
+          <Text component="a" href="/about" size="sm" c="dimmed" inherit>
+            About
+          </Text>
         </Group>
         {session ? (
           <Group gap="sm">

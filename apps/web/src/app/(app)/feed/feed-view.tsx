@@ -122,7 +122,19 @@ export function FeedView({ initialEntries, initialCursor, viewerId }: FeedViewPr
 
       {error ? (
         <Alert color="red" data-testid="feed-error">
-          {error}
+          <Group justify="space-between" gap="sm">
+            <span>{error}</span>
+            {/* Retry whichever fetch failed: append (cursor) or page 1. */}
+            <Button
+              size="compact-xs"
+              variant="light"
+              loading={loading}
+              onClick={() => void (cursor ? loadMore() : showNew())}
+              data-testid="feed-retry"
+            >
+              Try again
+            </Button>
+          </Group>
         </Alert>
       ) : null}
     </>

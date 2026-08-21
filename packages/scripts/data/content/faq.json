@@ -32,7 +32,7 @@
   {
     "slug": "faq-who-runs",
     "question": "Who runs this, and where's the code?",
-    "answer": "The homelab owner, as a learning project. The code lives in the xitter repository - the About page above explains how the pieces fit together.",
+    "answer": "The homelab owner, as a learning project. The code lives in the xitter repository - the sections above explain how the pieces fit together.",
     "order": 5
   },
   {
