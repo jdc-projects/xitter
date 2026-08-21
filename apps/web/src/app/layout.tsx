@@ -47,10 +47,20 @@ const theme = createTheme({
 });
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // Sentry client config (spec 06): the DSN is a runtime secret injected by
+  // Tofu, so the server passes it to instrumentation-client.ts via this JSON
+  // script tag instead of a build-time NEXT_PUBLIC_ inlining.
+  const sentryConfig = JSON.stringify({
+    dsn: process.env.SENTRY_DSN,
+    release: process.env.SENTRY_RELEASE,
+    environment: process.env.XITTER_ENV ?? 'local',
+  });
+
   return (
     <html lang="en">
       <head>
         <ColorSchemeScript defaultColorScheme="auto" />
+        <script id="xitter-sentry-config" type="application/json">{sentryConfig}</script>
       </head>
       <body>
         <MantineProvider theme={theme} defaultColorScheme="auto">
