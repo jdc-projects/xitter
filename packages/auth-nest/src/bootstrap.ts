@@ -3,7 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import type { Type } from '@nestjs/common';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { HEALTH_ROUTES } from '@xitter/config';
-import { createLogger } from '@xitter/observability';
+import { createLogger, createServiceMetrics, type ServiceMetrics } from '@xitter/observability';
 import { AuthGuard } from './auth.guard.js';
 import { ErrorEnvelopeFilter } from './error.filter.js';
 
@@ -18,14 +18,20 @@ export interface ApiServiceOptions {
   prefix: string;
   port: number;
   module: Type<unknown>;
+  /**
+   * Optional per-service metric registration (spec 06 platform metrics),
+   * e.g. feed's freshness gauge. Runs after Nest init (the app is
+   * injectable) and before listen, against the service's shared registry.
+   */
+  configureMetrics?: (app: NestFastifyApplication, metrics: ServiceMetrics) => void | Promise<void>;
 }
 
 /**
  * Shared API-service bootstrap: one well-tested startup path for every
  * service (fastify adapter, public prefix with root-level health probes,
- * global auth guard + error envelope, graceful shutdown). Returns the
- * application so callers can reach the underlying HTTP server (e.g. the
- * feed service attaches its websocket upgrade handler to it).
+ * global auth guard + error envelope, RED metrics on /metrics, graceful
+ * shutdown). Returns the application so callers can reach the underlying HTTP
+ * server (e.g. the feed service attaches its websocket upgrade handler to it).
  */
 export async function bootstrapApiService(
   options: ApiServiceOptions,
@@ -42,6 +48,14 @@ export async function bootstrapApiService(
   app.setGlobalPrefix(options.prefix, { exclude: [...HEALTH_ROUTES] });
   app.useGlobalGuards(app.get(AuthGuard));
   app.useGlobalFilters(new ErrorEnvelopeFilter());
+
+  // RED metrics + GET /metrics on the app port (spec 06). The plugin is a
+  // plain Fastify plugin: it never passes through the Nest guard pipeline,
+  // which is what keeps /metrics scrapeable without credentials.
+  const metrics = createServiceMetrics(options.service);
+  await options.configureMetrics?.(app, metrics);
+  await app.register(metrics.plugin as Parameters<NestFastifyApplication['register']>[0]);
+
   app.enableShutdownHooks();
 
   await app.listen(options.port, '0.0.0.0');
