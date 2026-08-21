@@ -1,0 +1,82 @@
+name: Scheduled suites
+
+on:
+  schedule:
+    # Nightly 02:30 UTC - after the 00:00 UTC reset/reseed window, so the
+    # suites run against freshly reseeded dev state (verified content, no
+    # reset-in-progress races).
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment (dev by default; prod available for pre-release smoke)'
+        required: false
+        default: 'dev'
+        type: choice
+        options: [dev, prod]
+
+# Nightly cross-app suites against a deployed environment: Bruno API smoke +
+# Artillery load smoke, with run summaries published as CI artifacts. These
+# target the public edge of a deployed env, never a local stack - see
+# docs/specs/testing/02-suites.md.
+concurrency:
+  group: scheduled-suites
+  cancel-in-progress: false
+
+jobs:
+  target:
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set.outputs.environment }}
+      base_url: ${{ steps.set.outputs.base_url }}
+    steps:
+      - id: set
+        run: |
+          env="${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'dev' }}"
+          case "$env" in
+            prod) base="https://xitter.jd-chapman.dev" ;;
+            *) base="https://xitter-dev.jd-chapman.dev"; env="dev" ;;
+          esac
+          {
+            echo "environment=$env"
+            echo "base_url=$base"
+          } >> "$GITHUB_OUTPUT"
+
+  bruno:
+    needs: target
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # Bruno hits the public edge; no cluster access needed.
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - name: Run collection (${{ needs.target.outputs.environment }})
+        run: npm run test:api -- --env ${{ needs.target.outputs.environment }}
+      - name: Publish run summary
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bruno-report-${{ needs.target.outputs.environment }}
+          path: bruno/xitter/reports/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  artillery:
+    needs: target
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      KEYCLOAK_URL: https://idp.jd-chapman.dev
+      E2E_BASE_URL: ${{ needs.target.outputs.base_url }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+      - name: Smoke load run (feed flow)
+        run: npx artillery run --output tests/artillery/report.json tests/artillery/feed-flow.yml
+      - name: Publish run summary
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: artillery-report-${{ needs.target.outputs.environment }}
+          path: tests/artillery/report.json
+          retention-days: 14

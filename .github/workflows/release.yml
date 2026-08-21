@@ -3,13 +3,234 @@ name: Release
 on:
   push:
     branches: [prod]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Explicit semver (v1.2.3, or v1.2.3-rc.1 for a throwaway dry run). Empty = derive from conventional commits.'
+        required: false
+        type: string
+      dry_run:
+        description: 'Plan prod instead of applying; skip tag/release/reconcile. Pair with an explicit rc version.'
+        required: false
+        default: false
+        type: boolean
 
-# Gitflow: release branch merged into prod tags a semver release and applies
-# infra/iac/environments/prod. Activates with the first deploy ticket.
+# Gitflow: merging a release branch into prod derives the next semver version
+# from the conventional-commit history since the last v* tag (explicit
+# override for dry runs/repairs), publishes version-tagged images, tags +
+# creates the GitHub release, applies infra/iac/environments/prod pinned to
+# that version, and opens a reconciliation PR back to dev when prod holds
+# commits dev lacks. See docs/specs/operations/04-release-pipeline.md.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+
 jobs:
-  release:
+  version:
     runs-on: ubuntu-latest
-    if: false # enable with the deploy pipeline ticket
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.derive.outputs.version }}
+      dry_run: ${{ steps.flags.outputs.dry_run }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Full history + tags: derivation walks every commit subject since
+          # the last reachable v* tag.
+          fetch-depth: 0
       - uses: ./.github/actions/setup
+      - name: Derive release version
+        id: derive
+        run: |
+          args="--out-dir .release"
+          if [ -n "${{ inputs.version }}" ]; then
+            args="$args --explicit ${{ inputs.version }}"
+          fi
+          tsx packages/scripts/src/release-version.ts $args
+          echo "version=$(jq -r .version .release/version.json)" >> "$GITHUB_OUTPUT"
+      - name: Record dry-run flag
+        id: flags
+        run: echo "dry_run=${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-derivation
+          path: .release/
+          retention-days: 30
+
+  release-images:
+    # Version-tagged (immutable) images; the sha- tag adds traceability the
+    # same way dev builds do. No mutable tag on purpose: prod only ever
+    # deploys explicit releases, and SENTRY_RELEASE echoes the version.
+    needs: version
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: xitter-web
+            dockerfile: apps/web/Dockerfile
+          - image: xitter-cms
+            dockerfile: apps/cms/Dockerfile
+          - image: xitter-admin
+            dockerfile: apps/admin/Dockerfile
+          - image: xitter-social
+            dockerfile: apps/services/social/Dockerfile
+          - image: xitter-posts
+            dockerfile: apps/services/posts/Dockerfile
+          - image: xitter-media
+            dockerfile: apps/services/media/Dockerfile
+          - image: xitter-feed
+            dockerfile: apps/services/feed/Dockerfile
+          - image: xitter-search
+            dockerfile: apps/services/search/Dockerfile
+          - image: xitter-fanout
+            dockerfile: apps/workers/fanout/Dockerfile
+          - image: xitter-media-process
+            dockerfile: apps/workers/media-process/Dockerfile
+          - image: xitter-search-index
+            dockerfile: apps/workers/search-index/Dockerfile
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Compute short SHA
+        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push ${{ matrix.image }}
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ghcr.io/jdc-projects/${{ matrix.image }}:${{ needs.version.outputs.version }}
+            ghcr.io/jdc-projects/${{ matrix.image }}:sha-${{ env.SHORT_SHA }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+
+  github-release:
+    # Tag + release notes for the deployed version. Re-runs the same
+    # derivation on the same SHA, so the notes match the version job exactly.
+    needs: [version, release-images]
+    if: needs.version.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup
+      - name: Regenerate release notes
+        run: tsx packages/scripts/src/release-version.ts --out-dir .release
+      - name: Tag and create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: gh release create "$VERSION" --target "$GITHUB_SHA" --title "$VERSION" --notes-file .release/notes.md
+
+  tofu-apply:
+    # Applies infra/iac/environments/prod pinned to the release version.
+    # Self-hosted runner - the cluster API is private. Dry runs plan only
+    # (exit code 2 = "changes present" is a PASS here: a first prod plan had
+    # better show changes).
+    needs: [version, release-images]
+    runs-on: self-hosted
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: opentofu/setup-opentofu@v2
+      - name: Write kubeconfig
+        run: |
+          if [ -z "${{ secrets.CLUSTER_KUBECONFIG }}" ]; then
+            echo '::error::CLUSTER_KUBECONFIG secret is not set - see docs/runbooks/04-ci-and-secrets.md'
+            exit 1
+          fi
+          mkdir -p infra
+          printf '%s' "${{ secrets.CLUSTER_KUBECONFIG }}" > infra/cluster.yml
+      - name: tofu plan (prod, dry run)
+        if: needs.version.outputs.dry_run == 'true'
+        working-directory: infra/iac/environments/prod
+        run: |
+          tofu init
+          tofu plan -input=false -detailed-exitcode -var image_tag=${{ needs.version.outputs.version }} -out=tfplan
+          ec=$?
+          if [ "$ec" -ne 0 ] && [ "$ec" -ne 2 ]; then exit "$ec"; fi
+          tofu show -no-color tfplan > plan.txt
+      - name: Upload prod plan
+        if: needs.version.outputs.dry_run == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: prod-plan
+          path: infra/iac/environments/prod/plan.txt
+          retention-days: 14
+      - name: tofu apply (prod)
+        if: needs.version.outputs.dry_run != 'true'
+        working-directory: infra/iac/environments/prod
+        run: |
+          tofu init
+          tofu apply -auto-approve -input=false -var image_tag=${{ needs.version.outputs.version }}
+
+  reconcile:
+    # Gitflow reconciliation: commits that exist only on prod (the release
+    # merge itself, plus any stabilization fixes made on the release branch)
+    # must flow back into dev. Opens prod -> dev when prod is ahead; nothing
+    # to do when the branches already agree. NOTE: PRs opened with
+    # GITHUB_TOKEN do not trigger pr-gates (bot-authored), so the owner
+    # merges these as admin - documented in the release runbook.
+    needs: [version, github-release, tofu-apply]
+    if: needs.version.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Fetch dev and prod
+        run: |
+          git fetch origin dev:refs/remotes/origin/dev
+          git fetch origin prod:refs/remotes/origin/prod
+      - name: Count commits ahead
+        id: ahead
+        run: echo "count=$(git rev-list --count origin/prod ^origin/dev)" >> "$GITHUB_OUTPUT"
+      - name: Open reconciliation PR
+        if: steps.ahead.outputs.count != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+          COUNT: ${{ steps.ahead.outputs.count }}
+        run: |
+          printf '%s\n' \
+            "Gitflow reconciliation after release $VERSION: \`prod\` holds $COUNT commit(s) not on \`dev\` (the release merge plus any stabilization fixes)." \
+            "" \
+            "Review and merge as admin - this PR is bot-authored, so it does not trigger PR gates." \
+            > .reconcile-body.md
+          gh pr create \
+            --repo "$GITHUB_REPOSITORY" \
+            --base dev --head prod \
+            --title "chore(release): reconcile $VERSION into dev" \
+            --body-file .reconcile-body.md \
+            || echo "::warning::reconciliation PR already exists - review and merge it manually"
+      - name: Job summary
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          COUNT: ${{ steps.ahead.outputs.count }}
+        run: |
+          {
+            echo "## Release $VERSION"
+            if [ "$COUNT" = "0" ]; then
+              echo "prod holds no commits dev lacks - no reconciliation needed."
+            else
+              echo "Reconciliation PR (prod → dev) opened or already present for $COUNT commit(s)."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
