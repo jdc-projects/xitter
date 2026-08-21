@@ -61,4 +61,3 @@ test('profile posts append in place via Load more', async ({ page }) => {
   // Append-in-place: no ?cursor= navigation, the scroll position survives.
   await expect(page).toHaveURL(/\/profile\/demo5$/);
 });
-

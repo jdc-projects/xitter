@@ -50,7 +50,12 @@ export async function loadProfilePostsPage(
     posts.items.map((post) => post.id),
   );
   return {
-    items: toPostCardItems(posts.items, new Map([[profile.id, profile]]), viewerFlags, session.subject),
+    items: toPostCardItems(
+      posts.items,
+      new Map([[profile.id, profile]]),
+      viewerFlags,
+      session.subject,
+    ),
     nextCursor: posts.nextCursor,
   };
 }

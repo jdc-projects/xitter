@@ -4,16 +4,16 @@ Acceptance-style catalogue of every user-facing feature area. "Must" = required 
 
 ## 1. Landing page
 
-| #   | Acceptance criteria                                                                                                                                       |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1.1 | Public (unauthenticated). Serves as the site's front door with a short intro managed in the CMS.                                                          |
-| 1.2 | Shows an **unmissable reset notice**: all data is wiped nightly (default 00:00 UTC).                                                                      |
-| 1.3 | Links to the About page (which includes the FAQ section).                                                                                                 |
-| 1.4 | Provides a clear path to login. No user-generated content is visible.                                                                                     |
-| 1.5 | Renders the shared **public header** (brand → home, About, Log in); the authenticated shell renders its own nav instead and links back to the About page. |
-| 1.6 | Carries the demo: hero treatment of the CMS intro (wordmark, avatar-gradient motif) with the intro in larger type.                                        |
+| #   | Acceptance criteria                                                                                                                                                                 |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.1 | Public (unauthenticated). Serves as the site's front door with a short intro managed in the CMS.                                                                                    |
+| 1.2 | Shows an **unmissable reset notice**: all data is wiped nightly (default 00:00 UTC).                                                                                                |
+| 1.3 | Links to the About page (which includes the FAQ section).                                                                                                                           |
+| 1.4 | Provides a clear path to login. No user-generated content is visible.                                                                                                               |
+| 1.5 | Renders the shared **public header** (brand → home, About, Log in); the authenticated shell renders its own nav instead and links back to the About page.                           |
+| 1.6 | Carries the demo: hero treatment of the CMS intro (wordmark, avatar-gradient motif) with the intro in larger type.                                                                  |
 | 1.7 | Renders an **under-the-hood stack strip** — what the platform is and runs on (web app, services, workers, stores, IaC). Facts live in code; the CMS intro stays the editable prose. |
-| 1.8 | Shows a **demo-credentials entry point** (accounts + password, public by design) that links to login.                                                    |
+| 1.8 | Shows a **demo-credentials entry point** (accounts + password, public by design) that links to login.                                                                               |
 
 ## 2. About page
 
@@ -95,11 +95,11 @@ Acceptance-style catalogue of every user-facing feature area. "Must" = required 
 
 ## 9. Search
 
-| #   | Acceptance criteria                                                           |
-| --- | ----------------------------------------------------------------------------- |
-| 9.1 | Full-text search over posts, available to logged-in users.                    |
-| 9.2 | Results respect deletion: deleted posts never appear.                         |
-| 9.3 | Results eventually consistent with posting (index lags seconds, not minutes). |
+| #   | Acceptance criteria                                                                                                     |
+| --- | ----------------------------------------------------------------------------------------------------------------------- |
+| 9.1 | Full-text search over posts, available to logged-in users.                                                              |
+| 9.2 | Results respect deletion: deleted posts never appear.                                                                   |
+| 9.3 | Results eventually consistent with posting (index lags seconds, not minutes).                                           |
 | 9.4 | Results paginate in place: the shared client-side Load more appends the next page without a full navigation (see 13.4). |
 
 ## 10. CMS content
@@ -154,10 +154,10 @@ their internal admin endpoints — the panel gate is UX, not the boundary).
 
 ## 13. App shell (authenticated navigation)
 
-| #    | Acceptance criteria                                                                                                                                  |
-| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 13.1 | The authenticated shell's navigation is visually distinct from body content: icon'd links, brand set apart from destinations.                        |
-| 13.2 | The current page is marked in the navigation (`aria-current` + styling) on every destination that has a nav entry.                                   |
-| 13.3 | On small screens a burger opens a drawer with the same navigation; search stays reachable (drawer link + header icon) even where the search box hides. |
+| #    | Acceptance criteria                                                                                                                                                                                                                 |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 13.1 | The authenticated shell's navigation is visually distinct from body content: icon'd links, brand set apart from destinations.                                                                                                       |
+| 13.2 | The current page is marked in the navigation (`aria-current` + styling) on every destination that has a nav entry.                                                                                                                  |
+| 13.3 | On small screens a burger opens a drawer with the same navigation; search stays reachable (drawer link + header icon) even where the search box hides.                                                                              |
 | 13.4 | Every cursor-paginated list (feed, search, bookmarks, profile posts and follow lists, reply threads) uses one shared Load more that appends pages in place - no full-page cursor navigation, one `load-more` affordance everywhere. |
-| 13.5 | One labelled search input per page: the header box hides itself on /search, where the page's own box is the single input.                            |
+| 13.5 | One labelled search input per page: the header box hides itself on /search, where the page's own box is the single input.                                                                                                           |

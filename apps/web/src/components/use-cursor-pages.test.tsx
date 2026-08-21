@@ -53,9 +53,7 @@ describe('useCursorPages (#41 append-in-place pagination)', () => {
       .fn()
       .mockResolvedValueOnce(page(['b1', 'b2'], 'c2'))
       .mockResolvedValueOnce(page(['b3'], null));
-    render(
-      <Harness initialItems={[{ id: 'a1' }]} initialCursor="c1" fetchPage={fetchPage} />,
-    );
+    render(<Harness initialItems={[{ id: 'a1' }]} initialCursor="c1" fetchPage={fetchPage} />);
 
     expect(screen.getByText('a1')).toBeTruthy();
     expect(screen.getByText('c1')).toBeTruthy();

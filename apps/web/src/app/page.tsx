@@ -35,11 +35,7 @@ export default async function LandingPage({ searchParams }: LandingPageProps) {
             <LandingAvatarMotif />
             <Title order={1}>
               {/* Gradient wordmark ties into the avatar motif (#37). */}
-              <Text
-                variant="gradient"
-                gradient={{ from: 'indigo', to: 'cyan', deg: 135 }}
-                inherit
-              >
+              <Text variant="gradient" gradient={{ from: 'indigo', to: 'cyan', deg: 135 }} inherit>
                 xitter
               </Text>
             </Title>

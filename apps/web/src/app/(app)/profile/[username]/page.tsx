@@ -166,7 +166,12 @@ export default async function ProfilePage({
 
       {tab === 'posts' ? (
         postsProps ? (
-          <ProfileTabLists username={profile.username} tab="posts" posts={postsProps} people={null} />
+          <ProfileTabLists
+            username={profile.username}
+            tab="posts"
+            posts={postsProps}
+            people={null}
+          />
         ) : (
           <Text size="sm" c="dimmed" data-testid="profile-posts-empty">
             No posts yet.

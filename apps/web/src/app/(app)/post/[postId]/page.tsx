@@ -24,11 +24,7 @@ const cardAuthor = (profile: { username: string; displayName: string } | undefin
  * render the 404 page - soft-deleted is indistinguishable from absent.
  * Load more appends in place on the shared cursor pattern (#41).
  */
-export default async function PostDetailPage({
-  params,
-}: {
-  params: Promise<{ postId: string }>;
-}) {
+export default async function PostDetailPage({ params }: { params: Promise<{ postId: string }> }) {
   const { postId } = await params;
   const session = await requireSession(`/post/${postId}`);
   const { posts, social } = clientsForSession(session);

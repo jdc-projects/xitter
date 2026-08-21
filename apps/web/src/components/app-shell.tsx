@@ -14,12 +14,7 @@ import {
   Text,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import {
-  IconBookmark,
-  IconHome,
-  IconInfoCircle,
-  IconSearch,
-} from '@tabler/icons-react';
+import { IconBookmark, IconHome, IconInfoCircle, IconSearch } from '@tabler/icons-react';
 import type { Icon } from '@tabler/icons-react';
 import type { ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
@@ -51,11 +46,7 @@ export function isNavActive(pathname: string | null, href: string): boolean {
   return pathname === href;
 }
 
-function navLink(
-  item: NavItem,
-  pathname: string | null,
-  variant: 'header' | 'drawer',
-): ReactNode {
+function navLink(item: NavItem, pathname: string | null, variant: 'header' | 'drawer'): ReactNode {
   const active = isNavActive(pathname, item.href);
   return (
     <NavLink

@@ -28,7 +28,10 @@ export async function loadBookmarksPage(
     throw error;
   }
 
-  const authors = await profilesByAuthorIds(social, page.items.map((post) => post.authorId));
+  const authors = await profilesByAuthorIds(
+    social,
+    page.items.map((post) => post.authorId),
+  );
   const states = await viewerStateByPostId(
     posts,
     page.items.map((post) => post.id),

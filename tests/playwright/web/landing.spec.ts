@@ -43,7 +43,9 @@ test('landing renders fallback copy when the CMS is down', async ({ page }) => {
   await expect(page.getByText(/microservices playground for learning/i)).toBeVisible();
 });
 
-test('landing carries the demo: credentials entry point and stack strip (#37)', async ({ page }) => {
+test('landing carries the demo: credentials entry point and stack strip (#37)', async ({
+  page,
+}) => {
   await page.goto('/');
 
   // Demo credentials are public by design (spec 04) - surfaced on the
