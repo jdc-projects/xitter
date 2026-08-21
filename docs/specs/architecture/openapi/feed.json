@@ -43,15 +43,10 @@
                 }
               }
             },
-            "required": [
-              "code",
-              "message"
-            ]
+            "required": ["code", "message"]
           }
         },
-        "required": [
-          "error"
-        ]
+        "required": ["error"]
       },
       "UpsertFeedEntriesRequest": {
         "type": "object",
@@ -78,10 +73,7 @@
                 },
                 "reason": {
                   "type": "string",
-                  "enum": [
-                    "post",
-                    "repost"
-                  ]
+                  "enum": ["post", "repost"]
                 },
                 "repostedById": {
                   "type": "string",
@@ -95,21 +87,13 @@
                   "format": "date-time"
                 }
               },
-              "required": [
-                "userId",
-                "postId",
-                "authorId",
-                "reason",
-                "postCreatedAt"
-              ]
+              "required": ["userId", "postId", "authorId", "reason", "postCreatedAt"]
             },
             "minItems": 1,
             "maxItems": 1000
           }
         },
-        "required": [
-          "entries"
-        ],
+        "required": ["entries"],
         "additionalProperties": false
       },
       "ResetStatus": {
@@ -174,11 +158,7 @@
             "minimum": 0
           }
         },
-        "required": [
-          "name",
-          "ok",
-          "durationMs"
-        ],
+        "required": ["name", "ok", "durationMs"],
         "additionalProperties": false
       }
     },
@@ -187,9 +167,7 @@
   "paths": {
     "/feed": {
       "get": {
-        "tags": [
-          "feed"
-        ],
+        "tags": ["feed"],
         "security": [
           {
             "bearerAuth": []
@@ -265,11 +243,7 @@
                                     },
                                     "status": {
                                       "type": "string",
-                                      "enum": [
-                                        "pending",
-                                        "ready",
-                                        "failed"
-                                      ]
+                                      "enum": ["pending", "ready", "failed"]
                                     },
                                     "variants": {
                                       "type": "array",
@@ -278,10 +252,7 @@
                                         "properties": {
                                           "kind": {
                                             "type": "string",
-                                            "enum": [
-                                              "original",
-                                              "thumb"
-                                            ]
+                                            "enum": ["original", "thumb"]
                                           },
                                           "objectKey": {
                                             "type": "string",
@@ -329,13 +300,7 @@
                                       "format": "date-time"
                                     }
                                   },
-                                  "required": [
-                                    "id",
-                                    "ownerId",
-                                    "status",
-                                    "variants",
-                                    "createdAt"
-                                  ]
+                                  "required": ["id", "ownerId", "status", "variants", "createdAt"]
                                 }
                               },
                               "replyToId": {
@@ -366,11 +331,7 @@
                                     "minimum": 0
                                   }
                                 },
-                                "required": [
-                                  "replies",
-                                  "likes",
-                                  "reposts"
-                                ]
+                                "required": ["replies", "likes", "reposts"]
                               },
                               "createdAt": {
                                 "type": "string",
@@ -423,20 +384,11 @@
                                 "format": "date-time"
                               }
                             },
-                            "required": [
-                              "id",
-                              "username",
-                              "displayName",
-                              "bio",
-                              "createdAt"
-                            ]
+                            "required": ["id", "username", "displayName", "bio", "createdAt"]
                           },
                           "reason": {
                             "type": "string",
-                            "enum": [
-                              "post",
-                              "repost"
-                            ]
+                            "enum": ["post", "repost"]
                           },
                           "repostedBy": {
                             "type": "object",
@@ -468,21 +420,10 @@
                                 "format": "date-time"
                               }
                             },
-                            "required": [
-                              "id",
-                              "username",
-                              "displayName",
-                              "bio",
-                              "createdAt"
-                            ]
+                            "required": ["id", "username", "displayName", "bio", "createdAt"]
                           }
                         },
-                        "required": [
-                          "post",
-                          "author",
-                          "reason",
-                          "repostedBy"
-                        ]
+                        "required": ["post", "author", "reason", "repostedBy"]
                       }
                     },
                     "nextCursor": {
@@ -490,10 +431,7 @@
                       "nullable": true
                     }
                   },
-                  "required": [
-                    "items",
-                    "nextCursor"
-                  ]
+                  "required": ["items", "nextCursor"]
                 }
               }
             }
@@ -513,9 +451,7 @@
     },
     "/ws": {
       "get": {
-        "tags": [
-          "feed"
-        ],
+        "tags": ["feed"],
         "description": "WebSocket endpoint (wss upgrade only): `wss://{host}/api/feed/v1/ws?token={accessToken}`. Server-to-client notifications only - `{ \"type\": \"feed.new-items\", \"count\": n }`; clients refetch `GET /v1/feed`.",
         "responses": {
           "400": {
@@ -533,9 +469,7 @@
     },
     "/internal/feed/entries": {
       "post": {
-        "tags": [
-          "internal"
-        ],
+        "tags": ["internal"],
         "security": [
           {
             "serviceToken": []
@@ -564,9 +498,7 @@
                       "minimum": 0
                     }
                   },
-                  "required": [
-                    "inserted"
-                  ],
+                  "required": ["inserted"],
                   "additionalProperties": false
                 }
               }
@@ -587,9 +519,7 @@
     },
     "/internal/feed/posts/{postId}/entries": {
       "delete": {
-        "tags": [
-          "internal"
-        ],
+        "tags": ["internal"],
         "security": [
           {
             "serviceToken": []
@@ -620,9 +550,7 @@
                       "type": "integer"
                     }
                   },
-                  "required": [
-                    "deleted"
-                  ]
+                  "required": ["deleted"]
                 }
               }
             }
@@ -632,9 +560,7 @@
     },
     "/internal/feed/posts/{postId}/reposts/{repostedById}": {
       "delete": {
-        "tags": [
-          "internal"
-        ],
+        "tags": ["internal"],
         "security": [
           {
             "serviceToken": []
@@ -675,9 +601,7 @@
                       "type": "integer"
                     }
                   },
-                  "required": [
-                    "deleted"
-                  ]
+                  "required": ["deleted"]
                 }
               }
             }
@@ -687,9 +611,7 @@
     },
     "/internal/feed/users/{userId}/authors/{authorId}": {
       "delete": {
-        "tags": [
-          "internal"
-        ],
+        "tags": ["internal"],
         "security": [
           {
             "serviceToken": []
@@ -730,9 +652,7 @@
                       "type": "integer"
                     }
                   },
-                  "required": [
-                    "deleted"
-                  ]
+                  "required": ["deleted"]
                 }
               }
             }
@@ -742,9 +662,7 @@
     },
     "/internal/feed/users/{userId}": {
       "delete": {
-        "tags": [
-          "internal"
-        ],
+        "tags": ["internal"],
         "security": [
           {
             "serviceToken": []
@@ -775,9 +693,7 @@
                       "type": "integer"
                     }
                   },
-                  "required": [
-                    "deleted"
-                  ]
+                  "required": ["deleted"]
                 }
               }
             }
@@ -787,9 +703,7 @@
     },
     "/internal/reseed": {
       "post": {
-        "tags": [
-          "internal"
-        ],
+        "tags": ["internal"],
         "security": [
           {
             "serviceToken": []
@@ -808,9 +722,7 @@
                       "type": "boolean"
                     }
                   },
-                  "required": [
-                    "ok"
-                  ]
+                  "required": ["ok"]
                 }
               }
             }
@@ -820,9 +732,7 @@
     },
     "/internal/reset-status": {
       "get": {
-        "tags": [
-          "internal"
-        ],
+        "tags": ["internal"],
         "security": [
           {
             "serviceToken": []

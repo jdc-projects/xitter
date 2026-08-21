@@ -66,11 +66,7 @@
                           },
                           "status": {
                             "type": "string",
-                            "enum": [
-                              "pending",
-                              "ready",
-                              "failed"
-                            ]
+                            "enum": ["pending", "ready", "failed"]
                           },
                           "variants": {
                             "type": "array",
@@ -79,10 +75,7 @@
                               "properties": {
                                 "kind": {
                                   "type": "string",
-                                  "enum": [
-                                    "original",
-                                    "thumb"
-                                  ]
+                                  "enum": ["original", "thumb"]
                                 },
                                 "objectKey": {
                                   "type": "string",
@@ -130,13 +123,7 @@
                             "format": "date-time"
                           }
                         },
-                        "required": [
-                          "id",
-                          "ownerId",
-                          "status",
-                          "variants",
-                          "createdAt"
-                        ]
+                        "required": ["id", "ownerId", "status", "variants", "createdAt"]
                       }
                     },
                     "replyToId": {
@@ -167,11 +154,7 @@
                           "minimum": 0
                         }
                       },
-                      "required": [
-                        "replies",
-                        "likes",
-                        "reposts"
-                      ]
+                      "required": ["replies", "likes", "reposts"]
                     },
                     "createdAt": {
                       "type": "string",
@@ -224,20 +207,11 @@
                       "format": "date-time"
                     }
                   },
-                  "required": [
-                    "id",
-                    "username",
-                    "displayName",
-                    "bio",
-                    "createdAt"
-                  ]
+                  "required": ["id", "username", "displayName", "bio", "createdAt"]
                 },
                 "reason": {
                   "type": "string",
-                  "enum": [
-                    "post",
-                    "repost"
-                  ]
+                  "enum": ["post", "repost"]
                 },
                 "repostedBy": {
                   "type": "object",
@@ -269,21 +243,10 @@
                       "format": "date-time"
                     }
                   },
-                  "required": [
-                    "id",
-                    "username",
-                    "displayName",
-                    "bio",
-                    "createdAt"
-                  ]
+                  "required": ["id", "username", "displayName", "bio", "createdAt"]
                 }
               },
-              "required": [
-                "post",
-                "author",
-                "reason",
-                "repostedBy"
-              ]
+              "required": ["post", "author", "reason", "repostedBy"]
             }
           },
           "nextCursor": {
@@ -291,10 +254,7 @@
             "nullable": true
           }
         },
-        "required": [
-          "items",
-          "nextCursor"
-        ]
+        "required": ["items", "nextCursor"]
       },
       "Error": {
         "type": "object",
@@ -315,15 +275,10 @@
                 }
               }
             },
-            "required": [
-              "code",
-              "message"
-            ]
+            "required": ["code", "message"]
           }
         },
-        "required": [
-          "error"
-        ]
+        "required": ["error"]
       },
       "UpsertSearchDocumentsRequest": {
         "type": "object",
@@ -337,9 +292,7 @@
             "maxItems": 1000
           }
         },
-        "required": [
-          "documents"
-        ],
+        "required": ["documents"],
         "additionalProperties": false
       },
       "SearchIndexDocument": {
@@ -385,13 +338,7 @@
             "default": null
           }
         },
-        "required": [
-          "postId",
-          "authorId",
-          "authorName",
-          "text",
-          "createdAt"
-        ],
+        "required": ["postId", "authorId", "authorName", "text", "createdAt"],
         "additionalProperties": false
       },
       "RefreshSearchAuthorsRequest": {
@@ -413,19 +360,14 @@
                   "maxLength": 50
                 }
               },
-              "required": [
-                "authorId",
-                "authorName"
-              ],
+              "required": ["authorId", "authorName"],
               "additionalProperties": false
             },
             "minItems": 1,
             "maxItems": 100
           }
         },
-        "required": [
-          "authors"
-        ],
+        "required": ["authors"],
         "additionalProperties": false
       }
     },
@@ -434,9 +376,7 @@
   "paths": {
     "/v1/posts": {
       "get": {
-        "tags": [
-          "search"
-        ],
+        "tags": ["search"],
         "security": [
           {
             "bearerAuth": []
@@ -501,9 +441,7 @@
     },
     "/internal/search/index": {
       "post": {
-        "tags": [
-          "internal"
-        ],
+        "tags": ["internal"],
         "security": [
           {
             "serviceToken": []
@@ -531,9 +469,7 @@
                       "type": "integer"
                     }
                   },
-                  "required": [
-                    "indexed"
-                  ]
+                  "required": ["indexed"]
                 }
               }
             }
@@ -551,9 +487,7 @@
         }
       },
       "delete": {
-        "tags": [
-          "internal"
-        ],
+        "tags": ["internal"],
         "security": [
           {
             "serviceToken": []
@@ -572,9 +506,7 @@
                       "type": "integer"
                     }
                   },
-                  "required": [
-                    "deleted"
-                  ]
+                  "required": ["deleted"]
                 }
               }
             }
@@ -584,9 +516,7 @@
     },
     "/internal/search/index/authors": {
       "post": {
-        "tags": [
-          "internal"
-        ],
+        "tags": ["internal"],
         "security": [
           {
             "serviceToken": []
@@ -614,9 +544,7 @@
                       "type": "integer"
                     }
                   },
-                  "required": [
-                    "updated"
-                  ]
+                  "required": ["updated"]
                 }
               }
             }
@@ -636,9 +564,7 @@
     },
     "/internal/search/checkpoint": {
       "post": {
-        "tags": [
-          "internal"
-        ],
+        "tags": ["internal"],
         "security": [
           {
             "serviceToken": []
@@ -674,13 +600,7 @@
                     "format": "date-time"
                   }
                 },
-                "required": [
-                  "consumerKey",
-                  "topicPartition",
-                  "offset",
-                  "eventId",
-                  "eventAt"
-                ],
+                "required": ["consumerKey", "topicPartition", "offset", "eventId", "eventAt"],
                 "additionalProperties": false
               }
             }
@@ -693,9 +613,7 @@
         }
       },
       "get": {
-        "tags": [
-          "internal"
-        ],
+        "tags": ["internal"],
         "security": [
           {
             "serviceToken": []
@@ -743,19 +661,12 @@
                             "nullable": true
                           }
                         },
-                        "required": [
-                          "topicPartition",
-                          "offset",
-                          "eventId",
-                          "eventAt"
-                        ],
+                        "required": ["topicPartition", "offset", "eventId", "eventAt"],
                         "additionalProperties": false
                       }
                     }
                   },
-                  "required": [
-                    "positions"
-                  ],
+                  "required": ["positions"],
                   "additionalProperties": false
                 }
               }
@@ -766,9 +677,7 @@
     },
     "/internal/reseed": {
       "post": {
-        "tags": [
-          "internal"
-        ],
+        "tags": ["internal"],
         "security": [
           {
             "serviceToken": []
@@ -790,10 +699,7 @@
                       "type": "integer"
                     }
                   },
-                  "required": [
-                    "ok",
-                    "deleted"
-                  ]
+                  "required": ["ok", "deleted"]
                 }
               }
             }
