@@ -353,27 +353,24 @@ function buildInteractions(userCount: number, posts: CorpusPost[]): CorpusIntera
   // Hot posts carry a burst of likes; the rest are cold (0-2).
   const hot = faker.helpers.arrayElements(posts, HOT_POST_COUNT).sort(byAuthorOrdinal);
   const hotSet = new Set(hot.map(keyOf));
-  for (const post of hot) {
-    const likers = faker.number.int({ min: 5, max: 8 });
-    const seen = new Set<number>();
-    for (let k = 0; k < likers; k++) {
-      const actor = pickActor(post.authorIndex);
-      if (seen.has(actor)) continue;
-      seen.add(actor);
-      claim(actor, post, 'like');
+  const scatterLikes = (targets: CorpusPost[], min: number, max: number) => {
+    for (const post of targets) {
+      const likers = faker.number.int({ min, max });
+      const seen = new Set<number>();
+      for (let k = 0; k < likers; k++) {
+        const actor = pickActor(post.authorIndex);
+        if (seen.has(actor)) continue;
+        seen.add(actor);
+        claim(actor, post, 'like');
+      }
     }
-  }
-  for (const post of posts) {
-    if (hotSet.has(keyOf(post))) continue;
-    const likers = faker.number.int({ min: 0, max: 2 });
-    const seen = new Set<number>();
-    for (let k = 0; k < likers; k++) {
-      const actor = pickActor(post.authorIndex);
-      if (seen.has(actor)) continue;
-      seen.add(actor);
-      claim(actor, post, 'like');
-    }
-  }
+  };
+  scatterLikes(hot, 5, 8);
+  scatterLikes(
+    posts.filter((p) => !hotSet.has(keyOf(p))),
+    0,
+    2,
+  );
 
   out.sort(
     (a, b) =>

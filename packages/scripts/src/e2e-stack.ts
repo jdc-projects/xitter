@@ -1,5 +1,4 @@
 #!/usr/bin/env tsx
-// fallow-ignore-file unused-file -- Playwright e2e webServer command (config), not imported
 /**
  * Playwright e2e webServer command: `npm run start` + deterministic seed.
  *
