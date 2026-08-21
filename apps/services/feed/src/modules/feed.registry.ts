@@ -4,6 +4,7 @@ import {
   errorSchema,
   hydratedFeedItemSchema,
   postIdSchema,
+  resetStatusSchema,
   upsertFeedEntriesRequestSchema,
   upsertFeedEntriesResponseSchema,
   userIdSchema,
@@ -134,4 +135,16 @@ feedApi.registerPath({
   security: [{ serviceToken: [] }],
   description: 'Truncate feed entries (reset job); the timeline rebuilds from events.',
   responses: { 200: jsonResponse('Acknowledged', z.object({ ok: z.boolean() })) },
+});
+
+feedApi.registerPath({
+  method: 'get',
+  path: '/internal/reset-status',
+  tags: ['internal'],
+  security: [{ serviceToken: [] }],
+  description:
+    'Last reset/reseed run (written by the reset job to Valkey) for the admin health tile; null when no reset has run.',
+  responses: {
+    200: jsonResponse('Reset status or null', resetStatusSchema.nullable()),
+  },
 });

@@ -47,6 +47,12 @@ await runEventWorker({
   brokers: env.KAFKA_BROKERS.split(','),
   groupId: CONSUMER_GROUPS.fanoutWorker,
   topics: ['posts', 'social'],
+  // Derived-state builder: a FRESH group (no committed offsets - new
+  // cluster, or bootstrap-seed before the worker first ran) must replay
+  // the whole log or the materialised feed silently misses the corpus.
+  // The nightly reset avoids replaying retained traffic by resetting group
+  // offsets to the new epoch (reset-flow.ts), which takes precedence.
+  fromBeginning: true,
   metricsPort: env.METRICS_PORT,
   handle: (envelope) => handleEvent(envelope, { social, posts, feed }),
 });

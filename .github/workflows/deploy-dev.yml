@@ -49,6 +49,8 @@ jobs:
             dockerfile: apps/workers/media-process/Dockerfile
           - image: xitter-search-index
             dockerfile: apps/workers/search-index/Dockerfile
+          - image: xitter-reset
+            dockerfile: packages/scripts/Dockerfile
     steps:
       - uses: actions/checkout@v7
 

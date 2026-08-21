@@ -18,8 +18,8 @@ export interface DemoUser {
   userId: string;
 }
 
-export async function createAdminClient(): Promise<KcAdminClient> {
-  const kc = new KcAdminClient({ baseUrl: keycloakBaseUrl(), realmName: 'master' });
+export async function createAdminClient(baseUrl?: string): Promise<KcAdminClient> {
+  const kc = new KcAdminClient({ baseUrl: baseUrl ?? keycloakBaseUrl(), realmName: 'master' });
   // Keycloak answers /realms/master before its token endpoint reliably
   // accepts connections (transient "other side closed" resets during boot);
   // retry the admin grant until it settles.
@@ -70,9 +70,25 @@ async function ensureRealm(kc: KcAdminClient, realm: string): Promise<void> {
     accessTokenLifespan: 900,
     ssoSessionIdleTimeout: 3600,
     ssoSessionMaxLifespan: 43200,
+    // T14 login defence (mirrors the Tofu realm in keycloak.tf): the realm
+    // is edge-exposed, so recreate it with brute-force protection intact
+    // rather than silently downgrading until the next tofu apply.
+    ...BRUTE_FORCE_SETTINGS,
   });
   console.log(`realm ${realm}: created`);
 }
+
+/** Keycloak's own defaults, spelled out (parity with keycloak.tf). */
+const BRUTE_FORCE_SETTINGS = {
+  bruteForceProtected: true,
+  permanentLockout: false,
+  maxLoginFailures: 30,
+  waitIncrementSeconds: 60,
+  quickLoginCheckMilliSeconds: 1000,
+  minimumQuickLoginWaitSeconds: 60,
+  maxFailureWaitSeconds: 900,
+  failureResetTimeSeconds: 43_200,
+};
 
 interface EnsureClientOptions {
   public?: boolean;
@@ -199,9 +215,21 @@ async function repairDemoUser(
   console.log(`user ${realm}/${username}: profile repaired`);
 }
 
-export async function initDemoRealm(): Promise<DemoUser[]> {
+export interface DemoRealmOptions {
+  /** Keycloak admin API base (defaults to the local instance). */
+  baseUrl?: string;
+  /**
+   * Secrets for the machine (service-account) clients. Deployed realms use
+   * Tofu-managed random secrets; the nightly reset must recreate clients
+   * with the SAME secrets or every workload's client-credentials grant
+   * breaks. Falls back to the local `${client}-local-secret` convention.
+   */
+  machineSecrets?: Readonly<Record<string, string>>;
+}
+
+export async function initDemoRealm(options: DemoRealmOptions = {}): Promise<DemoUser[]> {
   loadRepoEnv();
-  const kc = await createAdminClient();
+  const kc = await createAdminClient(options.baseUrl);
   const { realm, userPrefix, userCount, password } = demoCredentials();
 
   await ensureRealm(kc, realm);
@@ -216,14 +244,14 @@ export async function initDemoRealm(): Promise<DemoUser[]> {
   for (const serviceClient of SERVICE_CLIENTS) {
     const uuid = await ensureClient(kc, realm, serviceClient, {
       serviceAccount: true,
-      secret: `${serviceClient}-local-secret`,
+      secret: machineSecret(serviceClient, options),
     });
     await ensureAudienceMapper(kc, realm, uuid, SERVICE_CLIENTS);
   }
   for (const worker of WORKER_CLIENTS) {
     const uuid = await ensureClient(kc, realm, worker.clientId, {
       serviceAccount: true,
-      secret: `${worker.clientId}-local-secret`,
+      secret: machineSecret(worker.clientId, options),
     });
     await ensureAudienceMapper(kc, realm, uuid, worker.audiences);
   }
@@ -233,6 +261,10 @@ export async function initDemoRealm(): Promise<DemoUser[]> {
     users.push(await ensureUser(kc, realm, `${userPrefix}${i}`, password, 'demo-user'));
   }
   return users;
+}
+
+function machineSecret(clientId: string, options: DemoRealmOptions): string {
+  return options.machineSecrets?.[clientId] ?? `${clientId}-local-secret`;
 }
 
 /**
@@ -316,9 +348,9 @@ export async function initLocalAdminRealm(): Promise<void> {
   await ensureUser(kc, realm, 'localuser', 'LocalUser123!');
 }
 
-export async function resetDemoRealm(): Promise<void> {
+export async function resetDemoRealm(options: DemoRealmOptions = {}): Promise<void> {
   loadRepoEnv();
-  const kc = await createAdminClient();
+  const kc = await createAdminClient(options.baseUrl);
   const realm = demoCredentials().realm;
   try {
     await kc.realms.del({ realm });

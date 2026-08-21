@@ -9,6 +9,7 @@ import { FeedController } from './feed.controller.js';
 import { FEED_PRISMA, FeedRepository, type FeedPrismaClient } from './feed.repository.js';
 import { FeedService } from './feed.service.js';
 import { InternalFeedController } from './internal-feed.controller.js';
+import { RESET_STATUS, ValkeyResetStatus, type ResetStatusReader } from './reset-status.js';
 
 const prismaProvider: Provider = {
   provide: FEED_PRISMA,
@@ -37,16 +38,23 @@ const realtimeProvider: Provider = {
   useFactory: () => new ValkeyFeedRealtime(env.VALKEY_URL),
 };
 
+const resetStatusProvider: Provider = {
+  provide: RESET_STATUS,
+  useFactory: () => new ValkeyResetStatus(env.VALKEY_URL),
+};
+
 /** Disconnect order: stop notifications, then close the DB pool. */
 @Injectable()
 export class FeedLifecycle implements OnApplicationShutdown {
   constructor(
     @Inject(FEED_PRISMA) private readonly db: FeedPrismaClient,
     @Inject(FEED_REALTIME) private readonly realtime: FeedRealtime,
+    @Inject(RESET_STATUS) private readonly resetStatus: ResetStatusReader,
   ) {}
 
   async onApplicationShutdown(): Promise<void> {
     await this.realtime.stop?.().catch(() => undefined);
+    await this.resetStatus.stop().catch(() => undefined);
     await this.db.$disconnect().catch(() => undefined);
   }
 }
@@ -57,6 +65,7 @@ export class FeedLifecycle implements OnApplicationShutdown {
     prismaProvider,
     hydratorProvider,
     realtimeProvider,
+    resetStatusProvider,
     FeedRepository,
     FeedService,
     FeedLifecycle,

@@ -28,7 +28,10 @@ export default defineConfig({
     { name: 'a11y', use: { browserName: 'chromium' }, testMatch: /a11y\.spec\.ts/ },
   ],
   webServer: {
-    command: 'npm run start',
+    // Stack wrapper: starts `npm run start`, waits for services AND the
+    // workers, applies the deterministic seed (idempotent), then idles -
+    // the suite expects a seeded, lived-in environment (T13).
+    command: 'tsx packages/scripts/src/e2e-stack.ts',
     // Probe the web app port, NOT the edge (:8080) - traefik holds the edge
     // open whenever the docker stack is up, which would falsely signal ready
     // and skip starting the apps under test.

@@ -342,3 +342,36 @@ export const idParam = (name: 'userId' | 'postId' | 'mediaId' | 'username') =>
     mediaId: { name: 'mediaId', schema: mediaIdSchema, in: 'path', required: true },
     username: { name: 'username', schema: usernameSchema, in: 'path', required: true },
   })[name];
+
+/**
+ * Last reset run, surfaced by the feed service for the admin health tile
+ * (spec 03 internal table; T13). Written by the reset job after every run -
+ * success or failure - so operators always see the freshest outcome.
+ */
+export const resetStepStatusSchema = z
+  .object({
+    name: z.string(),
+    ok: z.boolean(),
+    durationMs: z.number().int().nonnegative(),
+  })
+  .strict()
+  .openapi('ResetStepStatus');
+
+export type ResetStepStatus = z.infer<typeof resetStepStatusSchema>;
+
+export const resetStatusSchema = z
+  .object({
+    job: z.string(),
+    startedAt: z.iso.datetime(),
+    finishedAt: z.iso.datetime(),
+    durationMs: z.number().int().nonnegative(),
+    success: z.boolean(),
+    reseeded: z.boolean(),
+    /** Seed corpus digest when reseeded, else null. */
+    fingerprint: z.string().nullable(),
+    steps: z.array(resetStepStatusSchema),
+  })
+  .strict()
+  .openapi('ResetStatus');
+
+export type ResetStatus = z.infer<typeof resetStatusSchema>;

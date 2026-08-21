@@ -52,6 +52,11 @@ await runEventWorker({
   brokers: env.KAFKA_BROKERS.split(','),
   groupId: CONSUMER_GROUPS.mediaProcessWorker,
   topics: ['media'],
+  // Derived-state builder: a fresh group replays the log so seed uploads
+  // emitted before the worker first ran still get their variants. The
+  // nightly reset resets group offsets to the new epoch instead
+  // (reset-flow.ts), so retained traffic is never reprocessed there.
+  fromBeginning: true,
   metricsPort: env.METRICS_PORT,
   handle: (envelope) => handleEvent(envelope, { media, storage }),
 });
