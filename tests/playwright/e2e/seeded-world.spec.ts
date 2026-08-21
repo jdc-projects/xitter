@@ -67,16 +67,21 @@ test('every demo account owns its corpus posts', async ({ request }) => {
 
 test('feeds hold the fanout-derived corpus entries', async ({ page }) => {
   await login(page, 'demo1');
-  const expected = corpus.counts.feedEntriesByUser[0]!;
   // page.request shares cookies, not the app's bearer token - mint one.
   const token = await apiToken('demo1');
+  // Lower bound: demo1's own corpus posts plus the followed authors whose
+  // edges no spec removes (demo5, demo6). profile.spec's follow/unfollow
+  // cycle ends with demo1 -> demo2 unfollowed, so demo2's entries cannot
+  // be part of the bound - the fanout correctly removes them.
+  const expected = corpus.posts.filter((p) => [0, 4, 5].includes(p.authorIndex)).length;
   await expect
     .poll(async () => {
       const res = await page.request.get('/api/feed/v1/feed?limit=50', {
         headers: { authorization: `Bearer ${token}` },
       });
-      const body = (await res.json()) as { items: unknown[] };
-      return body.items.length;
+      if (!res.ok()) return -1; // transient edge rate-limit / restart: poll on
+      const body = (await res.json().catch(() => null)) as { items?: unknown[] } | null;
+      return body?.items?.length ?? -1;
     }, CONVERGENCE)
     .toBeGreaterThanOrEqual(Math.min(expected, 50));
 });
@@ -124,8 +129,9 @@ test('seeded likes and bookmarks are queryable', async ({ request }) => {
       const res = await request.get('/api/posts/v1/bookmarks?limit=50', {
         headers: { authorization: `Bearer ${token}` },
       });
-      const body = (await res.json()) as { items: unknown[] };
-      return body.items.length;
+      if (!res.ok()) return -1; // transient edge rate-limit / restart: poll on
+      const body = (await res.json().catch(() => null)) as { items?: unknown[] } | null;
+      return body?.items?.length ?? -1;
     }, CONVERGENCE)
     .toBeGreaterThanOrEqual(bookmarkers.length);
 });
@@ -165,8 +171,9 @@ test('search indexes the corpus (derived store, not written directly)', async ({
         `/api/search/v1/search/posts?q=${encodeURIComponent(needle)}`,
         { headers: { authorization: `Bearer ${token}` } },
       );
-      const body = (await res.json()) as { items: unknown[] };
-      return body.items.length;
+      if (!res.ok()) return -1; // transient edge rate-limit / restart: poll on
+      const body = (await res.json().catch(() => null)) as { items?: unknown[] } | null;
+      return body?.items?.length ?? -1;
     }, CONVERGENCE)
     .toBeGreaterThanOrEqual(1);
 });
