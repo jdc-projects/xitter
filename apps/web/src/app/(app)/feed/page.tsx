@@ -1,4 +1,4 @@
-import { Alert, Button, Container, Group, Stack, Title } from '@mantine/core';
+import { Alert, Container, Group, Stack, Title } from '@mantine/core';
 import { requireSession } from '@/lib/auth/session';
 import { PostComposer } from '@/components/post-composer';
 import { RetryRefreshButton } from '@/components/retry-refresh-button';
