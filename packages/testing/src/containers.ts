@@ -57,6 +57,11 @@ function untrack(container: StartedTestContainer): void {
 export async function stopAllTestContainers(): Promise<void> {
   const leftovers = [...tracked];
   if (leftovers.length === 0) return;
+  // Workers flush async afterAll cleanup (pg pools, prisma clients) around
+  // their exit; stopping containers in that window throws uncaught
+  // "terminating connection" exceptions from their sockets and fails the
+  // whole run. A grace delay lets those connections close first.
+  await new Promise((resolve) => setTimeout(resolve, 2_000));
   process.stderr.write(
     `[test-containers] teardown stopping ${leftovers.length} leftover container(s)\n`,
   );
