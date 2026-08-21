@@ -19,7 +19,7 @@ Read first: `docs/README.md` (structure), `docs/specs/` (desired end-state),
 | Install                   | `npm install`                                                                                                      |
 | All gates (run before PR) | `npm run check` (format + turbo lint/typecheck/test/build)                                                         |
 | Repo analysis             | `npm run lint:repo` (fallow + react-doctor; requires `origin/dev` fetched)                                         |
-| Everything CI runs on PR  | `npm run check:all` (`check` + repo analysis + scoped Stryker + web + e2e Playwright)                              |
+| Everything CI runs on PR  | `npm run check:all` (`check` + repo analysis + scoped Stryker + Bruno API + web + e2e Playwright)                     |
 | Deep-clean build state    | `npm run clean` - before trusting gates on a long-lived checkout                                                   |
 | Dev (everything, watch)   | `npm run deps:up && npm run bootstrap && npm run dev`                                                              |
 | Prod-like                 | `npm run build && npm run start`                                                                                   |
@@ -35,11 +35,12 @@ turbo lint/typecheck/**Vitest test**/build) matches the CI `gates` job; `npm run
 (fallow + react-doctor) matches `repo-analysis`. **`npm run check:all` is full CI parity**
 
 - check + repo analysis + scoped Stryker (`check:mutation`, needs `origin/dev` fetched) +
-  both Playwright suites - run it before any PR that changes tests, apps, or tooling.
-  The e2e half needs the docker stack up (`npm run deps:up` first). Artillery + Bruno
-  join `check:all` when their feature tickets (#13, #14) land. On a long-lived checkout
-  run `npm run clean` first - stale `dist/` + turbo caches have masked real failures
-  before. No automated suite runs against dev mode - unit/integration run against
+  Bruno API (`check:api`, needs the docker stack up like e2e) + both Playwright suites - run it
+  before any PR that changes tests, apps, or tooling. The e2e half needs the docker stack up
+  (`npm run deps:up` first). Nightly scheduled suites (Bruno + Artillery against the deployed
+  dev env) run in CI only; Artillery joins `check:all` if a ticket ever asks for it. On a
+  long-lived checkout run `npm run clean` first - stale `dist/` + turbo caches have masked real
+  failures before. No automated suite runs against dev mode - unit/integration run against
   source, web/e2e/load against built artifacts.
 
 ## Architecture map

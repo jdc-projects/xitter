@@ -21,12 +21,16 @@ Every gate must be green **locally before raising a PR**; CI re-runs the same ga
 
 ## CI wiring
 
-| Trigger        | Runs                                                                                                                                            |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| PR → `dev`     | Build, lint (incl. repo lint), typecheck, unit/integration, web + e2e, format check, **mutation scoped to affected workspaces** (turbo filters) |
-| Merge to `dev` | **Full mutation run** across all workspaces, then deploy to the dev environment                                                                 |
+| Trigger          | Runs                                                                                                                                            |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| PR → `dev`       | Build, lint (incl. repo lint), typecheck, unit/integration, web + e2e, format check, **mutation scoped to affected workspaces** (turbo filters) |
+| Merge to `dev`   | **Full mutation run** across all workspaces, then deploy to the dev environment                                                                 |
+| Merge to `prod`  | Release: semver tag, version-tagged images, prod tofu apply, reconciliation PR (see [../operations/04-release-pipeline.md](../operations/04-release-pipeline.md)) |
+| Nightly (02:30 UTC) | Scheduled suites against the deployed dev env: Bruno API smoke + Artillery load smoke, run summaries as CI artifacts                        |
 
 Deployed environments are managed via OpenTofu per `docs/specs/operations/01-environments.md`.
+
+Locally, `check:all` is full CI parity: `check:repo` (format + audit + gates + repo lint) + scoped mutation + **`check:api` (Bruno, against a running local stack)** + web + e2e Playwright.
 
 ## Coverage guidance
 
