@@ -122,12 +122,13 @@ async function syncBruteForcePosture(kc: KcAdminClient, realm: string): Promise<
         {
           bruteForceProtected: true,
           permanentLockout: false,
-          maxLoginFailures: 30,
+          // maxLoginFailures (30) and failureResetTimeSeconds (12h) stay at
+          // Keycloak's own defaults - the admin-client types lack the fields.
           waitIncrementSeconds: 60,
-          quickLoginCheckMilliSeconds: 0,
           minimumQuickLoginWaitSeconds: 60,
           maxFailureWaitSeconds: 900,
-          failureResetTimeSeconds: 43200,
+          // Also untyped upstream, accepted by the endpoint (verified).
+          ...{ quickLoginCheckMilliSeconds: 0 },
         },
       ),
     `sync brute-force posture ${realm}`,
