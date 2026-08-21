@@ -63,27 +63,34 @@ test('search results append in place via the same Load more', async ({ page }) =
   await page.waitForURL(/\/feed$/);
 
   const needle = `t41 searchpage ${crypto.randomUUID()}`;
+  // 22 posts > the 20-entry page: Load more must surface the tail.
   await seedPosts(
     page,
     Array.from({ length: 22 }, (_, n) => `${needle} ${String(n).padStart(2, '0')}`),
   );
 
-  // Indexing is async (post -> Kafka -> search-index worker): the Load-more
-  // button only appears once a 21st doc proves another page exists, so
-  // reload-poll on the button itself, not the first-page count.
-  const results = page.locator('[data-testid^="post-item-"]', { hasText: needle });
-  const loadMore = page.getByTestId('load-more');
-  const deadline = Date.now() + 30_000;
+  // Indexing is async (post -> Kafka -> search-index worker): settle on the
+  // search API first - Load more only sees what the index already holds,
+  // and a button driven by the 21st doc can precede the 22nd.
+  const searchApi = `/api/search/v1/search/posts?q=${encodeURIComponent(needle)}&limit=50`;
+  const deadline = Date.now() + 45_000;
   for (;;) {
-    await page.goto(`/search?q=${encodeURIComponent(needle)}`);
-    if (await loadMore.isVisible().catch(() => false)) break;
-    if (Date.now() > deadline) break;
+    const res = await page.request.get(searchApi);
+    const text = (await res.text()) ?? '';
+    const hits = text.split(needle).length - 1;
+    if (res.ok() && hits >= 22) break;
+    if (Date.now() > deadline) {
+      throw new Error(`search index settled at ${hits}/22 for ${needle}`);
+    }
     await page.waitForTimeout(1_000);
   }
-  await expect(results).toHaveCount(20);
-  await expect(loadMore).toBeVisible();
 
-  await loadMore.click();
+  await page.goto(`/search?q=${encodeURIComponent(needle)}`);
+  const results = page.locator('[data-testid^="post-item-"]', { hasText: needle });
+  await expect(results).toHaveCount(20);
+
+  await page.getByTestId('load-more').click();
   await expect(results).toHaveCount(22, { timeout: 15_000 });
+  // Append-in-place: the query URL is untouched by Load more.
   await expect(page).toHaveURL(new RegExp(`/search\\?q=${encodeURIComponent(needle)}`));
 });
