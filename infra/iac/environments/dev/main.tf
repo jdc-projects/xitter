@@ -105,7 +105,7 @@ variable "image_registry" {
 }
 
 variable "image_tag" {
-  description = "Image tag for all workloads. dev tracks the mutable `dev` tag pushed on merge; prod will pin SHAs/semver."
+  description = "Image tag for all workloads. CI applies pin the immutable `sha-<short>` tag built by the same run (a mutable tag never changes the spec, so nothing rolls); the `dev` default exists only for tofu plan/validate without cluster context."
   type        = string
   default     = "dev"
 }

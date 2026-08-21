@@ -97,6 +97,12 @@ jobs:
           printf '%s' "${{ secrets.CLUSTER_KUBECONFIG }}" > infra/cluster.yml
       - name: tofu apply (dev)
         working-directory: infra/iac/environments/dev
+        # Pin the apply to this run's immutable sha tag: the mutable `dev`
+        # tag never changes the deployment spec, so tofu has nothing to roll
+        # and merged code only reached pods when a spec changed for another
+        # reason (bug: the 2026-08-21 metrics hotfix deployed "successfully"
+        # without restarting anything). The sha tag is pushed by build-images.
         run: |
+          echo "SHORT_SHA=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
           tofu init
-          tofu apply -auto-approve -input=false
+          tofu apply -auto-approve -input=false -var="image_tag=sha-${SHORT_SHA}"
