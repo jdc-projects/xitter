@@ -23,8 +23,18 @@ async function loggedInPage(browser: Browser, username: string): Promise<Page> {
 }
 
 async function compose(page: Page, text: string) {
-  await page.getByTestId('composer-textarea').fill(text);
-  await page.getByTestId('composer-submit').click();
+  const textarea = page.getByTestId('composer-textarea');
+  const submit = page.getByTestId('composer-submit');
+  await textarea.fill(text);
+  // A fill that lands before the SSR'd composer hydrates is discarded when
+  // React re-renders the controlled textarea from empty state - the T12
+  // corpus makes demo feeds heavy enough to widen that window. Re-fill
+  // until the controlled state actually enables the button, then submit.
+  for (let attempt = 0; attempt < 20 && !(await submit.isEnabled()); attempt++) {
+    await textarea.fill(text);
+    await page.waitForTimeout(250);
+  }
+  await submit.click();
 }
 
 /** The first feed post id matching a text snippet (post-item-<id> testid). */
