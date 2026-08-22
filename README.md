@@ -58,5 +58,7 @@ npm run reset   # tear down and rebuild the local environment
 npm run test:e2e # full-stack Playwright suite (auto-starts prod-like mode)
 ```
 
-All changes go through PRs to `dev` (gitflow; `dev` -> release -> `prod`).
+All changes go through PRs to `dev` (gitflow; `dev` -> release branch -> `prod`).
+Releases to `prod` are semver-tagged and workflow-driven; see
+[docs/specs/operations/04-release-pipeline.md](docs/specs/operations/04-release-pipeline.md).
 CI re-runs every gate. Branch protection expects `npm run check` to pass first.

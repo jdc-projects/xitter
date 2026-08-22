@@ -16,7 +16,7 @@ The dev environment deploys, in one root module:
 | Edge            | Homelab ingress module routes for `/`, `/api/{service}`, `/media`, `/cms`, `/admin`; geo-open (no geoblock middleware), plus `realms/xitter-demo`, `resources`, `js` path routes on `idp.jd-chapman.dev` (demo login reachable globally; primary realm + `/admin` stay UK-only) |
 | NetworkPolicies | Default deny + explicit allows (edge, Prometheus, same-namespace, per-dependency egress)                                                                                                                                                                                        |
 
-**Deploys are CI-driven**: merge to `dev` runs `tofu-apply` in Actions (see `.github/workflows/deploy-dev.yml`). This runbook covers the one-time setup and the manual/local path — use it when iterating on IaC or deploying `prod` (T13 wires prod deploys).
+**Deploys are CI-driven**: merge to `dev` runs `tofu-apply` in Actions (see `.github/workflows/deploy-dev.yml`). This runbook covers the one-time setup and the manual/local path — use it when iterating on IaC. Prod deploys are release-driven (`docs/runbooks/06-releasing.md`): the Release workflow applies `environments/prod` with the release's semver `image_tag` (the module's `image_tag` variable is required there — no default).
 
 ## Execution steps
 

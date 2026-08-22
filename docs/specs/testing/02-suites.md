@@ -51,7 +51,7 @@ Thresholds (SLAs at target load):
 | API endpoints             | p95 latency < 500 ms |
 | Pages (web/browser flows) | p95 < 2 s            |
 
-Load runs never target dev mode and are excluded from per-PR gates ([03-coverage-and-gates.md](03-coverage-and-gates.md)).
+Load runs never target dev mode and are excluded from per-PR gates ([03-coverage-and-gates.md](03-coverage-and-gates.md)). Nightly, a smoke run against the deployed dev environment publishes its report as a CI artifact ([../operations/04-release-pipeline.md](../operations/04-release-pipeline.md)).
 
 ## Stryker — mutation
 
@@ -71,6 +71,7 @@ Load runs never target dev mode and are excluded from per-PR gates ([03-coverage
 | ------------ | ---------------------------------------------------------------------------------------------------------------- |
 | Location     | `bruno/xitter` collection: health, follow-user, create-post, get-feed, search-posts                              |
 | Environments | `local` and `dev`                                                                                                |
-| Runs         | `npm run test:api` (`bru run --env local bruno/xitter`); switch `--env dev` against the deployed dev environment |
+| Runs         | `npm run test:api` (`bru run --env local`); `npm run test:api -- --env dev` against the deployed dev environment |
 
 - Purpose: request-level smoke checks and manual API exploration; not a substitute for Vitest integration tests (no schema assertions, no isolation guarantees).
+- Nightly, the collection runs against the freshly reseeded dev environment with the report published as a CI artifact ([../operations/04-release-pipeline.md](../operations/04-release-pipeline.md)).
