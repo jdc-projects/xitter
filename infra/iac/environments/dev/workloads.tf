@@ -99,8 +99,10 @@ module "api_service" {
   environment = var.environment
   image       = "${var.image_registry}/xitter-${each.key}:${var.image_tag}"
 
-  port     = 8080
-  replicas = 2
+  port = 8080
+  # Dev runs single-replica (nightly reset makes state disposable; a single
+  # node has no failure isolation to buy) - prod keeps 2.
+  replicas = 1
 
   # Schema migrations run before every (re)start; idempotent, and the
   # only thing that ever created the deployed schemas (previously nothing
@@ -223,7 +225,7 @@ module "web" {
   image       = "${var.image_registry}/xitter-web:${var.image_tag}"
 
   port     = 3000
-  replicas = 2
+  replicas = 1
 
   env = concat(local.common_env, [
     { name = "PORT", value = "3000" },
@@ -311,7 +313,7 @@ module "cms" {
   image       = "${var.image_registry}/xitter-cms:${var.image_tag}"
 
   port     = 3000
-  replicas = 2
+  replicas = 1
 
   # Next.js basePath: health routes live under /cms/healthz + /cms/readyz.
   liveness_probe_path  = "/cms/healthz"
@@ -356,7 +358,7 @@ module "admin" {
   image       = "${var.image_registry}/xitter-admin:${var.image_tag}"
 
   port     = 8080
-  replicas = 2
+  replicas = 1
 
   env = local.common_env
 }
