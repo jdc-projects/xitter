@@ -1,13 +1,15 @@
-import { Body, Controller, Delete, HttpCode, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post } from '@nestjs/common';
 import { Internal } from '@xitter/auth-nest';
 import {
   upsertFeedEntriesRequestSchema,
   userIdSchema,
   postIdSchema,
+  type ResetStatus,
   type UpsertFeedEntriesRequest,
 } from '@xitter/api-contracts';
 import { ZodValidationPipe } from '@xitter/service-kit';
 import { FeedService } from './feed.service.js';
+import { RESET_STATUS, type ResetStatusReader } from './reset-status.js';
 
 const uuidParam = new ZodValidationPipe(userIdSchema);
 const postParam = new ZodValidationPipe(postIdSchema);
@@ -20,7 +22,10 @@ const postParam = new ZodValidationPipe(postIdSchema);
  */
 @Controller('internal')
 export class InternalFeedController {
-  constructor(private readonly feed: FeedService) {}
+  constructor(
+    private readonly feed: FeedService,
+    @Inject(RESET_STATUS) private readonly resetStatusReader: ResetStatusReader,
+  ) {}
 
   /** Bulk idempotent entry upsert (spec 04 natural-key rule). */
   @Post('feed/entries')
@@ -72,5 +77,15 @@ export class InternalFeedController {
   @HttpCode(200)
   reseed() {
     return this.feed.reseed().then((r) => ({ ok: true, deleted: r.deleted }));
+  }
+
+  /**
+   * Last reset/reseed run (T13): the reset job's record, for the admin
+   * health tile. Null = no reset recorded (e.g. a fresh local env).
+   */
+  @Get('reset-status')
+  @Internal()
+  resetStatus(): Promise<ResetStatus | null> {
+    return this.resetStatusReader.latest();
   }
 }

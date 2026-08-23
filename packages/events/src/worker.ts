@@ -55,9 +55,17 @@ export async function runEventWorker(options: EventWorkerOptions): Promise<void>
   const runOptions: EventConsumerRunOptions = options.resumeFrom
     ? { resumeFrom: options.resumeFrom }
     : {};
-  await consumer.run(async (envelope, raw) => {
-    await options.handle(envelope, raw);
-  }, runOptions);
+  await consumer
+    .run(async (envelope, raw) => {
+      await options.handle(envelope, raw);
+    }, runOptions)
+    .catch((err: unknown) => {
+      // Consumer crash (handler failure exhausted all retries): without this
+      // the rejection surfaced only as a silent process exit, leaving the
+      // worker's derived store stalled with nothing in the logs.
+      logger.error({ err }, `${options.service}: consumer crashed - worker exiting`);
+      throw err;
+    });
 
   process.once('SIGTERM', () => {
     void (async () => {

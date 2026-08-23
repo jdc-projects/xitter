@@ -9,6 +9,8 @@
  *    homelab "primary" realm, gating admin/CMS login on an app-admin role.
  */
 import KcAdminClient from '@keycloak/keycloak-admin-client';
+import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 import { envInt, envString, loadRepoEnv, localUrl } from '@xitter/config';
 import { SERVICE_CLIENTS, WORKER_CLIENTS } from '@xitter/auth';
 import { keycloakBaseUrl } from './lib/wait.js';
@@ -18,8 +20,8 @@ export interface DemoUser {
   userId: string;
 }
 
-export async function createAdminClient(): Promise<KcAdminClient> {
-  const kc = new KcAdminClient({ baseUrl: keycloakBaseUrl(), realmName: 'master' });
+export async function createAdminClient(baseUrl?: string): Promise<KcAdminClient> {
+  const kc = new KcAdminClient({ baseUrl: baseUrl ?? keycloakBaseUrl(), realmName: 'master' });
   // Keycloak answers /realms/master before its token endpoint reliably
   // accepts connections (transient "other side closed" resets during boot);
   // retry the admin grant until it settles.
@@ -47,6 +49,19 @@ export const demoCredentials = () => ({
   password: envString('XITTER_DEMO_USER_PASSWORD', 'DemoPass123!'),
 });
 
+/** Retry a transient Keycloak admin call (keep-alive stream races). */
+async function withRetry<T>(call: () => Promise<T>, what: string, attempts = 5): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await call();
+    } catch (err) {
+      if (attempt >= attempts) throw err;
+      console.log(`keycloak: ${what} attempt ${attempt} failed (${String(err)}) - retrying`);
+      await new Promise((r) => setTimeout(r, 250 * attempt));
+    }
+  }
+}
+
 // Re-exported for callers of this module; the canonical lists live in
 // @xitter/auth so services' guards and the provisioner cannot drift.
 export { SERVICE_CLIENTS, WORKER_CLIENTS };
@@ -54,24 +69,70 @@ export { SERVICE_CLIENTS, WORKER_CLIENTS };
 const edgeUrl = () => localUrl('edge');
 
 async function ensureRealm(kc: KcAdminClient, realm: string): Promise<void> {
-  const realms = await kc.realms.find();
+  // Keycloak 26 keep-alive race: a pooled connection can be closed by the
+  // server right after a previous call, killing the next one mid-stream
+  // ("unable to read contents from stream"). Timing dependent, heals
+  // immediately on the fresh connection - retry both the list and create.
+  const realms = await withRetry(() => kc.realms.find(), 'list realms');
   if (realms.some((r) => r.realm === realm)) {
     console.log(`realm ${realm}: exists`);
+    await syncBruteForcePosture(kc, realm);
     return;
   }
-  await kc.realms.create({
-    realm,
-    enabled: true,
-    // Demo system: users cannot change their own credentials.
-    editUsernameAllowed: false,
-    resetPasswordAllowed: false,
-    registrationAllowed: false,
-    loginWithEmailAllowed: false,
-    accessTokenLifespan: 900,
-    ssoSessionIdleTimeout: 3600,
-    ssoSessionMaxLifespan: 43200,
-  });
+  await withRetry(
+    () =>
+      kc.realms.create({
+        realm,
+        enabled: true,
+        // Demo system: users cannot change their own credentials.
+        editUsernameAllowed: false,
+        resetPasswordAllowed: false,
+        registrationAllowed: false,
+        loginWithEmailAllowed: false,
+        accessTokenLifespan: 900,
+        ssoSessionIdleTimeout: 3600,
+        ssoSessionMaxLifespan: 43200,
+        // T14 login defence: keep brute-force protection on when the reset
+        // recreates the realm. The fine-grained fields are rejected by the
+        // realm-create endpoint - only the switch is settable here; the
+        // tuning is applied right after (and by tofu in-cluster).
+        bruteForceProtected: true,
+      }),
+    `create realm ${realm}`,
+  );
   console.log(`realm ${realm}: created`);
+  await syncBruteForcePosture(kc, realm);
+}
+
+/**
+ * Keep the brute-force posture identical to keycloak.tf (the reset-rebuilt
+ * realm and the tofu-managed one must not drift). The create endpoint
+ * rejects these fields, so they land via an update. quickLoginCheck is
+ * disabled: Keycloak 25.0.3+ flags any two logins for the same user inside
+ * the window as an attack signal and temporarily disables the account even
+ * when both attempts succeed with correct credentials - the e2e suite's
+ * parallel demo logins and the seeder's password grants tripped it
+ * constantly. Failure-count lockouts (30) stay active.
+ */
+async function syncBruteForcePosture(kc: KcAdminClient, realm: string): Promise<void> {
+  await withRetry(
+    () =>
+      kc.realms.update(
+        { realm },
+        {
+          bruteForceProtected: true,
+          permanentLockout: false,
+          // maxLoginFailures (30) and failureResetTimeSeconds (12h) stay at
+          // Keycloak's own defaults - the admin-client types lack the fields.
+          waitIncrementSeconds: 60,
+          minimumQuickLoginWaitSeconds: 60,
+          maxFailureWaitSeconds: 900,
+          // Also untyped upstream, accepted by the endpoint (verified).
+          ...{ quickLoginCheckMilliSeconds: 0 },
+        },
+      ),
+    `sync brute-force posture ${realm}`,
+  );
 }
 
 interface EnsureClientOptions {
@@ -199,9 +260,21 @@ async function repairDemoUser(
   console.log(`user ${realm}/${username}: profile repaired`);
 }
 
-export async function initDemoRealm(): Promise<DemoUser[]> {
+export interface DemoRealmOptions {
+  /** Keycloak admin API base (defaults to the local instance). */
+  baseUrl?: string;
+  /**
+   * Secrets for the machine (service-account) clients. Deployed realms use
+   * Tofu-managed random secrets; the nightly reset must recreate clients
+   * with the SAME secrets or every workload's client-credentials grant
+   * breaks. Falls back to the local `${client}-local-secret` convention.
+   */
+  machineSecrets?: Readonly<Record<string, string>>;
+}
+
+export async function initDemoRealm(options: DemoRealmOptions = {}): Promise<DemoUser[]> {
   loadRepoEnv();
-  const kc = await createAdminClient();
+  const kc = await createAdminClient(options.baseUrl);
   const { realm, userPrefix, userCount, password } = demoCredentials();
 
   await ensureRealm(kc, realm);
@@ -216,14 +289,14 @@ export async function initDemoRealm(): Promise<DemoUser[]> {
   for (const serviceClient of SERVICE_CLIENTS) {
     const uuid = await ensureClient(kc, realm, serviceClient, {
       serviceAccount: true,
-      secret: `${serviceClient}-local-secret`,
+      secret: machineSecret(serviceClient, options),
     });
     await ensureAudienceMapper(kc, realm, uuid, SERVICE_CLIENTS);
   }
   for (const worker of WORKER_CLIENTS) {
     const uuid = await ensureClient(kc, realm, worker.clientId, {
       serviceAccount: true,
-      secret: `${worker.clientId}-local-secret`,
+      secret: machineSecret(worker.clientId, options),
     });
     await ensureAudienceMapper(kc, realm, uuid, worker.audiences);
   }
@@ -254,6 +327,10 @@ export async function initDemoRealm(): Promise<DemoUser[]> {
     users.push(await ensureUser(kc, realm, `${userPrefix}${i}`, password, 'demo-user'));
   }
   return users;
+}
+
+function machineSecret(clientId: string, options: DemoRealmOptions): string {
+  return options.machineSecrets?.[clientId] ?? `${clientId}-local-secret`;
 }
 
 /**
@@ -349,9 +426,9 @@ export async function initLocalAdminRealm(): Promise<void> {
   await ensureUser(kc, realm, 'localuser', 'LocalUser123!');
 }
 
-export async function resetDemoRealm(): Promise<void> {
+export async function resetDemoRealm(options: DemoRealmOptions = {}): Promise<void> {
   loadRepoEnv();
-  const kc = await createAdminClient();
+  const kc = await createAdminClient(options.baseUrl);
   const realm = demoCredentials().realm;
   try {
     await kc.realms.del({ realm });
@@ -364,21 +441,26 @@ export async function resetDemoRealm(): Promise<void> {
 
 const command = process.argv[2] ?? 'init';
 
-switch (command) {
-  case 'init':
-    await initDemoRealm();
-    await initLocalAdminRealm();
-    break;
-  case 'init-demo':
-    await initDemoRealm();
-    break;
-  case 'init-admin':
-    await initLocalAdminRealm();
-    break;
-  case 'reset-demo':
-    await resetDemoRealm();
-    break;
-  default:
-    console.error(`Unknown command: ${command}. Use init | init-demo | init-admin | reset-demo.`);
-    process.exit(1);
+// Only dispatch when run as the entry file: seed/reset-flow import this
+// module and may carry their own argv (e.g. `reset:live -- --seed`), which
+// the switch must not try to interpret as a keycloak command.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  switch (command) {
+    case 'init':
+      await initDemoRealm();
+      await initLocalAdminRealm();
+      break;
+    case 'init-demo':
+      await initDemoRealm();
+      break;
+    case 'init-admin':
+      await initLocalAdminRealm();
+      break;
+    case 'reset-demo':
+      await resetDemoRealm();
+      break;
+    default:
+      console.error(`Unknown command: ${command}. Use init | init-demo | init-admin | reset-demo.`);
+      process.exit(1);
+  }
 }

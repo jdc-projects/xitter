@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { loginViaKeycloak } from './helpers';
+import { loginViaKeycloak, waitForComposerHydration } from './helpers';
 
 /**
  * Interaction flows against the real stack (T7): like/unlike with counts and
@@ -23,6 +23,7 @@ async function loggedInPage(browser: Browser, username: string): Promise<Page> {
 }
 
 async function compose(page: Page, text: string) {
+  await waitForComposerHydration(page);
   await page.getByTestId('composer-textarea').fill(text);
   await page.getByTestId('composer-submit').click();
 }
@@ -221,6 +222,7 @@ test('a blocked user cannot like, repost or reply', async ({ page, browser }) =>
   await card.getByTestId('count-reposts').click();
   await expect(error).toContainText(/cannot interact/i);
 
+  await waitForComposerHydration(demo3, 'reply-composer');
   await demo3.getByTestId('reply-composer-textarea').fill('blocked reply');
   await demo3.getByTestId('reply-composer-submit').click();
   await expect(demo3.getByTestId('reply-composer-error')).toContainText(/cannot reply/i);

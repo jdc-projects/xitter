@@ -4,12 +4,13 @@ Site content strategy: what text lives where, in what tone, and the non-negotiab
 
 ## CMS vs code
 
-| Content                                  | Lives in | Notes                                                                   |
-| ---------------------------------------- | -------- | ----------------------------------------------------------------------- |
-| Landing intro                            | CMS      | Short, editable, live preview                                           |
-| FAQ entries                              | CMS      | Ordered list, editable, live preview                                    |
-| Page shells, navigation, labels, buttons | Code     | Product UI is not CMS-editable                                          |
-| Reset notice / PII warning _wording_     | Code     | Shown on every required surface; must not be accidentally editable away |
+| Content                                  | Lives in | Notes                                                                                                                                                        |
+| ---------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Landing intro                            | CMS      | Short, editable, live preview                                                                                                                                |
+| FAQ entries                              | CMS      | Ordered list, editable, live preview                                                                                                                         |
+| Page shells, navigation, labels, buttons | Code     | Product UI is not CMS-editable                                                                                                                               |
+| Reset notice / PII warning _wording_     | Code     | Shown on every required surface; must not be accidentally editable away                                                                                      |
+| Under-the-hood stack facts               | Code     | Facts about the deployed platform (services, workers, stores, IaC) - code-rendered so they cannot drift from reality; the CMS intro stays the editable prose |
 
 Rule of thumb: _prose about the site_ is CMS; _the product itself_ is code. Anything that must survive the nightly reset and be version-controlled is promoted from CMS back to repo seed files (see [../data/02-seeding.md](../data/02-seeding.md)).
 
@@ -53,7 +54,7 @@ Entries are CMS-managed and promotable to seed content: committed under `package
 
 ## Demo account communication policy
 
-- Credentials (`demo1`..`demo10` / `DemoPass123!`) are **public by design** and listed on the About page.
+- Credentials (`demo1`..`demo10` / `DemoPass123!`) are **public by design**; they appear on the landing page (demo-credentials entry point), the About page and the login page.
 - Never imply the accounts are private or secure; anyone can be any demo user at any time.
 - Copy should set expectations: shared accounts, shared data, zero privacy between demo users (except bookmarks, which are private per the product spec).
 - There is no signup, invitation, or account management to communicate — state that once, plainly, and move on.

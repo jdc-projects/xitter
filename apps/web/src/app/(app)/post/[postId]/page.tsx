@@ -1,38 +1,31 @@
 import { Anchor, Container, Divider, Stack, Text, Title } from '@mantine/core';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import type { Post, Profile } from '@xitter/api-contracts';
+import type { Post } from '@xitter/api-contracts';
 import { ApiError } from '@xitter/api-client';
 import { requireSession } from '@/lib/auth/session';
 import { PostComposer } from '@/components/post-composer';
 import { PostInteractions } from '@/components/post-interactions';
-import { PostListItem } from '@/components/post-list-item';
 import { DeletePostButton } from '@/components/delete-post-button';
+import { toPostCardItems } from '@/lib/posts/cards';
 import { clientsForSession, profilesByAuthorIds, viewerStateByPostId } from '@/lib/posts/server';
+import { ReplyThread } from './reply-thread';
 
 export const metadata: Metadata = { title: 'Post' };
 
-type SearchParams = Promise<{ cursor?: string }>;
-
-const cardAuthor = (profile: Profile | undefined, id: string) =>
+const cardAuthor = (profile: { username: string; displayName: string } | undefined, id: string) =>
   profile
-    ? { id: profile.id, username: profile.username, displayName: profile.displayName }
+    ? { id, username: profile.username, displayName: profile.displayName }
     : { id, username: 'unknown', displayName: 'Unknown' };
 
 /**
  * Post detail: the post, its reply thread (chronological, spec 03), an
  * inline reply composer, and delete for the author. Deleted/missing posts
  * render the 404 page - soft-deleted is indistinguishable from absent.
+ * Load more appends in place on the shared cursor pattern (#41).
  */
-export default async function PostDetailPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ postId: string }>;
-  searchParams: SearchParams;
-}) {
+export default async function PostDetailPage({ params }: { params: Promise<{ postId: string }> }) {
   const { postId } = await params;
-  const { cursor } = await searchParams;
   const session = await requireSession(`/post/${postId}`);
   const { posts, social } = clientsForSession(session);
 
@@ -49,7 +42,7 @@ export default async function PostDetailPage({
   const parentPost = post.replyToId ? await posts.getPost(post.replyToId).catch(() => null) : null;
 
   const replies = await posts
-    .getReplies(postId, cursor)
+    .getReplies(postId)
     .catch(() => ({ items: [] as Post[], nextCursor: null }));
   const authors = await profilesByAuthorIds(social, [
     post.authorId,
@@ -117,29 +110,11 @@ export default async function PostDetailPage({
             No replies yet.
           </Text>
         ) : (
-          <>
-            <Stack gap="md" data-testid="reply-thread">
-              {replies.items.map((reply) => (
-                <PostListItem
-                  key={reply.id}
-                  post={reply}
-                  author={cardAuthor(authors.get(reply.authorId), reply.authorId)}
-                  viewer={flagsOf(reply.id)}
-                  canDelete={reply.authorId === session.subject}
-                  username={cardAuthor(authors.get(reply.authorId), reply.authorId).username}
-                />
-              ))}
-            </Stack>
-            {replies.nextCursor ? (
-              <Anchor
-                href={`/post/${postId}?cursor=${replies.nextCursor}`}
-                size="sm"
-                data-testid="load-more"
-              >
-                Load more
-              </Anchor>
-            ) : null}
-          </>
+          <ReplyThread
+            postId={postId}
+            initialItems={toPostCardItems(replies.items, authors, states, session.subject)}
+            initialCursor={replies.nextCursor}
+          />
         )}
       </Stack>
     </Container>

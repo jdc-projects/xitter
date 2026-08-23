@@ -1,14 +1,23 @@
 #!/usr/bin/env tsx
 /**
- * Reset the local environment back to a clean state:
- * `tsx packages/scripts/src/reset.ts [--seed]`
+ * Local twin of the nightly reset: `tsx packages/scripts/src/reset.ts [--seed]`.
  *
- * Destroys all dependency volumes (postgres, kafka, rustfs, opensearch, keycloak),
- * restarts them, and re-bootstraps. With --seed, refills with deterministic data.
- * This is the local twin of the nightly deployed reset - see
- * docs/specs/operations/02-data-reset.md.
+ * Tears down every dependency volume and re-bootstraps - a superset of the
+ * store-level wipe the deployed CronJob performs (docs/specs/operations/02):
+ * nuking the volumes clears all service DBs, CMS, RustFS, OpenSearch, Kafka
+ * and Valkey in one move, and taking the stack down IS the quiesce. Realm
+ * setup, content files and the seed corpus are the exact code paths the
+ * CronJob runs (keycloak.ts / content.ts / seed.ts via reset-flow.ts).
+ *
+ * With `--seed`: after bootstrap, waits for the app stack (if one is
+ * running - `npm run dev`/`start` recover on their own once deps are back)
+ * and applies the deterministic corpus. No stack running? The reset still
+ * completes; run `npm run seed` once the stack is up.
  */
 import { down, up } from './lib/compose.js';
+import { run } from './lib/exec.js';
+
+const seed = process.argv.includes('--seed');
 
 console.log('tearing down (removing volumes)...');
 await down(true);
@@ -16,13 +25,12 @@ await down(true);
 console.log('starting dependencies...');
 await up();
 
-await runBootstrap();
+console.log('bootstrapping (bucket, topics, index, realms, schemas)...');
+await run('tsx', ['packages/scripts/src/bootstrap.ts']);
 
-async function runBootstrap(): Promise<void> {
-  const { run } = await import('./lib/exec.js');
-  const args = ['packages/scripts/src/bootstrap.ts'];
-  if (process.argv.includes('--seed')) args.push('--seed');
-  await run('tsx', args);
+if (seed) {
+  const { seedWhenStackReady } = await import('./lib/seed-stack.js');
+  await seedWhenStackReady();
 }
 
-console.log('reset complete');
+console.log(seed ? 'reset complete (empty + reseeded)' : 'reset complete (empty)');

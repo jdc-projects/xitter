@@ -461,7 +461,8 @@ resource "kubernetes_network_policy" "allow_postgres_egress" {
 }
 
 # Producers (posts/social/media) and consumers (the three workers) only -
-# feed/search/cms/admin/web never touch Kafka.
+# feed/search/cms/admin/web never touch Kafka. The reset job joins as a
+# Kafka admin client (nightly consumer-group reset).
 resource "kubernetes_network_policy" "allow_kafka_egress" {
   metadata {
     name      = "xitter-allow-kafka-egress"
@@ -475,7 +476,7 @@ resource "kubernetes_network_policy" "allow_kafka_egress" {
       match_expressions {
         key      = "app.kubernetes.io/name"
         operator = "In"
-        values   = concat(["posts", "social", "media"], local.workers)
+        values   = concat(["posts", "social", "media", "xitter-reset"], local.workers)
       }
       match_labels = {
         "app.kubernetes.io/instance" = var.environment
@@ -502,6 +503,7 @@ resource "kubernetes_network_policy" "allow_kafka_egress" {
 # creation + interactions → posts, follows/blocks → social, upload slots →
 # media). Cap.js (login captcha) and the ws-token broker also live in web
 # and store through Valkey, so web needs egress too - login 500s without it.
+# The reset job flushes Valkey and writes its run record there (T12).
 resource "kubernetes_network_policy" "allow_valkey_egress" {
   metadata {
     name      = "xitter-allow-valkey-egress"
@@ -515,7 +517,7 @@ resource "kubernetes_network_policy" "allow_valkey_egress" {
       match_expressions {
         key      = "app.kubernetes.io/name"
         operator = "In"
-        values   = ["feed", "posts", "social", "media", "web"]
+        values   = ["feed", "posts", "social", "media", "web", "xitter-reset"]
       }
       match_labels = {
         "app.kubernetes.io/instance" = var.environment
@@ -537,6 +539,8 @@ resource "kubernetes_network_policy" "allow_valkey_egress" {
   }
 }
 
+# search keeps the index in sync via search's internal bulk API (never
+# OpenSearch directly); the reset job deletes the posts index nightly (T13).
 resource "kubernetes_network_policy" "allow_opensearch_egress" {
   metadata {
     name      = "xitter-allow-opensearch-egress"
@@ -547,8 +551,12 @@ resource "kubernetes_network_policy" "allow_opensearch_egress" {
 
     policy_types = ["Egress"]
     pod_selector {
+      match_expressions {
+        key      = "app.kubernetes.io/name"
+        operator = "In"
+        values   = ["search", "xitter-reset"]
+      }
       match_labels = {
-        "app.kubernetes.io/name"     = "search"
         "app.kubernetes.io/instance" = var.environment
       }
     }
@@ -569,9 +577,9 @@ resource "kubernetes_network_policy" "allow_opensearch_egress" {
 }
 
 # media service + media-process worker write to RustFS; the provision job
-# bootstraps the bucket.
+# bootstraps the bucket; the reset job empties it nightly (T13).
 resource "kubernetes_network_policy" "allow_rustfs_egress" {
-  for_each = toset(["media", "media-process", "rustfs-provision"])
+  for_each = toset(["media", "media-process", "rustfs-provision", "xitter-reset"])
 
   metadata {
     name      = "xitter-allow-rustfs-egress-${each.key}"

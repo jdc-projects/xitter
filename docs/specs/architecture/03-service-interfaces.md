@@ -116,6 +116,7 @@ Service-token only (audience = receiving service client id; callers are the `svc
 | `DELETE /api/feed/internal/feed/users/:id/authors/:authorId` | fanout worker        | Unfollowed: remove the author's entries from one feed                                       |
 | `DELETE /api/feed/internal/feed/users/:id`                   | reset job / fanout   | Delete all feed entries for a user                                                          |
 | `POST /api/feed/internal/reseed`                             | reset job            | Truncate feed entries                                                                       |
+| `GET /api/feed/internal/reset-status`                        | admin panel          | Last reset/reseed run record (T13; null when no reset has run)                              |
 | `POST /api/search/internal/search/index`                     | search-index worker  | Bulk upsert of post documents (tombstones included)                                         |
 | `POST /api/search/internal/search/index/authors`             | search-index worker  | Refresh denormalised author names (`social.profile.updated`)                                |
 | `GET /api/search/internal/search/checkpoint`                 | search-index worker  | Resume positions per topic-partition (worker boot)                                          |

@@ -29,6 +29,57 @@ export interface EventConsumerRunOptions {
   resumeFrom?: ReadonlyMap<string, number>;
 }
 
+/**
+ * Apply resume positions on partition assignment. Seeks must land after
+ * assignment but before the first fetch: GROUP_JOIN is emitted inside
+ * joinAndSync - before the runner schedules its fetch manager - so seeks
+ * registered here apply to the very first fetch of each assigned
+ * partition. Stale map entries for partitions we no longer hold are
+ * ignored (seeks are keyed per topic-partition and consumed on first
+ * fetch).
+ */
+function registerResumeSeeks(consumer: Consumer, resumeFrom?: ReadonlyMap<string, number>) {
+  if (!resumeFrom || resumeFrom.size === 0) return;
+  consumer.on(consumer.events.GROUP_JOIN, (event) => {
+    for (const [topic, partitions] of Object.entries(event.payload.memberAssignment)) {
+      for (const partition of partitions) {
+        const nextOffset = resumeFrom.get(`${topic}:${partition}`);
+        if (nextOffset !== undefined) {
+          consumer.seek({ topic, partition, offset: String(nextOffset) });
+        }
+      }
+    }
+  });
+}
+
+/**
+ * Run one message with a short inline retry. Handlers are idempotent
+ * (at-least-once contract), so this rides out transient upstream blips
+ * (single ECONNRESET / Keycloak keep-alive race on an M2M token fetch)
+ * without crashing the consumer - observed killing the search-index
+ * worker mid-e2e-run, leaving its derived store silently stalled.
+ * Persistent failures still exhaust kafkajs' own retries and crash as
+ * before.
+ */
+async function runWithInlineRetry(
+  payload: EachMessagePayload,
+  handle: () => Promise<void>,
+): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await handle();
+      return;
+    } catch (err) {
+      if (attempt >= 2) throw err;
+      console.warn(
+        `handler error on ${payload.topic}[${payload.partition}]@${payload.message.offset} (attempt ${attempt + 1}/3) - retrying`,
+        err,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+    }
+  }
+}
+
 export interface EventConsumer {
   consumer: Consumer;
   /**
@@ -58,24 +109,7 @@ export function createEventConsumer(options: EventConsumerOptions): EventConsume
   return {
     consumer,
     async run(handler, runOptions) {
-      if (runOptions?.resumeFrom && runOptions.resumeFrom.size > 0) {
-        // Seeks must land after assignment but before the first fetch.
-        // GROUP_JOIN is emitted inside joinAndSync - before the runner
-        // schedules its fetch manager - so seeks registered here apply to
-        // the very first fetch of each assigned partition. Stale map
-        // entries for partitions we no longer hold are ignored (seeks are
-        // keyed per topic-partition and consumed on first fetch).
-        consumer.on(consumer.events.GROUP_JOIN, (event) => {
-          for (const [topic, partitions] of Object.entries(event.payload.memberAssignment)) {
-            for (const partition of partitions) {
-              const nextOffset = runOptions.resumeFrom?.get(`${topic}:${partition}`);
-              if (nextOffset !== undefined) {
-                consumer.seek({ topic, partition, offset: String(nextOffset) });
-              }
-            }
-          }
-        });
-      }
+      registerResumeSeeks(consumer, runOptions?.resumeFrom);
       await consumer.connect();
       for (const topic of options.topics) {
         await consumer.subscribe({
@@ -98,7 +132,7 @@ export function createEventConsumer(options: EventConsumerOptions): EventConsume
             );
             return;
           }
-          await handler(envelope, payload);
+          await runWithInlineRetry(payload, () => handler(envelope, payload));
         },
       });
     },

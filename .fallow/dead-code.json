@@ -32,6 +32,7 @@
     "apps/services/media/package.json:fastify",
     "apps/services/posts/package.json:@fastify/helmet",
     "apps/services/posts/package.json:@nestjs/terminus",
+    "apps/services/posts/package.json:ioredis",
     "apps/services/posts/package.json:fastify",
     "apps/services/search/package.json:@fastify/helmet",
     "apps/services/search/package.json:@nestjs/terminus",
@@ -116,7 +117,8 @@
   "unused_load_data_keys": [],
   "unresolved_imports": [],
   "unlisted_dependencies": [
-    "dotenv"
+    "dotenv",
+    "ioredis"
   ],
   "duplicate_exports": [],
   "type_only_dependencies": [],

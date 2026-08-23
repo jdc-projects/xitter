@@ -52,16 +52,23 @@ resource "keycloak_realm" "demo" {
   # defence. The provider enables bruteForceProtected by rendering this
   # brute_force_detection block (there is no top-level flag in 5.9);
   # temporary lockout only (permanent_lockout = false) is friendlier for a
-  # demo - all timings below are Keycloak's own defaults, spelled out so
-  # the posture is explicit: after 30 failures (or 1 too-fast attempt) the
-  # account locks for 60s, ramping to a 15m max, and the counter resets
-  # after 12h. The nightly reset would clear permanent locks anyway.
+  # demo - all other timings are Keycloak's own defaults, spelled out so
+  # the posture is explicit: after 30 failures the account locks for 60s,
+  # ramping to a 15m max, and the counter resets after 12h. The nightly
+  # reset would clear permanent locks anyway. The quick-login check is
+  # DISABLED (0): Keycloak 25.0.3+ treats any two login attempts for the
+  # same user within the window as an attack signal and temporarily
+  # disables the account even when both succeed - legitimate automated
+  # bursts (the e2e suite's parallel demo logins, the seeder's password
+  # grants) tripped it constantly. Failure-count lockouts and concurrent
+  # request handling remain active; keycloak.ts must recreate exactly
+  # this posture when the reset rebuilds the realm.
   security_defenses {
     brute_force_detection {
       permanent_lockout                = false
       max_login_failures               = 30
       wait_increment_seconds           = 60
-      quick_login_check_milli_seconds  = 1000
+      quick_login_check_milli_seconds  = 0
       minimum_quick_login_wait_seconds = 60
       max_failure_wait_seconds         = 900
       failure_reset_time_seconds       = 43200

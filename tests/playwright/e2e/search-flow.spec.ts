@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { loginViaKeycloak } from './helpers';
+import { loginViaKeycloak, waitForComposerHydration } from './helpers';
 
 /**
  * Search flows against the real stack (#9): the header box submits to the
@@ -16,19 +16,31 @@ async function login(page: Page, username: string) {
   await page.waitForURL(/\/feed$/);
 }
 
-/** Reload-poll the results page until the snippet appears (index lag). */
-async function searchUntilFound(page: Page, q: string, snippet: string) {
-  const deadline = Date.now() + 30_000;
+/**
+ * Poll the search API until the snippet is indexed, then assert on ONE
+ * settled page render. The old reload-poll navigated the full page per
+ * iteration: on 2-core CI runners each SSR navigation costs seconds, so a
+ * 30s budget allowed only a handful of polls and slow (but healthy)
+ * indexing blew the budget - the failure mode was the empty-state page,
+ * not an index problem. An API poll costs milliseconds per iteration.
+ * The default ceiling is generous because the suite's own seeding bursts
+ * (pagination seeds, ~50 posts) can bury the search-index worker's ~1
+ * doc/s drain for tens of seconds; the poll breaks the moment the
+ * snippet lands.
+ */
+async function searchUntilFound(page: Page, q: string, snippet: string, timeoutMs = 90_000) {
+  const token = await accessToken(page);
+  const searchApi = `/api/search/v1/posts?q=${encodeURIComponent(q)}`;
+  const deadline = Date.now() + timeoutMs;
   for (;;) {
-    await page.goto(`/search?q=${encodeURIComponent(q)}`);
-    const results = page.getByTestId('search-results');
-    if ((await results.isVisible().catch(() => false)) && (await results.textContent())) {
-      const text = (await results.textContent()) ?? '';
-      if (text.includes(snippet)) return;
-    }
+    const res = await page.request.get(searchApi, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (res.ok() && ((await res.text()) ?? '').includes(snippet)) break;
     if (Date.now() > deadline) break;
     await page.waitForTimeout(1_000);
   }
+  await page.goto(`/search?q=${encodeURIComponent(q)}`);
   await expect(page.getByTestId('search-results')).toContainText(snippet);
 }
 
@@ -40,28 +52,47 @@ test('unauthenticated search redirects to login and back', async ({ page }) => {
 
 test('header search box navigates to results for the query', async ({ page }) => {
   await login(page, 'demo1');
-  // Two inputs carry the testid once on /search (header + page) - scope to
-  // the header's app nav to stay strict-mode safe. The header box is an
-  // uncontrolled GET form, so the URL (not the header input) reflects the
-  // query after navigation; the page's own box re-renders with it.
+  // The header box hides itself on /search (#39): the page's own box is the
+  // single labelled input, so no strict-mode scoping is needed anymore. The
+  // header box is an uncontrolled GET form, so the URL (not the header
+  // input) reflects the query after navigation; the page's box re-renders
+  // with it.
   const headerSearch = page.getByTestId('app-nav').getByTestId('search-input');
   await headerSearch.fill('hello');
   await headerSearch.press('Enter');
 
   await page.waitForURL(/\/search\?q=hello/);
-  await expect(page.getByTestId('search-input').last()).toHaveValue('hello');
+  await expect(page.getByTestId('search-input')).toHaveValue('hello');
 });
 
+/** Bearer access token for API polls - the session holds it; the ws route
+ * is the broker (same pattern as feed-flow). Uses the page's cookies. */
+async function accessToken(page: Page): Promise<string> {
+  const res = await page.request.get('/api/ws/feed-token');
+  expect(res.status()).toBe(200);
+  const body = (await res.json()) as { token: string };
+  return body.token;
+}
+
 test('search finds a composed post and deletes remove it from results', async ({ page }) => {
+  // Indexing converges in tens of seconds on a loaded stack: the worker
+  // drains at roughly one doc/second, the suite's ~50-post seeding bursts
+  // queue behind it, and this test has TWO convergence windows
+  // (compose→index up to 120s, delete→tombstone up to 60s) plus a settled
+  // render assertion. The budget must exceed their SUM (a 150s budget
+  // timed out mid-tombstone-poll on cold CI runners despite both windows
+  // being individually healthy).
+  test.setTimeout(240_000);
   await login(page, 'demo2');
   const needle = `t8 searchable quokka ${crypto.randomUUID()}`;
 
   // Compose through the real composer so the full posts -> events -> index
   // pipeline runs.
+  await waitForComposerHydration(page);
   await page.getByTestId('composer-textarea').fill(needle);
   await page.getByTestId('composer-submit').click();
 
-  await searchUntilFound(page, 'quokka', needle);
+  await searchUntilFound(page, 'quokka', needle, 120_000);
   const item = page.locator('[data-testid^="post-item-"]', { hasText: needle }).first();
   await expect(item).toBeVisible();
   const postId = (await item.getAttribute('data-testid'))!.replace('post-item-', '');
@@ -73,11 +104,19 @@ test('search finds a composed post and deletes remove it from results', async ({
 
   // Poll the search API (no page navigation - a mid-navigation locator
   // count reads undefined) until the index tombstone lands, then assert
-  // on one settled page render.
-  const searchApi = `/api/search/v1/search/posts?q=${encodeURIComponent('quokka')}`;
-  const deadline = Date.now() + 45_000;
+  // on one settled page render. The API is user-gated: poll with the
+  // session's bearer so res.ok() reflects the index, not a 401. (Public
+  // search path is /v1/posts under the service prefix - api-contracts'
+  // canonical route.) Same backlog story as searchUntilFound above:
+  // tombstones trail the delete by however long the worker needs to
+  // drain the suite's burst.
+  const token = await accessToken(page);
+  const searchApi = `/api/search/v1/posts?q=${encodeURIComponent('quokka')}`;
+  const deadline = Date.now() + 90_000;
   for (;;) {
-    const res = await page.request.get(searchApi);
+    const res = await page.request.get(searchApi, {
+      headers: { authorization: `Bearer ${token}` },
+    });
     if (res.ok() && !((await res.text()) ?? '').includes(needle)) break;
     if (Date.now() > deadline) break;
     await page.waitForTimeout(1_000);

@@ -1,14 +1,9 @@
 import { Controller, Get, HttpCode, Query } from '@nestjs/common';
 import type { RequestUser } from '@xitter/auth-nest';
 import { CurrentUser } from '@xitter/auth-nest';
+import { pageQuerySchema as pageQuery } from '@xitter/api-contracts';
 import { badRequest } from '@xitter/service-kit';
-import { z } from 'zod';
 import { FeedService } from './feed.service.js';
-
-const pageQuery = z.object({
-  cursor: z.string().min(1).optional(),
-  limit: z.coerce.number().int().min(1).max(50).default(20),
-});
 
 /**
  * Public feed API (spec 03): the materialised home timeline plus the

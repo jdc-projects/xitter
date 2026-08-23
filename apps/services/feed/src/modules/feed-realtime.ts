@@ -1,4 +1,4 @@
-import { createLogger } from '@xitter/observability';
+import { connectValkey, createLogger } from '@xitter/observability';
 
 const logger = createLogger({ service: 'feed' });
 
@@ -49,27 +49,8 @@ export class ValkeyFeedRealtime implements FeedRealtime {
     if (this.connection) return this.connection;
     // Same posture as the rate limiter: fail fast while Valkey is down -
     // notifications are a UX hint, never worth blocking a request on.
-    const { Redis } = await import('ioredis');
-    const connection = new Redis(this.url, {
-      maxRetriesPerRequest: 1,
-      enableOfflineQueue: false,
-      connectTimeout: 2_000,
-    });
-    try {
-      // enableOfflineQueue:false makes publishes during the lazy-connect
-      // window throw - await readiness once so the first notify (always the
-      // post-boot one, i.e. a real user's) doesn't race the handshake.
-      await new Promise<void>((resolve, reject) => {
-        connection.once('ready', () => resolve());
-        connection.once('error', (err) => reject(err));
-      });
-    } catch (err) {
-      // Never leak the retrying client on a failed handshake; concurrent
-      // notify() calls also race here, and the loser must not accumulate.
-      connection.disconnect();
-      throw err;
-    }
-    this.connection = connection;
+    // Handshake + leak-safety live in the shared connectValkey helper.
+    this.connection = await connectValkey({ url: this.url });
     return this.connection;
   }
 }

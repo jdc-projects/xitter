@@ -53,10 +53,15 @@ test.describe('login flow', () => {
   });
 
   test('wrong password is rejected without creating a session', async ({ page }) => {
+    // Target a nonexistent account, not a real demo user: the realm runs
+    // brute-force protection, and a deliberate failure on a shared demo
+    // account can temporarily lock it out from under the parallel specs
+    // logging in as that user. Keycloak answers unknown users with the
+    // same generic error, so the asserted outcome is identical.
     await page.goto('/login');
     await page.getByTestId('login-submit').click();
     await page.waitForURL(/\/realms\/xitter-demo\//);
-    await page.locator('#username').fill('demo1');
+    await page.locator('#username').fill('no-such-demo-user');
     await page.locator('#password').fill('DefinitelyWrong1!');
     await page.locator('#kc-login').click();
     await expect(page.getByText('Invalid username or password')).toBeVisible();

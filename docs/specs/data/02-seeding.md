@@ -11,22 +11,26 @@ Deterministic seeding for the nightly reset (and local bootstrap). Goals, volume
 
 ## Volumes
 
-| Entity       | Target                       | Notes                                                                          |
-| ------------ | ---------------------------- | ------------------------------------------------------------------------------ |
-| Users        | 10 (fixed)                   | `demo1`..`demo10`; profiles with varied display names/bios                     |
-| Posts        | ~12 per user (~120 total)    | Mix of standalone posts and replies                                            |
-| Follow graph | ~30% density                 | Each user follows ~3 of the other 9; guaranteed connected-ish, no self-follows |
-| Replies      | A share of posts are replies | Concentrated on a few "conversation" threads                                   |
-| Likes        | Distributed                  | Some posts hot, most cold                                                      |
-| Reposts      | A few                        | Must produce repost feed entries                                               |
-| Bookmarks    | A few                        | Scattered across users                                                         |
-| Images       | A few posts                  | Attached to ready media assets                                                 |
+| Entity       | Target                       | Notes                                                                                                         |
+| ------------ | ---------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Users        | 10 (fixed)                   | `demo1`..`demo10`; profiles with varied display names/bios                                                    |
+| Posts        | ~12 per user (~120 total)    | Mix of standalone posts and replies                                                                           |
+| Follow graph | ~30% density                 | Each user follows ~3 of the other 9; guaranteed connected-ish, no self-follows                                |
+| Replies      | A share of posts are replies | Concentrated on a few "conversation" threads (3 roots × 4 replies)                                            |
+| Likes        | Distributed                  | Some posts hot, most cold                                                                                     |
+| Reposts      | A few                        | Must produce repost feed entries                                                                              |
+| Bookmarks    | A few                        | Scattered across users                                                                                        |
+| Images       | A few posts                  | Generated PNGs uploaded through the real media pipeline (slot → presigned PUT → completion → worker variants) |
+
+Interaction totals are capped per user (≤12) so seeding never trips the services' mutation rate limits.
 
 ## Determinism
 
 - Faker (and any RNG) seeded with the constant **42** — recorded here as the contract.
 - No `Date.now()`, randomness, or environment-derived values in generation; timestamps derive from a fixed epoch plus generated offsets.
 - Generation order is fixed (below) so ids and references match across runs.
+- The corpus digest (`corpusFingerprint`) hashes the canonical corpus; every reseeded reset records it, and any two runs (or environments) must agree byte-for-byte.
+- Server-assigned ids (post/media UUIDs, Keycloak sub claims) are not part of the digest: determinism is over the corpus content, not the stores' identifiers.
 
 ## Generation order
 
@@ -46,13 +50,15 @@ Feed and search are **not** written directly: the seed emits the same events the
 
 ## How seed runs
 
-| Aspect       | Spec                                                                                                                 |
-| ------------ | -------------------------------------------------------------------------------------------------------------------- |
-| Entry point  | One script, invoked by the nightly reset (optional step) and by local bootstrap                                      |
-| Targets      | Env-driven base URLs for each service API; same script local + remote                                                |
-| Idempotency  | Keyed upserts (natural keys from the generator, e.g. `demo1/post-003`) — re-running over seeded data changes nothing |
-| Failure      | Fail loudly and non-destructively; partial seeds are retried wholesale on the next run/reset                         |
-| Verification | Post-seed sanity counts (users/posts/follow density) logged; mismatch marks the seed failed                          |
+| Aspect       | Spec                                                                                                                                                                                                                                                                   |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Entry point  | One script (`packages/scripts/src/seed.ts`), invoked by the nightly reset (optional step) and by local bootstrap                                                                                                                                                       |
+| Targets      | Env-driven base URLs for each service API (per-service `XITTER_*_URL` overrides, or one shared `XITTER_SEED_BASE_URL`); same script local + remote                                                                                                                     |
+| Idempotency  | Keyed upserts through the services' own idempotent operations (ensure-profile, follow, interact) — re-running over seeded data changes nothing; a pre-flight probe recognises a fully seeded environment (verified no-op) or a partial one (fails loudly: reset first) |
+| Failure      | Fail loudly and non-destructively; partial seeds are retried wholesale on the next run/reset                                                                                                                                                                           |
+| Verification | Post-seed sanity counts (users/posts/follow density/derived feed entries) polled until the workers converge; mismatch marks the seed failed                                                                                                                            |
+
+The corpus itself is pure (`packages/scripts/src/corpus.ts`) — no I/O, no clocks — and unit-tested for volumes, graph shape and cross-run fingerprint equality, so every environment derives identical data from the same constants.
 
 ## Content promotion flow
 

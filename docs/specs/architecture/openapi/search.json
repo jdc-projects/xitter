@@ -208,9 +208,45 @@
                     }
                   },
                   "required": ["id", "username", "displayName", "bio", "createdAt"]
+                },
+                "reason": {
+                  "type": "string",
+                  "enum": ["post", "repost"]
+                },
+                "repostedBy": {
+                  "type": "object",
+                  "nullable": true,
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                    },
+                    "username": {
+                      "type": "string",
+                      "minLength": 3,
+                      "maxLength": 20,
+                      "pattern": "^[a-z0-9_]+$"
+                    },
+                    "displayName": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 50
+                    },
+                    "bio": {
+                      "type": "string",
+                      "nullable": true,
+                      "maxLength": 200
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": ["id", "username", "displayName", "bio", "createdAt"]
                 }
               },
-              "required": ["post", "author"]
+              "required": ["post", "author", "reason", "repostedBy"]
             }
           },
           "nextCursor": {
@@ -351,16 +387,6 @@
           {
             "schema": {
               "type": "string",
-              "minLength": 1,
-              "maxLength": 512
-            },
-            "required": true,
-            "name": "q",
-            "in": "query"
-          },
-          {
-            "schema": {
-              "type": "string",
               "minLength": 1
             },
             "required": false,
@@ -376,6 +402,16 @@
             },
             "required": false,
             "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "required": true,
+            "name": "q",
             "in": "query"
           }
         ],

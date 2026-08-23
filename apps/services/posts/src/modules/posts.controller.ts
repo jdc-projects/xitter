@@ -16,6 +16,7 @@ import {
   createPostRequestSchema,
   interactionKindSchema,
   postIdSchema,
+  pageQuerySchema,
   userIdSchema,
   viewerStateQuerySchema,
   type CreateInteractionRequest,
@@ -24,18 +25,12 @@ import {
   type Post as PostDto,
 } from '@xitter/api-contracts';
 import { ZodValidationPipe } from '@xitter/service-kit';
-import { z } from 'zod';
 import { PostsService, type PostPage } from './posts.service.js';
 
 const uuidParam = new ZodValidationPipe(postIdSchema);
 const kindParam = new ZodValidationPipe(interactionKindSchema);
 const userParam = new ZodValidationPipe(userIdSchema);
-const pageQuery = new ZodValidationPipe(
-  z.object({
-    cursor: z.string().min(1).optional(),
-    limit: z.coerce.number().int().min(1).max(50).default(20),
-  }),
-);
+const pageQuery = new ZodValidationPipe(pageQuerySchema);
 const viewerStateQuery = new ZodValidationPipe(viewerStateQuerySchema);
 
 /**

@@ -1,10 +1,11 @@
-import { Button, Space, Table, Tag, Typography, App as AntApp } from 'antd';
+import { Button, Space, Table, Typography, App as AntApp } from 'antd';
 import { DeleteOutlined, EyeOutlined, RedoOutlined } from '@ant-design/icons';
 import { useCustomMutation } from '@refinedev/core';
 import { useTable } from '@refinedev/antd';
 import { useNavigate } from 'react-router';
 import type { Post } from '@xitter/api-contracts';
 import { filterValueOf } from '../../data/data-provider.js';
+import { A11yTag } from '../../components/a11y-tag.js';
 
 /**
  * Posts moderation list: filter by author, text, or deleted state; soft
@@ -148,7 +149,11 @@ export function PostsListPage() {
             key: 'deletedAt',
             width: 110,
             render: (deletedAt: string | null) =>
-              deletedAt ? <Tag color="red">deleted</Tag> : <Tag color="green">live</Tag>,
+              deletedAt ? (
+                <A11yTag color="red">deleted</A11yTag>
+              ) : (
+                <A11yTag color="green">live</A11yTag>
+              ),
           },
           {
             title: 'Actions',

@@ -12,7 +12,7 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { IconPhoto, IconX } from '@tabler/icons-react';
-import { useActionState, useRef, useState } from 'react';
+import { useActionState, useEffect, useRef, useState } from 'react';
 import { MEDIA_MAX_BYTES, POST_MEDIA_MAX, POST_TEXT_MAX } from '@xitter/api-contracts';
 import { completeUploadAction, mediaStatusAction, requestUploadAction } from '@/lib/media/actions';
 import { createPostAction, type ComposerResult } from '@/lib/posts/actions';
@@ -178,6 +178,14 @@ export function PostComposer({
     createPostAction,
     undefined,
   );
+
+  // Client-only hydration marker: React's event handlers only exist after
+  // hydration, and an interaction in the pre-hydration window (fill, file
+  // change) is silently discarded when the controlled re-render resets
+  // state. Tests wait on this attribute so they never race hydration.
+  useEffect(() => {
+    formRef.current?.setAttribute('data-hydrated', 'true');
+  }, []);
 
   // Clear the draft when a NEW successful result arrives - during render,
   // not in an effect. Failures leave `text`/attachments untouched.
