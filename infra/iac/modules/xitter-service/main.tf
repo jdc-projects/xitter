@@ -442,6 +442,16 @@ resource "kubernetes_manifest" "knative" {
     # Knative rewrites traffic with the concrete revision name.
     "spec.traffic",
   ]
+
+  # The nightly reset job patches minScale (0 -> 1) out-of-band to quiesce
+  # workers; its merge-patch takes field ownership under the patching
+  # client's manager name, which then blocks tofu's server-side apply
+  # ("field manager conflict" - every deploy after a reset failed). tofu
+  # is the source of truth: take ownership back on conflict.
+  field_manager {
+    name            = "tofu"
+    force_conflicts = true
+  }
 }
 
 output "name" {

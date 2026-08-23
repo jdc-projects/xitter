@@ -75,7 +75,10 @@ async function k8sRequest(ctx: K8sContext, path: string, init: RequestInit = {})
 function setMinScale(ctx: K8sContext, worker: string, value: '0' | '1'): Promise<unknown> {
   return k8sRequest(
     ctx,
-    `/apis/serving.knative.dev/v1/namespaces/${ctx.namespace}/services/${worker}`,
+    // fieldManager names this job as the patcher in the object's
+    // managedFields (a bare merge-patch registers as "node" - the fetch
+    // user-agent - which reads like a system actor in audits).
+    `/apis/serving.knative.dev/v1/namespaces/${ctx.namespace}/services/${worker}?fieldManager=xitter-reset`,
     {
       method: 'PATCH',
       headers: { 'content-type': 'application/merge-patch+json' },
