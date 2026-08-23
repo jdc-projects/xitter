@@ -430,13 +430,20 @@ export async function resetDemoRealm(options: DemoRealmOptions = {}): Promise<vo
   loadRepoEnv();
   const kc = await createAdminClient(options.baseUrl);
   const realm = demoCredentials().realm;
-  try {
-    await kc.realms.del({ realm });
-    console.log(`realm ${realm}: deleted`);
-  } catch (err) {
-    if ((err as { response?: { status?: number } }).response?.status === 404) return;
-    throw err;
+  // Never delete the realm itself: tofu's keycloak provider owns its
+  // config (realm, roles, clients) and its state still references the
+  // deleted realm's ids - the next deploy's apply then 409s creating
+  // what the reset had re-ensured (observed after manual-reset-6: POST
+  // /admin/realms/xitter-demo/roles + /clients -> 409 Conflict). The
+  // reset only owns the DATA: users go away, everything else is repaired
+  // idempotently by the subsequent init.
+  let removed = 0;
+  for (const user of await kc.users.find({ realm, max: 1000 })) {
+    if (!user.id) continue;
+    await kc.users.del({ realm, id: user.id });
+    removed++;
   }
+  console.log(`realm ${realm}: removed ${removed} user(s) (realm config preserved)`);
 }
 
 const command = process.argv[2] ?? 'init';
