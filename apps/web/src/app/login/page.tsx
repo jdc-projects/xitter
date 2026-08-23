@@ -42,8 +42,9 @@ export default async function LoginPage({
             ) : null}
             <LoginForm
               next={nextPath}
-              // Fail-fast webEnv(): enabled implies site key and URL are set.
-              captcha={cap.enabled ? { siteKey: cap.siteKey, apiEndpoint: cap.siteUrl } : null}
+              // Fail-fast webEnv(): enabled implies site key and URL are set,
+              // and widgetEndpoint already embeds the site key path segment.
+              captcha={cap.enabled ? { apiEndpoint: cap.widgetEndpoint } : null}
             />
           </Stack>
         </Paper>

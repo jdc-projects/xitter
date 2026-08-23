@@ -27,8 +27,35 @@ describe('webEnv captcha config', () => {
     });
   });
 
+  it('composes the widget endpoint with the site key as the first path segment', () => {
+    process.env.XITTER_CAP_ENABLED = 'true';
+    process.env.XITTER_CAP_SITE_URL = 'https://cap.example';
+    process.env.XITTER_CAP_VERIFY_URL = 'https://cap.example';
+    process.env.XITTER_CAP_SITE_KEY = 'site-key';
+    process.env.XITTER_CAP_SECRET_KEY = 'secret-key';
+
+    // The widget POSTs `<endpoint>/challenge` and `/redeem` and never sends
+    // the site key separately - the key must be part of the endpoint path.
+    expect(webEnv().cap.widgetEndpoint).toBe('https://cap.example/site-key');
+  });
+
+  it('trims trailing slashes off the site URL when composing the widget endpoint', () => {
+    process.env.XITTER_CAP_ENABLED = 'true';
+    process.env.XITTER_CAP_SITE_URL = 'https://cap.example/';
+    process.env.XITTER_CAP_VERIFY_URL = 'https://cap.example';
+    process.env.XITTER_CAP_SITE_KEY = 'site-key';
+    process.env.XITTER_CAP_SECRET_KEY = 'secret-key';
+
+    expect(webEnv().cap.widgetEndpoint).toBe('https://cap.example/site-key');
+  });
+
   it('leaves captcha urls empty by default - no hardcoded endpoints', () => {
-    expect(webEnv().cap).toMatchObject({ enabled: false, siteUrl: '', verifyUrl: '' });
+    expect(webEnv().cap).toMatchObject({
+      enabled: false,
+      siteUrl: '',
+      verifyUrl: '',
+      widgetEndpoint: '',
+    });
   });
 
   it('fails fast when a deployed environment (CAP_REQUIRED) boots without captcha', () => {

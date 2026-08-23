@@ -48,7 +48,9 @@ same path the env configs resolve locally. Local tofu runs use the same file
 
 6. For local runs, add the same values to `.env`. All four `XITTER_CAP_*`
    vars are required when captcha is enabled (the web app fails fast
-   otherwise); the URL vars ship uncommented in `.env.example`:
+   otherwise); the URL vars ship uncommented in `.env.example`. Keep the
+   URL vars as the bare instance origin - the web app appends
+   `/<site-key>` itself (widget endpoint and siteverify):
 
    ```sh
    XITTER_CAP_SITE_URL=https://cap.jd-chapman.dev

@@ -43,7 +43,19 @@ export function webEnv() {
     /** Public OIDC client in the demo realm. */
     webClientId: envString('XITTER_WEB_CLIENT_ID', 'web'),
     valkeyUrl: envString('XITTER_VALKEY_URL', valkeyUrl()),
-    cap,
+    cap: {
+      ...cap,
+      // @cap.js/widget POSTs to `<data-cap-api-endpoint>/challenge` and
+      // `/redeem` and never sends the site key separately (it does not read
+      // a data-cap-site-key attribute), so the endpoint MUST be
+      // `<instance>/<siteKey>` - the Cap Standalone contract
+      // (https://trycap.dev/guide/widget.html) and the only path shape the
+      // homelab edge routes for cap.jd-chapman.dev. A bare origin POSTs to
+      // `/challenge`, which the edge rejects (401 from the OIDC default
+      // backend). Composed here so the client bundle receives a ready URL;
+      // XITTER_CAP_SITE_URL stays the bare instance origin in tofu/.env.
+      widgetEndpoint: cap.enabled ? `${cap.siteUrl.replace(/\/+$/, '')}/${cap.siteKey}` : '',
+    },
   };
 }
 

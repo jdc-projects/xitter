@@ -5,7 +5,11 @@ import { useEffect } from 'react';
 import { loadCaptchaWidget } from './load-widget';
 
 export interface CaptchaConfig {
-  siteKey: string;
+  /**
+   * Full widget endpoint `<cap instance>/<siteKey>` (composed server-side in
+   * webEnv). The widget appends `challenge`/`redeem` to it - it has no
+   * separate site-key attribute, so the key must live in the path.
+   */
   apiEndpoint: string;
 }
 
@@ -27,7 +31,6 @@ export function LoginForm({ next, captcha }: { next: string; captcha: CaptchaCon
       {captcha ? (
         <cap-widget
           data-cap-api-endpoint={captcha.apiEndpoint}
-          data-cap-site-key={captcha.siteKey}
           data-cap-hidden-field-name="capToken"
         />
       ) : (
