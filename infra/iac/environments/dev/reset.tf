@@ -146,7 +146,12 @@ resource "kubernetes_cron_job_v1" "reset" {
               image             = "${var.image_registry}/xitter-reset:${var.image_tag}"
               image_pull_policy = "Always"
 
-              args = var.reset_reseed ? ["--seed"] : []
+              # Explicit command: the image's CMD is ["node", "dist/reset-job.js"]
+              # but k8s `args` REPLACES CMD - args-only made the container run
+              # `node --seed` (node: bad option) and the nightly reset crashloop
+              # from its very first manual trigger.
+              command = ["node", "dist/reset-job.js"]
+              args    = var.reset_reseed ? ["--seed"] : []
 
               env {
                 name  = "XITTER_ENV"
