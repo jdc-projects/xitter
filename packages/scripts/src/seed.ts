@@ -89,7 +89,7 @@ export async function runSeed(options: SeedOptions = {}): Promise<SeedReport> {
     ids: new Map(users.map((u) => [u.username, u.userId])),
     doFetch,
     grants: new PasswordGrant({ fetchImpl: doFetch }),
-    convergenceTimeoutMs: options.convergenceTimeoutMs ?? 90_000,
+    convergenceTimeoutMs: options.convergenceTimeoutMs ?? 180_000,
     log: options.log ?? console.log,
     call: (target, init, token) =>
       requestJson(serviceBase(target), init.path, init, token, doFetch),

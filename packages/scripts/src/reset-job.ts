@@ -20,6 +20,9 @@ const MIN_SCALE_ANNOTATION = 'autoscaling.knative.dev/minScale';
 // 180s proved too tight on dev (pods reached zero AFTER the job had already
 // aborted). Overridable for slow clusters.
 const QUIESCE_TIMEOUT_MS = Number(process.env.XITTER_RESET_QUIESCE_TIMEOUT_MS ?? 600_000);
+// Cold-start (revision rollout + container start) is faster than drain but
+// still tens of seconds on this cluster.
+const RESUME_TIMEOUT_MS = Number(process.env.XITTER_RESET_RESUME_TIMEOUT_MS ?? 300_000);
 
 interface K8sContext {
   server: string;
@@ -108,6 +111,39 @@ async function totalWorkerPods(ctx: K8sContext): Promise<number> {
 }
 
 /**
+ * Resume's mirror of waitForScaleToZero: after minScale is back to 1 the
+ * worker pods still need seconds-to-a-minute to cold-start (Knative
+ * revision rollout). The seed step that follows polls media processing
+ * with a ~90s budget - starting that budget while media-process is still
+ * scheduling burns it before the first image is ever processed (observed:
+ * 'media <id> never became ready' 96s after resume returned 'revisions
+ * rolling'). Fail loudly if a worker never comes up.
+ */
+async function waitForWorkerReadiness(
+  ctx: K8sContext,
+  log: (message: string) => void,
+): Promise<void> {
+  const deadline = Date.now() + RESUME_TIMEOUT_MS;
+  for (;;) {
+    const missing = (
+      await Promise.all(
+        KNATIVE_WORKERS.map(async (w) => [w, await runningWorkerPods(ctx, w)] as const),
+      )
+    )
+      .filter(([, count]) => count === 0)
+      .map(([w]) => w);
+    if (missing.length === 0) return;
+    if (Date.now() > deadline) {
+      throw new Error(
+        `workers did not resume within ${RESUME_TIMEOUT_MS / 1000}s (${missing.join(', ')} have no pods) - seed would run cold`,
+      );
+    }
+    log(`reset: waiting for ${missing.join(', ')} pod(s) to start...`);
+    await new Promise((resolve) => setTimeout(resolve, 5_000));
+  }
+}
+
+/**
  * Fail loudly if pods linger: wiping stores under a live worker risks
  * half-processed events - the timeout aborts before any store is wiped.
  */
@@ -139,9 +175,11 @@ async function k8sWorkerControl(log: (message: string) => void): Promise<WorkerC
       for (const worker of KNATIVE_WORKERS) {
         await setMinScale(ctx, worker, '1');
       }
-      // New revisions join the reset consumer groups at the new epoch; no
-      // need to block the reset on their readiness.
-      log('reset: workers minScale back to 1 (revisions rolling)');
+      // New revisions join the reset consumer groups at the new epoch - but
+      // the seed step needs media-process actually RUNNING before it starts
+      // polling (its ~90s media-readiness budget cannot absorb a cold start).
+      await waitForWorkerReadiness(ctx, log);
+      log('reset: workers minScale back to 1 (pods running)');
     },
   };
 }
