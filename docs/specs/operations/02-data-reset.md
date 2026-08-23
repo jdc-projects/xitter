@@ -11,6 +11,23 @@ Demo data is disposable by design: every environment can be wiped to a known sta
 | Manual trigger  | `kubectl -n xitter-<env> create job --from=cronjob/xitter-reset xitter-reset-manual`                                       |
 | Idempotency     | Every step is safe to re-run; a repeated reset converges to the same state                                                 |
 
+## User provisioning ownership
+
+Wipe+reseed has exactly one owner: the nightly reset. But user _existence_ must
+not depend on it — any realm (re)creation (first deploy of a fresh environment,
+a realm state heal) used to leave zero logins until the next nightly (#67).
+The split:
+
+| Concern                    | Owner                  | Mechanism                                                                                                                                                                                                                               |
+| -------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Users EXIST                | The deploy path (Tofu) | One-shot `ensure-demo-users` Job (reset.tf), same `xitter-reset` image, `node dist/reset-job.js --ensure-users` — runs only the flow's realm-init step (`initDemoRealm`), an idempotent upsert that never wipes data or touches workers |
+| Users are CLEAN + reseeded | The nightly reset      | Full flow: `resetDemoRealm` (users deleted) + `initDemoRealm` + store wipes + optional seed                                                                                                                                             |
+
+The Job re-runs whenever its pod spec changes (CI pins `image_tag=sha-<short>`
+per deploy, and the pod template is ForceNew in the kubernetes provider — the
+same re-run semantics as `db-init`/`rustfs-provision`), and additionally via
+`replace_triggered_by` whenever Tofu replaces the realm resources in an apply.
+
 ## Implementation
 
 One code path everywhere: `packages/scripts` (`reset-flow.ts`) holds the flow; the CronJob image (`xitter-reset`) runs it with in-cluster coordinates (`reset-job.ts`), and local commands run the same functions against local ports. Differences are mechanical, not behavioural:
