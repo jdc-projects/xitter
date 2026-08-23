@@ -7,7 +7,6 @@ declare module 'react' {
     interface IntrinsicElements {
       'cap-widget': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
         'data-cap-api-endpoint'?: string;
-        'data-cap-site-key'?: string;
         'data-cap-hidden-field-name'?: string;
       };
     }
