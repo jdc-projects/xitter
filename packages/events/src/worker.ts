@@ -1,11 +1,13 @@
 import client from 'prom-client';
 import { Kafka, type EachMessagePayload } from 'kafkajs';
 import { createLogger, createMetricsServer, initSentry, initTracing } from '@xitter/observability';
+import type { ResetWorkerName } from '@xitter/config';
 import {
   createEventConsumer,
   type EventConsumerOptions,
   type EventConsumerRunOptions,
 } from './consumer.js';
+import { createResetEpochGate, connectValkeyEpochStore } from './reset-epoch.js';
 import { TOPICS } from './topics.js';
 
 export interface EventWorkerOptions extends EventConsumerOptions {
@@ -20,6 +22,14 @@ export interface EventWorkerOptions extends EventConsumerOptions {
    * on partition assignment - see EventConsumerRunOptions.resumeFrom.
    */
   resumeFrom?: ReadonlyMap<string, number>;
+  /**
+   * Reset-epoch pause gate (ADR 0010): while the nightly reset holds an
+   * epoch in Valkey the worker pauses itself, then resumes at the log end
+   * when the reset clears it. Takes over start-position semantics - a
+   * fresh group starts at the log end (never replays an unknown log), so
+   * `fromBeginning` is ignored when this is set.
+   */
+  resetPause?: { worker: ResetWorkerName; valkeyUrl: string };
 }
 
 /**
@@ -33,10 +43,50 @@ export async function runEventWorker(options: EventWorkerOptions): Promise<void>
   const tracing = initTracing(options.service);
   initSentry(options.service);
 
-  const consumer = createEventConsumer(options);
+  const consumer = createEventConsumer(
+    options.resetPause ? { ...options, fromBeginning: false } : options,
+  );
   const metrics = createMetricsServer(options.metricsPort);
   await metrics.started;
   logger.info(`metrics on :${options.metricsPort}`);
+
+  // Reset-epoch gate (ADR 0010): the worker pauses itself while the nightly
+  // reset holds an epoch flag in Valkey. Boot fail-fast: without Valkey the
+  // pause protocol cannot work, so a worker that cannot reach it must not
+  // start consuming.
+  const gate = options.resetPause
+    ? createResetEpochGate({
+        worker: options.resetPause.worker,
+        store: await connectValkeyEpochStore(options.resetPause.valkeyUrl),
+        // kafkajs has no seekToEnd: offset -1 (LATEST) is the same seek,
+        // resolved against broker metadata at fetch time.
+        consumer: {
+          pause: (topicPartitions) => consumer.consumer.pause(topicPartitions),
+          resume: (topicPartitions) => consumer.consumer.resume(topicPartitions),
+          seekToEnd: (topic, partition) =>
+            consumer.consumer.seek({ topic, partition, offset: '-1' }),
+        },
+        logger: { info: (m) => logger.info(m), warn: (e, m) => logger.warn(e, m) },
+      })
+    : null;
+  const startPaused = gate ? await gate.initialize() : false;
+  if (gate) {
+    const pausedGauge = new client.Gauge({
+      name: 'xitter_reset_epoch_paused',
+      help: '1 while this worker is paused for an in-progress reset epoch',
+      registers: [metrics.registry],
+    });
+    const pauses = new client.Counter({
+      name: 'xitter_reset_epoch_pauses_total',
+      help: 'Reset epochs this worker paused for since boot',
+      registers: [metrics.registry],
+    });
+    pausedGauge.set(startPaused ? 1 : 0);
+    gate.onTransition((next, previous) => {
+      pausedGauge.set(next === 'running' ? 0 : 1);
+      if (previous === 'running' && next !== 'running') pauses.inc();
+    });
+  }
 
   // Rebalance events for the Kafka dashboard (spec 06, #12): GROUP_JOIN fires
   // on the initial assignment and on every subsequent group rebalance.
@@ -46,8 +96,9 @@ export async function runEventWorker(options: EventWorkerOptions): Promise<void>
     labelNames: ['group'],
     registers: [metrics.registry],
   });
-  consumer.consumer.on(consumer.consumer.events.GROUP_JOIN, () => {
+  consumer.consumer.on(consumer.consumer.events.GROUP_JOIN, (event) => {
     rebalances.inc({ group: options.groupId });
+    gate?.onAssignment(event.payload.memberAssignment);
   });
 
   const lag = startConsumerLagTracker(options, metrics.registry, logger);
@@ -55,9 +106,17 @@ export async function runEventWorker(options: EventWorkerOptions): Promise<void>
   const runOptions: EventConsumerRunOptions = options.resumeFrom
     ? { resumeFrom: options.resumeFrom }
     : {};
+  // The gate timer starts before run() resolves (it never does while
+  // healthy); first tick lands after the group has joined in practice, and
+  // a too-early tick just retries on the next one.
+  gate?.start();
   await consumer
     .run(async (envelope, raw) => {
-      await options.handle(envelope, raw);
+      if (!gate) {
+        await options.handle(envelope, raw);
+        return;
+      }
+      await gate.track(() => options.handle(envelope, raw));
     }, runOptions)
     .catch((err: unknown) => {
       // Consumer crash (handler failure exhausted all retries): without this
@@ -70,6 +129,7 @@ export async function runEventWorker(options: EventWorkerOptions): Promise<void>
   process.once('SIGTERM', () => {
     void (async () => {
       await lag.stop();
+      await gate?.stop();
       await consumer.disconnect();
       await metrics.stop();
       await tracing.shutdown();

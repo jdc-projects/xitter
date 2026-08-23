@@ -3,15 +3,24 @@
  * posts index via the search service's internal API. Deployed as a Knative
  * service; consumes Kafka only.
  *
- * Resume contract: the consumer group offsets die with the nightly reset's
- * group deletion, so the durable resume cursor is SearchCheckpoint in the
- * search DB (fetched at boot via the search internal API). A fresh group
- * replays the whole log from the beginning (idempotent upserts converge);
- * a checkpointed group resumes exactly after the last processed event.
+ * Resume contract: the nightly reset no longer deletes consumer groups
+ * (ADR 0010) - the reset epoch gate pauses this worker and seeks it to the
+ * log end around each wipe - but a restart outside a reset still relies on
+ * the durable resume cursor (SearchCheckpoint in the search DB, fetched at
+ * boot via the search internal API). A fresh group starts at the log end
+ * (gate fail-safe); a checkpointed group resumes exactly after the last
+ * processed event.
  */
 import { realmUrls } from '@xitter/auth';
 import { SearchClient, SocialClient } from '@xitter/api-client';
-import { kafkaBrokers, localPort, localUrl, loadRepoEnv, parseEnv } from '@xitter/config';
+import {
+  kafkaBrokers,
+  localPort,
+  localUrl,
+  loadRepoEnv,
+  parseEnv,
+  valkeyUrl,
+} from '@xitter/config';
 import { CONSUMER_GROUPS, runEventWorker } from '@xitter/events';
 import { createLogger } from '@xitter/observability';
 import { z } from 'zod';
@@ -31,6 +40,7 @@ const env = parseEnv(
     DEMO_REALM: z.string().min(1).default('xitter-demo'),
     KEYCLOAK_CLIENT_ID: z.string().min(1).default('svc-worker-search-index'),
     KEYCLOAK_CLIENT_SECRET: z.string().min(1).default('svc-worker-search-index-local-secret'),
+    VALKEY_URL: z.string().url().default(valkeyUrl()),
   }),
 );
 
@@ -90,9 +100,9 @@ await runEventWorker({
   groupId: CONSUMER_GROUPS.searchIndexWorker,
   topics: ['posts', 'social'],
   metricsPort: env.METRICS_PORT,
-  // Fresh group = full replay (index rebuild); the checkpoint seeks take
-  // over when positions exist.
-  fromBeginning: true,
+  // Restart resume comes from the search checkpoints (seeks below); a
+  // fresh group starts at the log end (reset epoch gate, ADR 0010).
+  resetPause: { worker: 'search-index', valkeyUrl: env.VALKEY_URL },
   resumeFrom,
   handle: (envelope, raw) =>
     handleEvent(envelope, raw, {
