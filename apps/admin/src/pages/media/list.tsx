@@ -4,6 +4,7 @@ import { useCustomMutation } from '@refinedev/core';
 import { useTable } from '@refinedev/antd';
 import type { InternalMediaAsset } from '@xitter/api-contracts';
 import { filterValueOf } from '../../data/data-provider.js';
+import { A11yTag } from '../../components/a11y-tag.js';
 
 /**
  * Media moderation list: owner/status filters, variant preview (served from
@@ -116,9 +117,11 @@ export function MediaListPage() {
             key: 'status',
             width: 110,
             render: (status: string) => (
-              <Tag color={status === 'ready' ? 'green' : status === 'failed' ? 'red' : 'orange'}>
+              <A11yTag
+                color={status === 'ready' ? 'green' : status === 'failed' ? 'red' : 'orange'}
+              >
                 {status}
-              </Tag>
+              </A11yTag>
             ),
           },
           {

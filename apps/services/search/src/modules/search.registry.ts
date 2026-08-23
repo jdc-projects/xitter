@@ -2,6 +2,7 @@ import { OpenAPIRegistry, extendZodWithOpenApi } from '@asteasolutions/zod-to-op
 import { z } from 'zod';
 import {
   errorSchema,
+  pageQuerySchema,
   refreshSearchAuthorsRequestSchema,
   searchCheckpointListResponseSchema,
   searchCheckpointPutRequestSchema,
@@ -16,11 +17,7 @@ const jsonResponse = (description: string, schema: z.ZodType) => ({
   content: { 'application/json': { schema } },
 });
 
-const searchQuery = z.object({
-  q: z.string().min(1).max(512),
-  cursor: z.string().min(1).optional(),
-  limit: z.coerce.number().int().min(1).max(50).default(20),
-});
+const searchQuery = pageQuerySchema.extend({ q: z.string().min(1).max(512) });
 
 export const searchApi = new OpenAPIRegistry();
 

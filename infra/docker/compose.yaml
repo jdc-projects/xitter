@@ -138,6 +138,19 @@ services:
       KC_HEALTH_ENABLED: 'true'
       KC_HOSTNAME_STRICT: 'false'
       KC_HTTP_ENABLED: 'true'
+      # Keycloak >= 25.0.3 blocks concurrent logins for the same user while
+      # brute-force detection is on (CVE GHSA-gc7q-jgjv-vjr2 hardening): a
+      # second in-flight attempt fails user_temporarily_disabled / the grant
+      # equivalent even with correct credentials. The e2e suite legitimately
+      # logs the same demo user in from parallel workers (and the seeder's
+      # password grants run beside them), so allow concurrent requests - the
+      # failure-count and quick-login defences stay active. The documented
+      # env form is auto-generated wrong for the nested provider id; set
+      # every spelling so whichever the provider binds wins (verified
+      # empirically with overlapping password grants).
+      KC_SPI_BRUTE_FORCE_PROTECTOR__DEFAULT__BRUTE_FORCE_DETECTOR__ALLOW_CONCURRENT_REQUESTS: 'true'
+      KC_SPI_BRUTE_FORCE_PROTECTOR__DEFAULT_BRUTE_FORCE_DETECTOR__ALLOW_CONCURRENT_REQUESTS: 'true'
+      KC_SPI_BRUTE_FORCE_DETECTOR__DEFAULT__ALLOW_CONCURRENT_REQUESTS: 'true'
     ports:
       - '${XITTER_KEYCLOAK_PORT:-8090}:8080'
     volumes:

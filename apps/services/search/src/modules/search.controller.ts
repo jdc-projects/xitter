@@ -1,15 +1,12 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import type { RequestUser } from '@xitter/auth-nest';
 import { CurrentUser } from '@xitter/auth-nest';
+import { pageQuerySchema } from '@xitter/api-contracts';
 import { badRequest } from '@xitter/service-kit';
 import { z } from 'zod';
 import { SearchService } from './search.service.js';
 
-const searchQuery = z.object({
-  q: z.string().min(1).max(512),
-  cursor: z.string().min(1).optional(),
-  limit: z.coerce.number().int().min(1).max(50).default(20),
-});
+const searchQuery = pageQuerySchema.extend({ q: z.string().min(1).max(512) });
 
 /**
  * Public search API (spec 03): full-text post search, cursor-paginated,

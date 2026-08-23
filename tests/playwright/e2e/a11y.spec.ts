@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
-import { loginViaKeycloak } from './helpers';
+import { loginViaKeycloak, waitForComposerHydration } from './helpers';
 
 /**
  * Accessibility smoke checks (WCAG 2.2 AA via axe-core). Each new page adds a
@@ -57,6 +57,7 @@ test('/post/[postId] (detail with reply composer) has no serious axe violations'
 
   // Create a post through the real composer, then scan its detail page.
   const text = `a11y detail page ${crypto.randomUUID()}`;
+  await waitForComposerHydration(page);
   await page.getByTestId('composer-textarea').fill(text);
   await page.getByTestId('composer-submit').click();
   const item = page.locator('[data-testid^="post-item-"]', { hasText: text }).first();
@@ -91,6 +92,7 @@ test('/bookmarks (own, with interactive post cards) has no serious axe violation
   // Bookmark a post through the real button so the page renders a card with
   // the interactive action row, then scan.
   const text = `a11y bookmark page ${crypto.randomUUID()}`;
+  await waitForComposerHydration(page);
   await page.getByTestId('composer-textarea').fill(text);
   await page.getByTestId('composer-submit').click();
   const item = page.locator('[data-testid^="post-item-"]', { hasText: text }).first();
@@ -166,6 +168,11 @@ for (const { path, testId } of adminPages) {
     await page.waitForURL(/\/admin\/health$/);
     await page.goto(path);
     await expect(page.getByTestId(testId)).toBeVisible({ timeout: 20_000 });
+    // The table shell renders while rows still stream in; scanning the
+    // spinner state passes vacuously and hides row-level violations (the
+    // seeded world guarantees rows on every panel page - hold the scan to
+    // them or fail loudly).
+    await expect(page.locator('.ant-table-row').first()).toBeVisible({ timeout: 20_000 });
 
     const results = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])

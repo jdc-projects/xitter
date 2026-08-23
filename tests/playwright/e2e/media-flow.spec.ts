@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { loginViaKeycloak } from './helpers';
+import { loginViaKeycloak, waitForComposerHydration } from './helpers';
 
 /**
  * Media upload flows against the real stack (services + RustFS + Kafka +
@@ -31,6 +31,7 @@ test('attach image: post shows thumb in feed, original on detail, served from /m
   page,
 }) => {
   await login(page, 'demo9');
+  await waitForComposerHydration(page);
   const text = `t5 e2e media lifecycle ${crypto.randomUUID()}`;
 
   await page.getByTestId('composer-textarea').fill(text);
@@ -74,6 +75,7 @@ test('Enter-key submission uploads attachments too (the button is not the only p
   page,
 }) => {
   await login(page, 'demo9');
+  await waitForComposerHydration(page);
   const text = `t5 e2e enter submit ${crypto.randomUUID()}`;
 
   await page.getByTestId('composer-textarea').fill(text);
@@ -100,6 +102,9 @@ test('Enter-key submission uploads attachments too (the button is not the only p
 
 test('wrong type, oversize and 5th image are rejected before any upload', async ({ page }) => {
   await login(page, 'demo10');
+  // The file input's change handler only exists post-hydration; a
+  // pre-hydration setInputFiles is silently dropped and no error renders.
+  await waitForComposerHydration(page);
   const error = page.getByTestId('composer-upload-error');
 
   // Wrong type: never starts an upload (no attachment, no pending state).

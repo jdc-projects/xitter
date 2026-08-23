@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildSearchBody } from './posts-index.js';
+import type { Client } from '@opensearch-project/opensearch';
+import { PostsIndex, buildSearchBody } from './posts-index.js';
 
 /** Minimal valid options for pure query-building assertions. */
 const opts = (overrides: Partial<Parameters<typeof buildSearchBody>[0]> = {}) => ({
@@ -64,5 +65,28 @@ describe('buildSearchBody', () => {
       query: { bool: { must: { bool: { should: unknown[] } } } };
     };
     expect(body.query.bool.must.bool.should).toContainEqual({ term: { keywords: '#hello' } });
+  });
+});
+
+describe('PostsIndex after a reset deletes the index', () => {
+  // The real client rejects (async); a sync throw would bypass the .catch.
+  const missingIndex = () =>
+    Promise.reject(
+      Object.assign(new Error('index_not_found_exception'), {
+        body: { error: { type: 'index_not_found_exception' }, status: 404 },
+      }),
+    );
+
+  const index = (client: { updateByQuery: unknown; deleteByQuery: unknown }): PostsIndex =>
+    new PostsIndex(client as unknown as Client);
+
+  it('refreshAuthorName is a no-op, not a 500 (profile events precede the first write)', async () => {
+    const posts = index({ updateByQuery: missingIndex, deleteByQuery: missingIndex });
+    await expect(posts.refreshAuthorName('u1', 'renamed')).resolves.toBe(0);
+  });
+
+  it('clear reports zero deleted', async () => {
+    const posts = index({ updateByQuery: missingIndex, deleteByQuery: missingIndex });
+    await expect(posts.clear()).resolves.toBe(0);
   });
 });

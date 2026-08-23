@@ -1,79 +1,515 @@
 #!/usr/bin/env tsx
 /**
- * Deterministic fake-data seeder: `tsx packages/scripts/src/seed.ts`.
+ * Deterministic seeder: `tsx packages/scripts/src/seed.ts`.
  *
- * Runs against whatever environment its env points at (local via edge proxy, or
- * a deployed environment URL) so local and remote seeding share one code path.
- * Determinism: faker is seeded with a fixed constant; the social graph and post
- * corpus are derived from it, making every environment identical after a reset.
+ * Turns the pure corpus (corpus.ts, faker seed 42) into service API calls
+ * against whatever environment the env points at - local ports, a shared
+ * edge base, or in-cluster service URLs (see lib/targets.ts). Derived
+ * stores (feed, search) are NEVER written directly: the seeder exercises
+ * the same public APIs and Kafka events the product emits, and the fanout /
+ * search-index workers rebuild them exactly as in production.
  *
- * Skeleton: seeds demo users + profiles + a follow graph + posts via service
- * APIs. Richer content (images, replies, interactions) lands with the service
- * feature tickets - see docs/specs/data/02-seeding.md.
+ * Idempotent: keyed upserts through the services (ensure-profile, follow,
+ * interact are idempotent by design); a re-run over a seeded environment
+ * is verified and skipped. Spec: docs/specs/data/02-seeding.md.
  */
-import { faker } from '@faker-js/faker';
-import { envString, loadRepoEnv, localUrl } from '@xitter/config';
+import { envInt, loadRepoEnv } from '@xitter/config';
 import { applyCmsContent } from './content.js';
+import {
+  buildCorpus,
+  type CorpusCounts,
+  type CorpusPost,
+  type CorpusUser,
+  type SeedCorpus,
+} from './corpus.js';
+import { demoPng } from './lib/images.js';
+import { requestJson } from './lib/api.js';
+import { PasswordGrant, serviceBase, type ApiTarget } from './lib/targets.js';
 
-const SEED_CONSTANT = 42;
-const POSTS_PER_USER = 12;
+const POSTS_PAGE_LIMIT = 50;
+const SEED_IMAGE_SEED = 0x5eed;
 
-loadRepoEnv();
-faker.seed(SEED_CONSTANT);
-
-interface DemoUser {
+export interface SeedUser {
   username: string;
+  /** Keycloak subject - profiles and posts hang off it. */
+  userId: string;
 }
 
-/** Password grant against the demo realm (allowed for the seeder only). */
-async function loginToken(username: string): Promise<string> {
-  const keycloak = envString('XITTER_SEED_KEYCLOAK_URL', localUrl('keycloak'));
-  const realm = envString('XITTER_DEMO_REALM', 'xitter-demo');
-  const res = await fetch(`${keycloak}/realms/${realm}/protocol/openid-connect/token`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'password',
-      client_id: 'web',
-      username,
-      password: envString('XITTER_DEMO_USER_PASSWORD', 'DemoPass123!'),
-    }),
-  });
-  if (!res.ok) throw new Error(`Login failed for ${username}: ${res.status}`);
-  const json = (await res.json()) as { access_token: string };
-  return json.access_token;
+export interface SeedOptions {
+  /** Pre-resolved demo users (tests / the reset flow reuse the realm result). */
+  users?: SeedUser[];
+  corpus?: SeedCorpus;
+  fetchImpl?: typeof fetch;
+  /** Wait budget for media processing + fanout convergence (ms). */
+  convergenceTimeoutMs?: number;
+  log?: (message: string) => void;
 }
 
-async function authedFetch(path: string, init: RequestInit, token: string): Promise<unknown> {
-  const baseUrl = envString('XITTER_SEED_BASE_URL', localUrl('edge'));
-  const res = await fetch(`${baseUrl}${path}`, {
-    ...init,
-    headers: {
-      'content-type': 'application/json',
-      authorization: `Bearer ${token}`,
-      ...(init.headers ?? {}),
+export interface SeedReport {
+  fingerprint: string;
+  counts: CorpusCounts;
+  /** True when the environment already held the exact corpus (no-op run). */
+  skipped: boolean;
+  created: {
+    profiles: number;
+    follows: number;
+    mediaUploads: number;
+    posts: number;
+    likes: number;
+    bookmarks: number;
+    reposts: number;
+  };
+}
+
+interface SeedContext {
+  corpus: SeedCorpus;
+  ids: Map<string, string>;
+  doFetch: typeof fetch;
+  grants: PasswordGrant;
+  convergenceTimeoutMs: number;
+  log: (message: string) => void;
+  call(target: ApiTarget, init: RequestArgs, token?: string): Promise<unknown>;
+}
+
+type RequestArgs = Parameters<typeof requestJson>[2] & { path: string };
+
+export async function runSeed(options: SeedOptions = {}): Promise<SeedReport> {
+  loadRepoEnv();
+  const corpus = options.corpus ?? buildCorpus();
+  const users = options.users ?? (await resolveDemoUsers(corpus));
+  const doFetch = options.fetchImpl ?? fetch;
+
+  if (users.length !== corpus.users.length) {
+    throw new Error(
+      `corpus expects ${corpus.users.length} users, resolved ${users.length} - re-run keycloak init`,
+    );
+  }
+  const ctx: SeedContext = {
+    corpus,
+    ids: new Map(users.map((u) => [u.username, u.userId])),
+    doFetch,
+    grants: new PasswordGrant({ fetchImpl: doFetch }),
+    convergenceTimeoutMs: options.convergenceTimeoutMs ?? 90_000,
+    log: options.log ?? console.log,
+    call: (target, init, token) =>
+      requestJson(serviceBase(target), init.path, init, token, doFetch),
+  };
+
+  // --- Probe: fresh / seeded / partial -------------------------------------
+  const existing = await skipIfSeeded(ctx);
+  if (existing) return existing;
+
+  // --- Phases 1-6, then verify (derived stores converge via the workers) ----
+  const created = await seedCorpusContent(ctx);
+  await verifySeeded(ctx);
+  ctx.log(`seed: verified (fingerprint ${corpus.fingerprint.slice(0, 12)})`);
+  return { fingerprint: corpus.fingerprint, counts: corpus.counts, skipped: false, created };
+}
+
+/** No-op report for a corpus that is already fully present. */
+function skippedReport(corpus: SeedCorpus): SeedReport {
+  return {
+    fingerprint: corpus.fingerprint,
+    counts: corpus.counts,
+    skipped: true,
+    created: emptyCreated(),
+  };
+}
+
+/**
+ * Short-circuit for a probed environment: an exact corpus verifies and
+ * reports a no-op, corpus-plus-extras only reports, and a partial corpus
+ * refuses to patch. `null` means fresh - seed it.
+ */
+async function skipIfSeeded(ctx: SeedContext): Promise<SeedReport | null> {
+  const probe = await probeState(ctx);
+  if (probe === 'seeded') {
+    ctx.log('seed: corpus already present - verifying derived stores');
+    await verifySeeded(ctx);
+    return skippedReport(ctx.corpus);
+  }
+  if (probe === 'seeded-plus') {
+    // Corpus fully present plus unrelated content (e.g. e2e posts created on
+    // top): nothing to add, exact-count verification is not meaningful.
+    ctx.log('seed: corpus already present (extra content detected) - skipping');
+    return skippedReport(ctx.corpus);
+  }
+  if (probe === 'partial') {
+    throw new Error(
+      'seed: environment holds a partial corpus - run a reset first (npm run reset / the nightly reset job)',
+    );
+  }
+  return null;
+}
+
+/** Phase 1 (spec order: users -> profiles). Keyed upsert per corpus user. */
+async function ensureProfiles(ctx: SeedContext): Promise<number> {
+  for (const user of ctx.corpus.users) {
+    const token = await ctx.grants.token(user.username);
+    await ctx.call(
+      'social',
+      {
+        method: 'POST',
+        path: `/api/social/v1/profiles/${ctx.ids.get(user.username)}`,
+        body: { displayName: user.displayName, bio: user.bio },
+      },
+      token,
+    );
+  }
+  ctx.log(`seed: ${ctx.corpus.users.length} profiles ensured`);
+  return ctx.corpus.users.length;
+}
+
+/** Phase 2: the follow graph (idempotent follow upserts). */
+async function seedFollowGraph(ctx: SeedContext): Promise<number> {
+  for (const follow of ctx.corpus.follows) {
+    const follower = ctx.corpus.users[follow.followerIndex]!;
+    const followee = ctx.corpus.users[follow.followeeIndex]!;
+    const token = await ctx.grants.token(follower.username);
+    await ctx.call(
+      'social',
+      { method: 'POST', path: `/api/social/v1/profiles/${ctx.ids.get(followee.username)}/follow` },
+      token,
+    );
+  }
+  ctx.log(`seed: ${ctx.corpus.follows.length} follows created`);
+  return ctx.corpus.follows.length;
+}
+
+/**
+ * Phase 3: media uploads through the real pipeline - upload slot ->
+ * presigned PUT -> completion -> worker processing.
+ */
+async function seedMedia(
+  ctx: SeedContext,
+): Promise<{ bySlot: Map<string, string>; count: number }> {
+  const bySlot = new Map<string, string>();
+  for (const post of ctx.corpus.posts.filter((p) => p.mediaCount > 0)) {
+    bySlot.set(slotKey(post), await uploadDemoImage(post, ctx));
+  }
+  if (bySlot.size > 0) ctx.log(`seed: ${bySlot.size} images processed`);
+  return { bySlot, count: bySlot.size };
+}
+
+/** Phase 4: posts (standalone first, then thread replies). */
+async function seedPosts(
+  ctx: SeedContext,
+  mediaBySlot: Map<string, string>,
+): Promise<{ idBySlot: Map<string, string>; count: number }> {
+  const idBySlot = new Map<string, string>();
+  for (const post of ctx.corpus.posts) {
+    const author = ctx.corpus.users[post.authorIndex]!;
+    const token = await ctx.grants.token(author.username);
+    const replyToId = post.replyTo ? idBySlot.get(slotKey(post.replyTo)) : null;
+    if (post.replyTo && !replyToId) {
+      throw new Error(`reply target missing for ${author.username}/post-${post.ordinal}`);
+    }
+    const mediaIds = mediaBySlot.has(slotKey(post)) ? [mediaBySlot.get(slotKey(post))!] : [];
+    const createdPost = (await ctx.call(
+      'posts',
+      {
+        method: 'POST',
+        path: '/api/posts/v1/posts',
+        body: { text: post.text, mediaIds, replyToId },
+      },
+      token,
+    )) as { id: string };
+    idBySlot.set(slotKey(post), createdPost.id);
+  }
+  ctx.log(`seed: ${idBySlot.size} posts created (incl. replies)`);
+  return { idBySlot, count: idBySlot.size };
+}
+
+/** Phase 5: likes / reposts / bookmarks against the created posts. */
+async function seedInteractions(
+  ctx: SeedContext,
+  postIdBySlot: Map<string, string>,
+): Promise<Pick<SeedReport['created'], 'likes' | 'reposts' | 'bookmarks'>> {
+  const created = { likes: 0, reposts: 0, bookmarks: 0 };
+  for (const interaction of ctx.corpus.interactions) {
+    const actor = ctx.corpus.users[interaction.userIndex]!;
+    const postId = postIdBySlot.get(slotKey(interaction.post));
+    if (!postId) throw new Error(`interaction target missing (${actor.username})`);
+    const token = await ctx.grants.token(actor.username);
+    await ctx.call(
+      'posts',
+      {
+        method: 'POST',
+        path: `/api/posts/v1/posts/${postId}/interactions`,
+        body: { kind: interaction.kind },
+      },
+      token,
+    );
+    if (interaction.kind === 'like') created.likes += 1;
+    else if (interaction.kind === 'bookmark') created.bookmarks += 1;
+    else created.reposts += 1;
+  }
+  ctx.log(
+    `seed: ${created.likes} likes, ${created.reposts} reposts, ${created.bookmarks} bookmarks`,
+  );
+  return created;
+}
+
+/** Phases 1-6 in spec order, returning the created-counts report. */
+async function seedCorpusContent(ctx: SeedContext): Promise<SeedReport['created']> {
+  const created = emptyCreated();
+  created.profiles = await ensureProfiles(ctx);
+  created.follows = await seedFollowGraph(ctx);
+  const media = await seedMedia(ctx);
+  created.mediaUploads = media.count;
+  const posts = await seedPosts(ctx, media.bySlot);
+  created.posts = posts.count;
+  const interactions = await seedInteractions(ctx, posts.idBySlot);
+  created.likes = interactions.likes;
+  created.reposts = interactions.reposts;
+  created.bookmarks = interactions.bookmarks;
+
+  // --- 6. Promoted CMS content -----------------------------------------------
+  const cms = await applyCmsContent({ fetchImpl: ctx.doFetch });
+  ctx.log(`seed: cms content ${cms.created} created, ${cms.updated} updated`);
+  return created;
+}
+
+// ---------------------------------------------------------------------------
+// State probe
+// ---------------------------------------------------------------------------
+
+type ProbeState = 'fresh' | 'seeded' | 'seeded-plus' | 'partial';
+
+type UserProbe = 'matching' | 'at-least' | 'empty' | 'absent';
+
+/** Per-user visible post count via the public timeline (user-gated read). */
+async function userPostCount(
+  ctx: SeedContext,
+  user: CorpusUser,
+  userId: string,
+  token?: string,
+): Promise<number> {
+  const authToken = token ?? (await ctx.grants.token(user.username));
+  return ctx
+    .call(
+      'posts',
+      {
+        method: 'GET',
+        path: `/api/posts/v1/users/${userId}/posts?limit=${POSTS_PAGE_LIMIT}`,
+      },
+      authToken,
+    )
+    .then(countPageItems);
+}
+
+async function probeState(ctx: SeedContext): Promise<ProbeState> {
+  const seen: Record<UserProbe, number> = { matching: 0, 'at-least': 0, empty: 0, absent: 0 };
+  for (const [index, user] of ctx.corpus.users.entries()) {
+    seen[await probeUser(ctx, index, user)] += 1;
+  }
+  const total = ctx.corpus.users.length;
+  if (seen.matching === total) return 'seeded';
+  if (seen.matching + seen['at-least'] === total) return 'seeded-plus';
+  if (seen.matching > 0 || seen['at-least'] > 0 || (seen.empty > 0 && seen.empty < total)) {
+    return 'partial';
+  }
+  return 'fresh';
+}
+
+/** One user's slice of the probe: exact / at-least / empty / absent. */
+async function probeUser(ctx: SeedContext, index: number, user: CorpusUser): Promise<UserProbe> {
+  const userId = ctx.ids.get(user.username)!;
+  // The reads are user-gated (global AuthGuard) - probe as the user.
+  const token = await ctx.grants.token(user.username);
+  const [profileRes, postsRes] = await Promise.allSettled([
+    ctx.call(
+      'social',
+      {
+        method: 'GET',
+        path: `/api/social/v1/profiles/username/${user.username}`,
+      },
+      token,
+    ),
+    userPostCount(ctx, user, userId, token),
+  ]);
+  const expectedPosts = ctx.corpus.posts.filter((p) => p.authorIndex === index).length;
+  const count = postsRes.status === 'fulfilled' ? postsRes.value : -1;
+  if (profileRes.status === 'fulfilled' && count === expectedPosts) return 'matching';
+  if (profileRes.status === 'fulfilled' && count >= expectedPosts) return 'at-least';
+  if (profileRes.status === 'rejected' && count === 0) return 'empty';
+  return 'absent';
+}
+
+// ---------------------------------------------------------------------------
+// Media (the real pipeline)
+// ---------------------------------------------------------------------------
+
+async function uploadDemoImage(post: CorpusPost, ctx: SeedContext): Promise<string> {
+  const author = ctx.corpus.users[post.authorIndex]!;
+  const token = await ctx.grants.token(author.username);
+  const bytes = demoPng(SEED_IMAGE_SEED + post.authorIndex);
+  const slot = (await ctx.call(
+    'media',
+    {
+      method: 'POST',
+      path: '/api/media/v1/uploads',
+      body: { mimeType: 'image/png', bytes: bytes.byteLength },
     },
+    token,
+  )) as { mediaId: string; uploadUrl: string };
+
+  // The presigned URL signs the content type - the PUT must repeat it.
+  const put = await ctx.doFetch(slot.uploadUrl, {
+    method: 'PUT',
+    headers: { 'content-type': 'image/png' },
+    body: bytes,
   });
-  const body = await res.text();
-  if (!res.ok) throw new Error(`${init.method ?? 'GET'} ${path} -> ${res.status}: ${body}`);
-  return body ? JSON.parse(body) : null;
+  if (!put.ok) throw new Error(`media PUT failed: ${put.status} ${await put.text()}`);
+
+  await ctx.call(
+    'media',
+    { method: 'POST', path: `/api/media/v1/media/${slot.mediaId}/complete` },
+    token,
+  );
+
+  // Processing is asynchronous (media-process worker) - wait for readiness.
+  const deadline = Date.now() + ctx.convergenceTimeoutMs;
+  for (;;) {
+    const asset = (await ctx.call(
+      'media',
+      { method: 'GET', path: `/api/media/v1/media/${slot.mediaId}` },
+      token,
+    )) as { status: string };
+    if (asset.status === 'ready') return slot.mediaId;
+    if (asset.status === 'failed') throw new Error(`media ${slot.mediaId} failed processing`);
+    if (Date.now() > deadline) {
+      throw new Error(`media ${slot.mediaId} never became ready - is the media-process worker up?`);
+    }
+    await sleep(500);
+  }
 }
 
-async function main(): Promise<void> {
-  const userCount = Number.parseInt(envString('XITTER_DEMO_USER_COUNT', '10'), 10);
-  const users: DemoUser[] = Array.from({ length: userCount }, (_, i) => ({
-    username: `demo${i + 1}`,
-  }));
+// ---------------------------------------------------------------------------
+// Verification (spec data 02: sanity counts; mismatch = failed seed)
+// ---------------------------------------------------------------------------
 
-  // TODO(feature-social): login per user, ensure profiles, follow graph, posts.
-  void loginToken;
-  void authedFetch;
-  console.log(`seeding ${users.length} profiles, ${POSTS_PER_USER} posts each`);
-
-  // Promoted CMS content (spec: data 02) - idempotent upserts of the
-  // committed content files; the same seam the nightly reset calls.
-  const cms = await applyCmsContent();
-  console.log(`cms site content: ${cms.created} created, ${cms.updated} updated`);
+/**
+ * Post-seed sanity: per-user post + following counts must match the corpus
+ * exactly; feed items are worker-derived and therefore polled until they
+ * converge within the timeout, then enforced.
+ */
+export async function verifySeeded(ctx: SeedContext): Promise<void> {
+  const deadline = Date.now() + ctx.convergenceTimeoutMs;
+  for (;;) {
+    const problems: string[] = [];
+    for (const [index, user] of ctx.corpus.users.entries()) {
+      problems.push(...(await verifyUser(ctx, index, user, deadline)));
+    }
+    if (problems.length === 0) return;
+    if (Date.now() > deadline) {
+      throw new Error(`seed verification failed:\n  ${problems.join('\n  ')}`);
+    }
+    await sleep(1_000);
+  }
 }
 
-void main();
+/**
+ * One user's sanity counts: posts + following must match the corpus
+ * exactly. Past the deadline the feed count is enforced too (a feed page
+ * caps at 50 - larger feeds verify as "a full page").
+ */
+async function verifyUser(
+  ctx: SeedContext,
+  index: number,
+  user: CorpusUser,
+  deadline: number,
+): Promise<string[]> {
+  const problems: string[] = [];
+  const userId = ctx.ids.get(user.username)!;
+  const token = await ctx.grants.token(user.username);
+
+  const posts = await userPostCount(ctx, user, userId);
+  const expectedPosts = ctx.corpus.posts.filter((p) => p.authorIndex === index).length;
+  if (posts !== expectedPosts) problems.push(`${user.username}: ${posts}/${expectedPosts} posts`);
+
+  const following = await ctx
+    .call(
+      'social',
+      {
+        method: 'GET',
+        path: `/api/social/v1/profiles/${userId}/following?limit=${POSTS_PAGE_LIMIT}`,
+      },
+      token,
+    )
+    .then(countPageItems);
+  const expectedFollowing = ctx.corpus.follows.filter((f) => f.followerIndex === index).length;
+  if (following !== expectedFollowing) {
+    problems.push(`${user.username}: ${following}/${expectedFollowing} following`);
+  }
+
+  if (Date.now() > deadline) {
+    const feed = await ctx
+      .call('feed', { method: 'GET', path: '/api/feed/v1/feed?limit=50' }, token)
+      .then(countPageItems);
+    const expectedFeed = ctx.corpus.counts.feedEntriesByUser[index]!;
+    if (expectedFeed > 50 ? feed < 50 : feed !== expectedFeed) {
+      problems.push(`${user.username}: ${feed}/${expectedFeed} feed items`);
+    }
+  }
+  return problems;
+}
+
+// ---------------------------------------------------------------------------
+// Keycloak user resolution
+// ---------------------------------------------------------------------------
+
+async function resolveDemoUsers(corpus: SeedCorpus): Promise<SeedUser[]> {
+  const { initDemoRealm } = await import('./keycloak.js');
+  const realmUsers = await initDemoRealm();
+  const byName = new Map(realmUsers.map((u) => [u.username, u.userId]));
+  return corpus.users.map((u) => {
+    const userId = byName.get(u.username);
+    if (!userId) throw new Error(`demo user ${u.username} missing from Keycloak`);
+    return { username: u.username, userId };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const slotKey = (post: { authorIndex: number; ordinal: number }): string =>
+  `${post.authorIndex}/${post.ordinal}`;
+
+function countPageItems(page: unknown): number {
+  return ((page as { items?: unknown[] }).items ?? []).length;
+}
+
+function emptyCreated(): SeedReport['created'] {
+  return {
+    profiles: 0,
+    follows: 0,
+    mediaUploads: 0,
+    posts: 0,
+    likes: 0,
+    bookmarks: 0,
+    reposts: 0,
+  };
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// --- CLI ---------------------------------------------------------------------
+if (process.argv[1]?.endsWith('seed.ts')) {
+  loadRepoEnv();
+  const corpus = buildCorpus({ userCount: envInt('XITTER_DEMO_USER_COUNT', 10) });
+  console.log(
+    `seed corpus: ${corpus.counts.users} users, ${corpus.counts.posts} posts ` +
+      `(${corpus.counts.replies} replies), ${corpus.counts.follows} follows, ` +
+      `${corpus.counts.likes} likes, ${corpus.counts.reposts} reposts, ` +
+      `${corpus.counts.bookmarks} bookmarks, ${corpus.counts.imagePosts} images`,
+  );
+  console.log(`fingerprint: ${corpus.fingerprint}`);
+  const result = await runSeed({ corpus });
+  console.log(
+    result.skipped
+      ? 'seed: already present (verified, no-op)'
+      : `seed complete: ${result.created.posts} posts, ${result.created.follows} follows`,
+  );
+}

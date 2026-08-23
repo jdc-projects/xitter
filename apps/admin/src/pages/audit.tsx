@@ -1,7 +1,8 @@
-import { Space, Table, Tag, Typography } from 'antd';
+import { Space, Table, Typography } from 'antd';
 import { useEffect, useState } from 'react';
 import { adminAuditPageSchema, type AdminAuditEntry } from '@xitter/api-contracts';
 import { adminFetch } from '../data/admin-fetch.js';
+import { A11yTag } from '../components/a11y-tag.js';
 
 /**
  * Moderation audit trail, merged from the two stores that write entries
@@ -62,7 +63,7 @@ export function AuditPage() {
             key: 'action',
             width: 170,
             render: (action: AdminAuditEntry['action']) => (
-              <Tag color={colorFor(action)}>{action}</Tag>
+              <A11yTag color={colorFor(action)}>{action}</A11yTag>
             ),
           },
           { title: 'Target', dataIndex: 'targetId', key: 'targetId', ellipsis: true },

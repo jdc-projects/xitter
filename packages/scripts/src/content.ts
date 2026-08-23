@@ -16,6 +16,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createJwtCache, realmUrls } from '@xitter/auth';
 import { envString, loadRepoEnv, localUrl } from '@xitter/config';
+import { requestJson } from './lib/api.js';
+import { serviceBase } from './lib/targets.js';
 
 export interface LandingContentSeed {
   slug: string;
@@ -57,7 +59,7 @@ const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 export const CONTENT_DIR = resolve(SCRIPT_DIR, '../data/content');
 
 function cmsBase(): string {
-  return envString('XITTER_SEED_BASE_URL', localUrl('edge'));
+  return serviceBase('cms');
 }
 
 function cmsToken(fetchImpl?: typeof fetch) {
@@ -73,21 +75,11 @@ function cmsToken(fetchImpl?: typeof fetch) {
 
 async function api(
   path: string,
-  init: RequestInit,
+  init: Parameters<typeof requestJson>[2],
   token: string,
   fetchImpl: typeof fetch,
 ): Promise<unknown> {
-  const res = await fetchImpl(`${cmsBase()}${path}`, {
-    ...init,
-    headers: {
-      'content-type': 'application/json',
-      authorization: `Bearer ${token}`,
-      ...(init.headers ?? {}),
-    },
-  });
-  const body = await res.text();
-  if (!res.ok) throw new Error(`${init.method ?? 'GET'} ${path} -> ${res.status}: ${body}`);
-  return body ? JSON.parse(body) : null;
+  return requestJson(cmsBase(), path, init, token, fetchImpl);
 }
 
 async function listExisting(
@@ -131,7 +123,7 @@ async function upsertCollection(
   for (const seed of seeds) {
     const id = existing.get(seed.slug as string);
     // _status: published - seed content is live immediately, never a draft.
-    const data = JSON.stringify({ ...seed, ...PUBLISHED });
+    const data = { ...seed, ...PUBLISHED };
     if (id) {
       await api(
         `/cms/api/${collection}/${id}?draft=false`,
@@ -176,6 +168,31 @@ export async function applyCmsContent(
     created: landing.created + faq.created,
     updated: landing.updated + faq.updated,
   };
+}
+
+/**
+ * Reset step for CMS content (spec ops 02): delete every content doc
+ * (published or draft - the table truncate equivalent, via Payload's own
+ * API so no cross-service DB access), then re-apply the committed files.
+ * Admin users/sessions are Payload auth concerns and untouched.
+ */
+export async function resetCmsContent(
+  options: { fetchImpl?: typeof fetch } = {},
+): Promise<ContentApplyResult & { deleted: number }> {
+  loadRepoEnv();
+  const doFetch = options.fetchImpl ?? fetch;
+  const token = await cmsToken(doFetch).get();
+
+  let deleted = 0;
+  for (const collection of ['landing-content', 'faq'] as const) {
+    const docs = await listExisting(collection, token, doFetch, 'apply');
+    for (const doc of docs) {
+      await api(`/cms/api/${collection}/${doc.id}`, { method: 'DELETE' }, token, doFetch);
+      deleted += 1;
+    }
+  }
+  const applied = await applyCmsContent({ fetchImpl: doFetch });
+  return { deleted, ...applied };
 }
 
 /** Read the committed seed files (also the export target). */
@@ -256,8 +273,15 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     case 'export':
       await exportCmsContent();
       break;
+    case 'reset':
+      await resetCmsContent().then((r) =>
+        console.log(
+          `cms content: ${r.deleted} deleted, ${r.created} created, ${r.updated} updated`,
+        ),
+      );
+      break;
     default:
-      console.error(`Unknown command: ${command}. Use apply | export.`);
+      console.error(`Unknown command: ${command}. Use apply | export | reset.`);
       process.exit(1);
   }
 }

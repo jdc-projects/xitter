@@ -96,15 +96,24 @@ export class PostsIndex implements OnModuleInit {
    * (social.profile.updated keeps the index self-contained).
    */
   async refreshAuthorName(authorId: string, authorName: string): Promise<number> {
-    const result = await this.client.updateByQuery({
-      index: POSTS_INDEX,
-      body: {
-        query: { term: { authorId } },
-        script: { source: 'ctx._source.authorName = params.name', params: { name: authorName } },
-      },
-      conflicts: 'proceed',
-      refresh: true,
-    });
+    const result = await this.client
+      .updateByQuery({
+        index: POSTS_INDEX,
+        body: {
+          query: { term: { authorId } },
+          script: { source: 'ctx._source.authorName = params.name', params: { name: authorName } },
+        },
+        conflicts: 'proceed',
+        refresh: true,
+      })
+      .catch((err: unknown) => {
+        // The nightly reset deletes the index; profile updates arriving
+        // before the first document write would otherwise 500. Nothing to
+        // rename in an absent index - future upserts carry the right name.
+        if (isIndexMissing(err)) return null;
+        throw err;
+      });
+    if (!result) return 0;
     // wait_for_completion=true (default) returns the sync body; the typed
     // union also allows the async { task } shape, which never occurs here.
     const body = result.body as { updated?: number };
@@ -140,11 +149,18 @@ export class PostsIndex implements OnModuleInit {
 
   /** Clear every document (reset job); the mapping survives for reuse. */
   async clear(): Promise<number> {
-    const result = await this.client.deleteByQuery({
-      index: POSTS_INDEX,
-      body: { query: { match_all: {} } },
-      refresh: true,
-    });
+    const result = await this.client
+      .deleteByQuery({
+        index: POSTS_INDEX,
+        body: { query: { match_all: {} } },
+        refresh: true,
+      })
+      .catch((err: unknown) => {
+        // Already-absent index (deleted by a reset): nothing to clear.
+        if (isIndexMissing(err)) return null;
+        throw err;
+      });
+    if (!result) return 0;
     const body = result.body as { deleted?: number };
     return body.deleted ?? 0;
   }

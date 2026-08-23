@@ -52,6 +52,10 @@ describe.skipIf(!hasGeneratedClient)('media integration (testcontainers rustfs +
 
     db = new generated.PrismaClient({
       adapter: new PrismaPg({ connectionString: postgres.connectionString }),
+      // Prisma's 2s/5s transaction defaults assume a quiet host; CI runs
+      // several container suites in parallel on 2-core runners and pool
+      // acquisition starves past them (P2028) before any query is at fault.
+      transactionOptions: { maxWait: 20_000, timeout: 60_000 },
     }) as MediaPrismaClient;
 
     storage = new RustFsStorage({

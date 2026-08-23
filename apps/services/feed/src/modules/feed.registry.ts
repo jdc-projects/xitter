@@ -3,7 +3,9 @@ import { z } from 'zod';
 import {
   errorSchema,
   hydratedFeedItemSchema,
+  pageQuerySchema,
   postIdSchema,
+  resetStatusSchema,
   upsertFeedEntriesRequestSchema,
   upsertFeedEntriesResponseSchema,
   userIdSchema,
@@ -23,11 +25,6 @@ const authorParams = z.object({ userId: userIdSchema, authorId: userIdSchema });
 const jsonResponse = (description: string, schema: z.ZodType) => ({
   description,
   content: { 'application/json': { schema } },
-});
-
-const pageQuery = z.object({
-  cursor: z.string().min(1).optional(),
-  limit: z.coerce.number().int().min(1).max(50).default(20),
 });
 
 export const feedApi = new OpenAPIRegistry();
@@ -51,7 +48,7 @@ feedApi.registerPath({
   security: [{ bearerAuth: [] }],
   description:
     'Materialised home timeline (followed + own posts and reposts, newest first), hydrated server-side; deleted posts and blocked authors are excluded. Repost entries carry the reposter profile (`repostedBy`) for attribution.',
-  request: { query: pageQuery },
+  request: { query: pageQuerySchema },
   responses: {
     200: { description: 'Feed page', content: { 'application/json': { schema: feedPage } } },
     400: jsonResponse('Invalid cursor', errorSchema),
@@ -134,4 +131,16 @@ feedApi.registerPath({
   security: [{ serviceToken: [] }],
   description: 'Truncate feed entries (reset job); the timeline rebuilds from events.',
   responses: { 200: jsonResponse('Acknowledged', z.object({ ok: z.boolean() })) },
+});
+
+feedApi.registerPath({
+  method: 'get',
+  path: '/internal/reset-status',
+  tags: ['internal'],
+  security: [{ serviceToken: [] }],
+  description:
+    'Last reset/reseed run (written by the reset job to Valkey) for the admin health tile; null when no reset has run.',
+  responses: {
+    200: jsonResponse('Reset status or null', resetStatusSchema.nullable()),
+  },
 });

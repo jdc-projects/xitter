@@ -32,13 +32,19 @@ test('viewing a profile shows its identity and lists', async ({ page, browser })
   await expect(page.getByTestId('profile-avatar')).toBeVisible();
   // Own actions hidden on someone else's profile.
   await expect(page.getByTestId('edit-profile-button')).toHaveCount(0);
-  await expect(page.getByTestId('follow-button')).toBeVisible();
+  // The corpus seeds demo1 -> demo2, so either relationship control can
+  // render - assert the control is there, not which state it is in.
+  await expect(
+    page.getByTestId('follow-button').or(page.getByTestId('unfollow-button')),
+  ).toBeVisible();
 
-  // Lists render for any viewer (spec 7.4).
+  // Lists render for any viewer (spec 7.4). The corpus gives demo2 a
+  // follower (demo4) and a followee (demo3) - no spec removes those edges,
+  // so both tabs can assert real content rather than the empty state.
   await page.getByTestId('tab-followers').click();
-  await expect(page.getByTestId('profile-list-empty')).toBeVisible();
+  await expect(page.getByTestId('profile-list-item').filter({ hasText: '@demo4' })).toBeVisible();
   await page.getByTestId('tab-following').click();
-  await expect(page.getByTestId('profile-list-empty')).toBeVisible();
+  await expect(page.getByTestId('profile-list-item').filter({ hasText: '@demo3' })).toBeVisible();
 });
 
 test('follow then unfollow updates both sides of the graph', async ({ page, browser }) => {
@@ -47,7 +53,14 @@ test('follow then unfollow updates both sides of the graph', async ({ page, brow
   await loginViaKeycloak(page, 'demo1', PASSWORD);
   await page.waitForURL(/\/feed$/);
 
+  // The corpus seeds demo1 -> demo2; the cycle below needs a clean edge.
   await page.goto('/profile/demo2');
+  const existing = page.getByTestId('unfollow-button');
+  if (await existing.isVisible()) {
+    await existing.click();
+    await expect(page.getByTestId('follow-button')).toBeVisible();
+  }
+
   await page.getByTestId('follow-button').click();
   await expect(page.getByTestId('unfollow-button')).toBeVisible();
 

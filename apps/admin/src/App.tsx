@@ -30,6 +30,12 @@ const a11yTheme: ThemeConfig = {
     colorText: '#333333',
     colorTextSecondary: '#595959',
     colorTextTertiary: '#595959',
+    // antd's default error red #ff4d4f is 3.3:1 on white (below AA) - the
+    // posts/media delete buttons surfaced it once seeded rows rendered
+    // (T12 corpus); red-7 #d32029 gives 5.25:1, hover red-6 4.6:1.
+    colorError: '#d32029',
+    colorErrorHover: '#d9363e',
+    colorErrorActive: '#cf1322',
   },
 };
 

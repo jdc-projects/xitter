@@ -205,6 +205,16 @@ export const postLookupResponseSchema = z
 export type PostLookupRequest = z.infer<typeof postLookupRequestSchema>;
 export type PostLookupResponse = z.infer<typeof postLookupResponseSchema>;
 
+// Shared cursor-page query params (feed/posts/search list endpoints): the
+// services' controllers and OpenAPI registries parse the identical shape.
+// Query params arrive as strings, hence the coercion.
+export const pageQuerySchema = z.object({
+  cursor: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+});
+
+export type PageQuery = z.infer<typeof pageQuerySchema>;
+
 // Internal (fanout worker → posts): the followee's recent posts for the
 // follow backfill (spec 04). Same page shape as the public author timeline.
 export const internalAuthorPostsRequestSchema = z
@@ -345,7 +355,38 @@ export const idParam = (name: 'userId' | 'postId' | 'mediaId' | 'username') =>
     username: { name: 'username', schema: usernameSchema, in: 'path', required: true },
   })[name];
 
-// ---------------------------------------------------------------------------
+/**
+ * Last reset run, surfaced by the feed service for the admin health tile
+ * (spec 03 internal table; T13). Written by the reset job after every run -
+ * success or failure - so operators always see the freshest outcome.
+ */
+export const resetStepStatusSchema = z
+  .object({
+    name: z.string(),
+    ok: z.boolean(),
+    durationMs: z.number().int().nonnegative(),
+  })
+  .strict()
+  .openapi('ResetStepStatus');
+
+export type ResetStepStatus = z.infer<typeof resetStepStatusSchema>;
+
+export const resetStatusSchema = z
+  .object({
+    job: z.string(),
+    startedAt: z.iso.datetime(),
+    finishedAt: z.iso.datetime(),
+    durationMs: z.number().int().nonnegative(),
+    success: z.boolean(),
+    reseeded: z.boolean(),
+    /** Seed corpus digest when reseeded, else null. */
+    fingerprint: z.string().nullable(),
+    steps: z.array(resetStepStatusSchema),
+  })
+  .strict()
+  .openapi('ResetStatus');
+
+export type ResetStatus = z.infer<typeof resetStatusSchema>; // ---------------------------------------------------------------------------
 // Internal admin endpoints (admin-role-gated, spec 03 §admin). These live at
 // /api/{service}/internal/admin/... and are called by the admin panel (an
 // admin-realm user token) and machine tooling (the svc-admin service token).
