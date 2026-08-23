@@ -68,17 +68,17 @@ The reconciliation path is **exercised by the first release** (v0.1.0): a merge 
 
 `infra/iac/environments/prod` mirrors dev's topology (same modules, same file layout) with deliberate deltas:
 
-| Concern          | dev                                                                      | prod                                                                   |
-| ---------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
-| Domain           | `xitter-dev.jd-chapman.dev`                                              | `xitter.jd-chapman.dev`                                                |
-| Image tag        | mutable `dev` (default)                                                  | **required** `image_tag` var — always an explicit release              |
-| Postgres (CNPG)  | 1 instance                                                               | 2 instances (supervised switchover rolls)                              |
-| OpenSearch       | 2 nodes (forced by the operator's restart guard; zero failure tolerance) | 3 nodes (majority quorum; tolerates one node down)                     |
+| Concern          | dev                                                                      | prod                                                                      |
+| ---------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| Domain           | `xitter-dev.jd-chapman.dev`                                              | `xitter.jd-chapman.dev`                                                   |
+| Image tag        | mutable `dev` (default)                                                  | **required** `image_tag` var — always an explicit release                 |
+| Postgres (CNPG)  | 1 instance                                                               | 2 instances (supervised switchover rolls)                                 |
+| OpenSearch       | 2 nodes (forced by the operator's restart guard; zero failure tolerance) | 3 nodes (majority quorum; tolerates one node down)                        |
 | Sentry           | owns the single `xitter` project (team `xitter`)                         | reads the same project via data sources; events tagged `environment=prod` |
-| Alerts           | incl. reset-job rules                                                    | same SLOs, env-interpolated; reset rules land with #13's prod wiring   |
-| Dashboards       | 4 (incl. reset job)                                                      | the 3 env-agnostic dashboards rendered from dev's JSON files           |
-| Reset (CronJob)  | nightly 00:00 UTC (#13)                                                  | deferred to #13's follow-up (schedule/enable per env is its variable)  |
-| Keycloak clients | incl. `svc-reset`                                                        | no `svc-reset` until the reset job exists in prod                      |
+| Alerts           | incl. reset-job rules                                                    | same SLOs, env-interpolated; reset rules land with #13's prod wiring      |
+| Dashboards       | 4 (incl. reset job)                                                      | the 3 env-agnostic dashboards rendered from dev's JSON files              |
+| Reset (CronJob)  | nightly 00:00 UTC (#13)                                                  | deferred to #13's follow-up (schedule/enable per env is its variable)     |
+| Keycloak clients | incl. `svc-reset`                                                        | no `svc-reset` until the reset job exists in prod                         |
 
 **Ingress/realm wiring**: same host-based edge routing via the homelab ingress module — `/api/{service}` (oidc-api against the `xitter-demo` realm), `/cms` + `/admin` (oidc-interactive against `primary`), `/` + `/media` unauthenticated, plus the unauthenticated `/xitter-media` presign route. No dev values leak: the only literal domains are `var.domain` (`xitter.jd-chapman.dev`), the Keycloak host from homelab remote state, and in-cluster service DNS. The geo-open Keycloak path routes on `idp.jd-chapman.dev` use priority **190** (dev's are 200): dev's identical matchers win while dev exists, and prod's remain armed standbys so global demo login survives if dev is ever destroyed.
 

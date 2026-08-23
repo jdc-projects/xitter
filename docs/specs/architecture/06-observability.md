@@ -34,13 +34,13 @@ Observability is part of development work, not an afterthought: dashboards and a
 
 ## Sentry
 
-| Aspect          | Rule                                                                                                                                                                                    |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Project         | ONE project (`xitter`) for every workload — cross-service traces and issue correlation are the point of Sentry, and both need a single event stream                                      |
-| DSN             | One shared DSN, injected as a secret at deploy (see [07-security.md](07-security.md))                                                                                                    |
-| Release tagging | Sentry release = the deployed image tag (`sha-<short>` from CI, or the promoted release tag)                                                                                             |
-| Environment     | `SENTRY_ENVIRONMENT` (`dev`/`prod`) separates the streams within the project                                                                                                             |
-| Scope           | `service` tag on every event + trace id attached; release-health enabled for web                                                                                                         |
+| Aspect          | Rule                                                                                                                                                |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Project         | ONE project (`xitter`) for every workload — cross-service traces and issue correlation are the point of Sentry, and both need a single event stream |
+| DSN             | One shared DSN, injected as a secret at deploy (see [07-security.md](07-security.md))                                                               |
+| Release tagging | Sentry release = the deployed image tag (`sha-<short>` from CI, or the promoted release tag)                                                        |
+| Environment     | `SENTRY_ENVIRONMENT` (`dev`/`prod`) separates the streams within the project                                                                        |
+| Scope           | `service` tag on every event + trace id attached; release-health enabled for web                                                                    |
 
 The project is provisioned by Tofu (`jianyuan/sentry` provider, under the `xitter` team) and owned by the dev environment's state — prod reads it via data sources, because one resource cannot live in two states and dev applies on every merge, so the project always exists before a prod apply. The shared `SENTRY_DSN` secret and the `SENTRY_ENVIRONMENT`/`SENTRY_RELEASE` env are part of each environment root module. Per-workload filtering is the `service` tag every SDK init stamps (`initSentry` server-side, `instrumentation-client` for the browser). web additionally reports from the browser via `@sentry/nextjs`: the server relays the runtime DSN/release/environment to `instrumentation-client.ts` through a JSON script tag, because build-time inlining cannot see deploy-time secrets.
 
