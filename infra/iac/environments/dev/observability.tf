@@ -55,7 +55,7 @@ resource "sentry_project" "xitter" {
 
 data "sentry_key" "xitter" {
   organization = sentry_project.xitter.organization
-  project      = sentry_project.xitter.id
+  project      = sentry_project.xitter.slug
   first        = true
 }
 
