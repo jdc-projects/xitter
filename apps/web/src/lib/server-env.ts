@@ -22,6 +22,19 @@ export function webEnv() {
         'XITTER_CAP_SITE_KEY and XITTER_CAP_SECRET_KEY to be set',
     );
   }
+  // Deployed environments (tofu sets XITTER_CAP_REQUIRED) must not boot
+  // without bot protection: a silently-disabled captcha looks exactly like
+  // a working login page, and that is how dev ran unprotected for days.
+  // Local/ephemeral stacks never set the flag - captcha stays optional
+  // there (offset copies legitimately run without it).
+  const capRequired = envBool('XITTER_CAP_REQUIRED', false);
+  if (capRequired && !cap.enabled) {
+    throw new Error(
+      'XITTER_CAP_REQUIRED=true but captcha is not enabled - deployed environments ' +
+        'must have bot protection configured (spec 02 §3.2): set XITTER_CAP_ENABLED ' +
+        'with all four XITTER_CAP_* values',
+    );
+  }
   return {
     /** Origin browsers use to reach this app - login flows go through it. */
     appBaseUrl: envString('XITTER_WEB_BASE_URL', localUrl('edge')),

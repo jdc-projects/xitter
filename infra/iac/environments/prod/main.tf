@@ -105,6 +105,22 @@ variable "image_tag" {
   type        = string
 }
 
+# Cap.js bot protection (spec 02 §3.2) - same contract as dev: keys from
+# repo secrets via TF_VAR_cap_*, empty defaults keep plan working.
+variable "cap_site_key" {
+  description = "Cap.js site key (gh secret XITTER_CAP_SITE_KEY)."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "cap_secret_key" {
+  description = "Cap.js secret key (gh secret XITTER_CAP_SECRET_KEY)."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 module "namespace" {
   source      = "../../modules/namespace"
   environment = var.environment
@@ -115,6 +131,10 @@ module "namespace" {
 # environment is backed up, matching the disposable-data policy.
 locals {
   ns = module.namespace.name
+
+  # Cap.js: enabled only when both keys are wired (see dev's main.tf).
+  cap_enabled = var.cap_site_key != "" && var.cap_secret_key != ""
+  cap_url     = "https://cap.jd-chapman.dev"
 
   # Canonical Keycloak: the token issuer for every realm (browser PKCE login,
   # edge middleware discovery, service JWKS validation). From the homelab's

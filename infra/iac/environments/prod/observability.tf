@@ -71,6 +71,21 @@ data "sentry_key" "app" {
   first        = true
 }
 
+# Cap.js bot protection keys (spec 02 §3.2) - same resource/contract as
+# dev's observability.tf.
+resource "kubernetes_secret" "cap" {
+  metadata {
+    name      = "xitter-cap"
+    namespace = local.ns
+    labels    = module.namespace.labels
+  }
+
+  data = {
+    XITTER_CAP_SITE_KEY   = var.cap_site_key
+    XITTER_CAP_SECRET_KEY = var.cap_secret_key
+  }
+}
+
 # One secret per workload, keyed exactly as the env var the SDK reads
 # (SENTRY_DSN). Deployments inject it per-key via secret_env; Knative workers
 # envFrom whole secrets, so the key naming is the contract either way.

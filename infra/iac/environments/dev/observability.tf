@@ -68,6 +68,25 @@ data "sentry_key" "app" {
   first        = true
 }
 
+# Cap.js bot protection (spec 02 §3.2): site + secret keys from repo
+# secrets (docs/runbooks/04-ci-and-secrets.md), passed by the deploy
+# workflow as TF_VAR_cap_*. The secret exists unconditionally (possibly
+# with empty values when keys were not provided) so references stay
+# valid; web only consumes the keys when XITTER_CAP_ENABLED, and
+# XITTER_CAP_REQUIRED makes a keys-less apply fail web at boot.
+resource "kubernetes_secret" "cap" {
+  metadata {
+    name      = "xitter-cap"
+    namespace = local.ns
+    labels    = module.namespace.labels
+  }
+
+  data = {
+    XITTER_CAP_SITE_KEY   = var.cap_site_key
+    XITTER_CAP_SECRET_KEY = var.cap_secret_key
+  }
+}
+
 # One secret per workload, keyed exactly as the env var the SDK reads
 # (SENTRY_DSN). Deployments inject it per-key via secret_env; Knative workers
 # envFrom whole secrets, so the key naming is the contract either way.

@@ -234,17 +234,43 @@ module "web" {
     # Session store (and rate-limit reads) - without it web defaults to a
     # localhost Valkey and login cannot persist sessions.
     { name = "XITTER_VALKEY_URL", value = local.valkey_url },
+    # Public origin for OIDC redirect_uris, captcha redirects and session
+    # cookies - without it web falls back to the local-stack default and
+    # login can never complete on a deployed env (see #55 for the dev hit).
+    { name = "XITTER_WEB_BASE_URL", value = "https://${var.domain}" },
+    # Bot protection (spec 02 §3.2): REQUIRED - web crashloops at boot
+    # without keys rather than serving an unprotected login form.
+    { name = "XITTER_CAP_REQUIRED", value = "true" },
+    { name = "XITTER_CAP_ENABLED", value = tostring(local.cap_enabled) },
+    { name = "XITTER_CAP_SITE_URL", value = local.cap_url },
+    { name = "XITTER_CAP_VERIFY_URL", value = local.cap_url },
   ])
 
   # Sentry DSN (T11): used server-side via initSentry and relayed to the
   # browser SDK through the layout's config script tag (spec 06).
-  secret_env = [
-    {
-      name        = "SENTRY_DSN"
-      secret_name = kubernetes_secret.sentry_dsn["web"].metadata[0].name
-      secret_key  = "SENTRY_DSN"
-    },
-  ]
+  secret_env = concat(
+    [
+      {
+        name        = "SENTRY_DSN"
+        secret_name = kubernetes_secret.sentry_dsn["web"].metadata[0].name
+        secret_key  = "SENTRY_DSN"
+      },
+    ],
+    local.cap_enabled
+    ? [
+      {
+        name        = "XITTER_CAP_SITE_KEY"
+        secret_name = kubernetes_secret.cap.metadata[0].name
+        secret_key  = "XITTER_CAP_SITE_KEY"
+      },
+      {
+        name        = "XITTER_CAP_SECRET_KEY"
+        secret_name = kubernetes_secret.cap.metadata[0].name
+        secret_key  = "XITTER_CAP_SECRET_KEY"
+      },
+    ]
+    : [],
+  )
 }
 
 # ---------------------------------------------------------------------------

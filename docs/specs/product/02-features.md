@@ -29,13 +29,13 @@ Acceptance-style catalogue of every user-facing feature area. "Must" = required 
 
 ## 3. Auth
 
-| #   | Acceptance criteria                                                                                                          |
-| --- | ---------------------------------------------------------------------------------------------------------------------------- |
-| 3.1 | Login with demo accounts only. No signup, no password change, no account management.                                         |
-| 3.2 | Login form is protected by a Cap.js captcha.                                                                                 |
-| 3.3 | Unauthenticated visitors can only reach landing + About; any user-generated content (feeds, profiles, posts) requires login. |
-| 3.4 | Logout works from anywhere in the app and returns the visitor to the landing page.                                           |
-| 3.5 | Invalid credentials show a generic error without revealing whether username or password failed.                              |
+| #   | Acceptance criteria                                                                                                                                                                                                                                                                          |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 3.1 | Login with demo accounts only. No signup, no password change, no account management.                                                                                                                                                                                                         |
+| 3.2 | Login form is protected by a Cap.js captcha. Deployed environments (tofu-managed) treat it as mandatory: web refuses to boot without it (`XITTER_CAP_REQUIRED`), so a misconfigured deploy fails loudly instead of serving an unprotected login form. Local/ephemeral stacks run without it. |
+| 3.3 | Unauthenticated visitors can only reach landing + About; any user-generated content (feeds, profiles, posts) requires login.                                                                                                                                                                 |
+| 3.4 | Logout works from anywhere in the app and returns the visitor to the landing page.                                                                                                                                                                                                           |
+| 3.5 | Invalid credentials show a generic error without revealing whether username or password failed.                                                                                                                                                                                              |
 
 ## 4. Posts
 
