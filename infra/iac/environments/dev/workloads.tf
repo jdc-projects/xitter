@@ -222,6 +222,12 @@ module "web" {
 
   env = concat(local.common_env, [
     { name = "PORT", value = "3000" },
+    # Public origin for OIDC redirect_uris, captcha redirects and session
+    # cookies. Without it web falls back to the local-stack default
+    # (http://localhost:8080): the browser's auth code comes back to the
+    # visitor's localhost and login can never complete on a deployed env
+    # (Keycloak's web client already allows https://<domain>/*).
+    { name = "XITTER_WEB_BASE_URL", value = "https://${var.domain}" },
     # SSR calls sibling services directly in-cluster (never through the edge).
     { name = "XITTER_SOCIAL_URL", value = local.svc_base.social },
     { name = "XITTER_POSTS_URL", value = local.svc_base.posts },
