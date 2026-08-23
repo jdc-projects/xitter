@@ -30,14 +30,15 @@ same re-run semantics as `db-init`/`rustfs-provision`), and additionally via
 
 ## Implementation
 
-One code path everywhere: `packages/scripts` (`reset-flow.ts`) holds the flow; the CronJob image (`xitter-reset`) runs it with in-cluster coordinates (`reset-job.ts`), and local commands run the same functions against local ports. Differences are mechanical, not behavioural:
+One code path everywhere: `packages/scripts` (`reset-flow.ts`) holds the flow; the CronJob image (`xitter-reset`) runs it with in-cluster coordinates (`reset-job.ts`), and local commands run the same functions against local ports. Differences are mechanical, not behavioural — in particular the worker pause is identical everywhere because the workers implement it themselves ([ADR 0010](../../decisions/0010-reset-epoch-pause.md)):
 
-| Concern        | CronJob (cluster)                                                                              | Local                                                                                                                                                                                                                                                                         |
-| -------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Store wipes    | `POST /internal/reseed`, bucket wipe, index delete, group reset, Valkey flush                  | `npm run reset`: dependency volumes are destroyed (a superset); `npm run reset:live` performs the same store-level steps against a running stack                                                                                                                              |
-| Worker quiesce | minScale 0 on the worker Knative Services (Kubernetes API, job RBAC), restored even on failure | Volume reset: the stack is down (inherently quiesced); live reset SIGTERMs the worker processes (found on their metrics ports) and restarts them via `npm run start:workers` - run the stack as `start:apps` + `start:workers` trees so this cannot cascade-kill the services |
-| Realm          | `resetDemoRealm` + `initDemoRealm` with the Tofu-managed client secrets injected               | Same functions with local secrets                                                                                                                                                                                                                                             |
-| Seed           | `runSeed` (same corpus, faker 42)                                                              | Same function (`npm run seed`, `reset:reseed`)                                                                                                                                                                                                                                |
+| Concern                | CronJob (cluster)                                                                                                        | Local                                                                                                                                   |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Store wipes            | `POST /internal/reseed`, bucket wipe, index delete, Valkey flush                                                            | `npm run reset`: dependency volumes are destroyed (a superset); `npm run reset:live` performs the same store-level steps against a running stack |
+| Worker pause + resume  | The reset writes an epoch flag to Valkey; workers pause themselves on it and heartbeat their acknowledgement (`packages/events`) | Identical (same Valkey, same worker code) - nothing is scaled or killed, locally or in-cluster                                          |
+| Kafka backlog skip     | Clearing the epoch makes each worker seek its assigned partitions to the log end before resuming                            | Identical                                                                                                                               |
+| Realm                  | `resetDemoRealm` + `initDemoRealm` with the Tofu-managed client secrets injected                                            | Same functions with local secrets                                                                                                      |
+| Seed                   | `runSeed` (same corpus, faker 42)                                                                                          | Same function (`npm run seed`, `reset:reseed`)                                                                                          |
 
 ## Scope
 
@@ -46,34 +47,34 @@ One code path everywhere: `packages/scripts` (`reset-flow.ts`) holds the flow; t
 | CNPG Postgres (service DBs) | Truncate all rows in every service database                                                                                                                                         | Per-service `POST /internal/reseed` (performs truncation; reseed only when flag set)                                                                                                                                                                            |
 | cms Postgres                | Truncate Payload _content_ tables only (landing intro, FAQ); admin users/sessions are re-established, not lost                                                                      | CMS content reset via Payload's own REST API + re-apply from repo seed files                                                                                                                                                                                    |
 | RustFS                      | Empty the `xitter-media` media bucket                                                                                                                                               | Bucket wipe (delete all objects)                                                                                                                                                                                                                                |
-| Kafka                       | Reset consumer groups `xitter-fanout-worker`, `xitter-media-process-worker`, `xitter-search-index-worker` so workers resume from the new epoch (retained messages are not replayed) | Topic recreation + group deletion: drained groups are deleted and every topic deleted + recreated (fresh log, offsets verifiably 0). kafkajs `resetOffsets` does NOT durably commit against Kafka 4 - pinning offsets at the log end is not achievable that way |
+| Kafka                       | No broker-side action: groups `xitter-fanout-worker`, `xitter-media-process-worker`, `xitter-search-index-worker` keep their offsets, but workers seek to the log end when the epoch clears (retained messages are never replayed) | The workers' own seek-to-log-end on resume ([ADR 0010](../../decisions/0010-reset-epoch-pause.md)) - replaces the old topic-recreate + group-delete step |
 | OpenSearch                  | Delete the `posts` index                                                                                                                                                            | Index delete (recreated on next indexing event)                                                                                                                                                                                                                 |
 | Keycloak                    | Delete and recreate realm `xitter-demo` with users `demo1..demo10` (password `DemoPass123!`)                                                                                        | Realm recreate via Keycloak admin API, preserving Tofu-managed client secrets                                                                                                                                                                                   |
-| Valkey                      | Flush ephemeral keys (pub/sub channels, rate limits)                                                                                                                                | Flush                                                                                                                                                                                                                                                           |
+| Valkey                      | Flush ephemeral keys (pub/sub channels, rate limits), then hold the reset epoch (`xitter:reset:epoch`) until the wipe completes                                                     | Flush + epoch flag (the workers' pause/resume signal)                                                                                                                                           |
 | Optional reseed             | Deterministic content: faker seed `42`                                                                                                                                              | Same reseed flag drives the seed step                                                                                                                                                                                                                           |
 
 ## Execution order
 
-Order matters: identities must exist before reseeded content references them, workers must be quiet before stores are wiped, and queues/indexes must be empty before new events flow. This ordering is authoritative; [../data/03-data-lifecycle.md](../data/03-data-lifecycle.md) repeats it for the data view.
+Order matters: the flush must precede the epoch (it clears stale epoch state while workers are still live), every worker must have acknowledged the epoch before any store is wiped, and the epoch must clear before the seed so workers can consume seed events. This ordering is authoritative; [../data/03-data-lifecycle.md](../data/03-data-lifecycle.md) repeats it for the data view.
 
 ```mermaid
 flowchart TD
-  S(["Reset job starts"]) --> Q["Quiesce event consumption\n(scale workers to zero / pause groups)"]
-  Q --> C["Recreate Keycloak realm xitter-demo\n(demo1..demo10)"]
+  S(["Reset job starts"]) --> FL["Flush Valkey\n(clears stale epoch state)"]
+  FL --> EP["Set reset epoch (Valkey INCR)"]
+  EP --> P["Wait for every worker to pause itself\n(heartbeat matches the epoch, bounded)"]
+  P --> C["Recreate Keycloak realm xitter-demo\n(demo1..demo10)"]
   C --> T["Truncate service DBs + CMS content tables\n(per-service /internal/reseed)"]
   T --> M["Wipe RustFS xitter-media bucket"]
   M --> O["Delete OpenSearch posts index"]
-  O --> K["Reset Kafka consumer groups"]
-  K --> FL["Flush Valkey"]
-  FL --> W["Resume workers"]
-  W --> R{Reseed flag?}
+  O --> K["Clear the reset epoch\n(workers seek to log end + resume)"]
+  K --> R{Reseed flag?}
   R -->|true| D["Deterministic reseed (faker seed 42)"]
-  R -->|false| E["Leave empty"]
+  R -->|false| L["Leave empty"]
   D --> V(["Verify + report"])
-  E --> V
+  L --> V
 ```
 
-The implementation is `runResetFlow` in `packages/scripts/src/reset-flow.ts`; its step order is unit-tested against this diagram. A failed step halts the run (after resuming workers), and the Kubernetes `backoffLimit` retries the whole idempotent flow.
+The implementation is `runResetFlow` in `packages/scripts/src/reset-flow.ts`; its step order is unit-tested against this diagram. A failed step halts the run after clearing the epoch (so workers never stay paused on a dead run), and the Kubernetes `backoffLimit` retries the whole idempotent flow — the leading flush makes a retry safe against stale epoch state.
 
 ## Reseed
 

@@ -57,21 +57,21 @@ Notes:
 | search Postgres                                                         | Truncate (checkpoints)                                                                                             |
 | cms Postgres                                                            | Truncate Payload _content_ tables only (landing intro, FAQ); CMS admin users/sessions are re-established, not lost |
 | RustFS bucket `xitter-media`                                            | Wipe all objects (all `{userId}/...` keys)                                                                         |
-| Kafka topics (`xitter.posts.v1`, `xitter.social.v1`, `xitter.media.v1`) | Reset consumer groups so workers resume from the new epoch (retained messages are not replayed)                    |
+| Kafka topics (`xitter.posts.v1`, `xitter.social.v1`, `xitter.media.v1`) | No reset action on the broker: workers seek to the log end when the reset clears its epoch, so retained messages are never replayed ([../../decisions/0010-reset-epoch-pause.md](../../decisions/0010-reset-epoch-pause.md)) |
 | OpenSearch                                                              | Delete the `posts` index (rebuilt empty or by reseed)                                                              |
 | Keycloak                                                                | Recreate the demo realm (only synthetic demo accounts, `demo1`..`demo10`)                                          |
-| Valkey                                                                  | Flush ephemeral keys (pub/sub channels, rate limits)                                                               |
+| Valkey                                                                  | Flush ephemeral keys (pub/sub channels, rate limits); the reset then writes its epoch flag here                    |
 
 ### Ordering / dependencies
 
-1. Pause/quiesce event consumption (workers) — avoid writing into stores being wiped.
-2. Recreate Keycloak demo realm (identity must exist before any service call).
-3. Truncate service DBs (any order among them; no cross-DB constraints).
-4. Wipe RustFS bucket.
-5. Delete OpenSearch index.
-6. Reset Kafka consumer groups.
-7. Flush Valkey.
-8. Resume workers.
+1. Flush Valkey (clears any stale epoch state while workers are still live — harmless).
+2. Set the reset epoch (an integer in Valkey); workers observe it and pause themselves.
+3. Wait for every worker's pause acknowledgement (heartbeat key matching the epoch).
+4. Recreate Keycloak demo realm (identity must exist before any service call).
+5. Truncate service DBs (any order among them; no cross-DB constraints).
+6. Wipe RustFS bucket.
+7. Delete OpenSearch index.
+8. Clear the reset epoch — workers seek to the log end (skipping the pre-reset backlog) and resume.
 9. Optional: run deterministic seed ([02-seeding.md](./02-seeding.md)).
 10. Emit reset-complete signal (with reseed status) for observability.
 
@@ -85,7 +85,7 @@ Notes:
 
 | Data                                                              | Retention                                                                                                                                                    |
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Kafka messages                                                    | 7 days (topic retention) — irrelevant to product state; the reset's topic recreation makes the nightly epoch boundary (retained messages are never replayed) |
+| Kafka messages                                                    | 7 days (topic retention) — irrelevant to product state; workers skip the pre-reset log at every nightly epoch boundary (retained messages are never replayed) |
 | Everything else (DBs, RustFS, OpenSearch, Valkey, Keycloak realm) | Until the nightly reset                                                                                                                                      |
 | Repo seed content files                                           | Indefinite (version-controlled); the only durable data ([02-seeding.md](./02-seeding.md))                                                                    |
 
