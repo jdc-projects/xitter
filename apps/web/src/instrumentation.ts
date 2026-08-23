@@ -11,6 +11,8 @@ export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
   const { initSentry } = await import('@xitter/observability');
   initSentry('web');
-  const { webEnv } = await import('./lib/server-env.js');
+  // Extensionless: Turbopack does not map the .js suffix onto .ts sources
+  // in this hook's compilation context.
+  const { webEnv } = await import('./lib/server-env');
   webEnv();
 }
