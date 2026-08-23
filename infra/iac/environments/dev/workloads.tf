@@ -193,6 +193,10 @@ module "worker" {
     { name = "FEED_INTERNAL_URL", value = local.svc_base.feed },
     { name = "SEARCH_INTERNAL_URL", value = local.svc_base.search },
     { name = "MEDIA_INTERNAL_URL", value = local.svc_base.media },
+    # Reset epoch gate (ADR 0010): workers watch the nightly reset's epoch
+    # flag in Valkey to pause/resume themselves around the wipe - without
+    # this they cannot join the pause protocol (and fail fast at boot).
+    { name = "VALKEY_URL", value = local.valkey_url },
   ], lookup(local.worker_extra_env, each.key, []))
 
   secret_env = concat(

@@ -258,7 +258,10 @@ export function createResetEpochGate(options: ResetEpochGateOptions): ResetEpoch
     async stop() {
       if (timer) clearInterval(timer);
       timer = null;
-      await options.store.quit().catch(() => undefined);
+      await options.store.quit().then(
+        () => undefined,
+        () => undefined,
+      );
     },
   };
 
@@ -283,6 +286,11 @@ export async function connectValkeyEpochStore(url: string): Promise<ResetEpochSt
     async setEx(key, value, ttlMs) {
       await redis.set(key, value, 'EX', Math.max(1, Math.ceil(ttlMs / 1000)));
     },
-    quit: () => redis.quit(),
+    async quit() {
+      await redis.quit().then(
+        () => undefined,
+        () => undefined,
+      );
+    },
   };
 }

@@ -125,10 +125,12 @@ describe('createResetEpochGate', () => {
 
   it('pauses, heartbeats after the drain, then seeks to end and resumes on clear', async () => {
     const h = harness();
+    // Boot INTO the in-progress reset so the only seeks are the resume
+    // ones (the fresh-boot fail-safe is covered by its own test).
+    h.store.values.set(RESET_EPOCH_KEY, '3');
     await h.gate.initialize();
     h.gate.onAssignment(ASSIGNMENT);
 
-    h.store.values.set(RESET_EPOCH_KEY, '3');
     await h.gate.check();
     expect(h.gate.state()).toBe('pausing');
     expect(h.consumer.of('pause')).toHaveLength(3);
@@ -136,8 +138,6 @@ describe('createResetEpochGate', () => {
 
     // Drain takes two consecutive fully-idle polls (belt-and-braces against
     // batches fetched in the same cycle as the pause).
-    await h.gate.check();
-    expect(h.store.values.get(resetPausedKey('fanout'))).toBeUndefined();
     await h.gate.check();
     expect(h.gate.state()).toBe('paused');
     expect(h.store.values.get(resetPausedKey('fanout'))).toBe('3');
@@ -186,15 +186,13 @@ describe('createResetEpochGate', () => {
 
   it('abandons a pause whose epoch vanished before acknowledgement (no seek, resume in place)', async () => {
     const h = harness();
+    // Boot into an in-progress reset, then have it vanish before the
+    // heartbeat is ever written (the reset's flush ran again).
+    h.store.values.set(RESET_EPOCH_KEY, '9');
     await h.gate.initialize();
     h.gate.onAssignment(ASSIGNMENT);
-
-    h.store.values.set(RESET_EPOCH_KEY, '9');
-    await h.gate.check();
     expect(h.gate.state()).toBe('pausing');
 
-    // The reset's Valkey flush runs again (retry) and the epoch is gone
-    // before we ever wrote a heartbeat: no wipe is in progress.
     h.store.values.delete(RESET_EPOCH_KEY);
     await h.gate.check();
     expect(h.gate.state()).toBe('running');
@@ -218,25 +216,26 @@ describe('createResetEpochGate', () => {
   });
 
   it('keeps the heartbeat TTL refreshed while paused', async () => {
-    const h = harness('media-process');
+    const store = new FakeStore();
+    const consumer = new FakeConsumer();
     let clock = 0;
-    const { gate } = createResetEpochGate({
+    const gate = createResetEpochGate({
       worker: 'media-process',
-      store: h.store,
-      consumer: h.consumer,
+      store,
+      consumer,
       logger: { info: () => undefined, warn: () => undefined },
       now: () => clock,
     });
-    h.store.values.set(RESET_EPOCH_KEY, '6');
+    store.values.set(RESET_EPOCH_KEY, '6');
     await gate.initialize();
     gate.onAssignment(ASSIGNMENT);
     await gate.check();
     await gate.check();
-    expect(h.store.sets).toBe(1);
+    expect(store.sets).toBe(1);
 
     clock = 30_000; // > ttl/3 with the 60s default
     await gate.check();
-    expect(h.store.sets).toBe(2);
+    expect(store.sets).toBe(2);
   });
 
   it('survives Valkey errors without crashing (defers the transition)', async () => {

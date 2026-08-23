@@ -1,11 +1,15 @@
-# Nightly data reset (spec: docs/specs/operations/02-data-reset.md).
+# Nightly data reset (spec: docs/specs/operations/02-data-reset.md, ADR 0010).
 #
 # A CronJob runs the shared reset implementation (packages/scripts, image
-# xitter-reset) with the svc-reset client: quiesce workers (minScale 0 on
-# the Knative services) -> recreate the demo realm -> per-service
-# /internal/reseed + CMS content reset -> RustFS bucket wipe -> OpenSearch
-# index delete -> Kafka consumer-group reset -> Valkey flush -> resume
-# workers -> optional deterministic seed.
+# xitter-reset) with the svc-reset client: flush Valkey -> set the reset
+# epoch -> wait for the workers to pause THEMSELVES on it (they watch the
+# epoch flag - packages/events createResetEpochGate) -> recreate the demo
+# realm -> per-service /internal/reseed + CMS content reset -> RustFS
+# bucket wipe -> OpenSearch index delete -> clear the epoch (workers seek
+# to the log end and resume) -> optional deterministic seed.
+#
+# No Kubernetes API access: nothing is scaled or patched, so the job runs
+# without a ServiceAccount token and without API-server egress.
 #
 # Success/failure is observable two ways: kube-state-metrics job series
 # (T11's XitterResetJobStale/Failed alerts match job_name =~ "xitter-reset.*")
@@ -32,59 +36,6 @@ locals {
   # Matches T11's alert/dashboard job_name regex (xitter-reset.*); the jobs
   # the CronJob spawns are xitter-reset-<timestamp>.
   reset_name = "xitter-reset"
-}
-
-resource "kubernetes_service_account_v1" "reset" {
-  metadata {
-    name      = local.reset_name
-    namespace = local.ns
-    labels    = module.namespace.labels
-  }
-
-  # Required: the job talks to the Kubernetes API (worker quiesce/resume).
-  automount_service_account_token = true
-}
-
-# Quiesce/resume = patch minScale on the worker Knative Services + list
-# their pods to confirm scale-down. Nothing else.
-resource "kubernetes_role_v1" "reset" {
-  metadata {
-    name      = "${local.reset_name}-workers"
-    namespace = local.ns
-    labels    = module.namespace.labels
-  }
-
-  rule {
-    api_groups = ["serving.knative.dev"]
-    resources  = ["services"]
-    verbs      = ["get", "patch"]
-  }
-
-  rule {
-    api_groups = [""]
-    resources  = ["pods"]
-    verbs      = ["list"]
-  }
-}
-
-resource "kubernetes_role_binding_v1" "reset" {
-  metadata {
-    name      = "${local.reset_name}-workers"
-    namespace = local.ns
-    labels    = module.namespace.labels
-  }
-
-  role_ref {
-    api_group = "rbac.authorization.k8s.io"
-    kind      = "Role"
-    name      = kubernetes_role_v1.reset.metadata[0].name
-  }
-
-  subject {
-    kind      = "ServiceAccount"
-    name      = kubernetes_service_account_v1.reset.metadata[0].name
-    namespace = local.ns
-  }
 }
 
 # Job-only config: Keycloak admin credentials (realm recreate) and the
@@ -138,8 +89,10 @@ resource "kubernetes_cron_job_v1" "reset" {
           }
 
           spec {
-            service_account_name = kubernetes_service_account_v1.reset.metadata[0].name
-            restart_policy       = "Never"
+            # The reset job never talks to the Kubernetes API (workers pause
+            # themselves on the Valkey epoch, ADR 0010) - no token mounted.
+            automount_service_account_token = false
+            restart_policy                  = "Never"
 
             container {
               name              = local.reset_name

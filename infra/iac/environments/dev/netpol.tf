@@ -344,16 +344,6 @@ variable "cloudflare_ipv4" {
   ]
 }
 
-# Control-plane node LAN. kube-proxy DNATs the kubernetes.default service
-# here before egress policy is evaluated (see allow_reset_api_egress), so
-# API access must be allowed by the nodes' real addresses, not the service
-# CIDR. Verified: the API endpoint is 192.168.100.190:6443.
-variable "control_plane_cidr" {
-  description = "CIDR covering the cluster's control-plane nodes (the API server endpoint after kube-proxy DNAT)."
-  type        = string
-  default     = "192.168.100.0/24"
-}
-
 locals {
   tls_egress_cidrs = concat(
     ["10.42.0.0/16", "10.43.0.0/16"],
@@ -387,44 +377,6 @@ resource "kubernetes_network_policy" "allow_identity_tls_egress" {
 
       ports {
         port     = 443
-        protocol = "TCP"
-      }
-    }
-  }
-}
-
-# Kubernetes API access for the reset job (quiesce/resume patches Knative
-# services). The service CIDR rules above do NOT cover this: kube-proxy
-# DNATs kubernetes.default.svc (10.43.0.1:443) to the API server's real
-# endpoint on the control-plane node LAN (192.168.100.x:6443) BEFORE
-# Calico evaluates egress policy, so the packet's destination matches no
-# ipBlock - live-observed as a 10s connect timeout (ConnectTimeoutError)
-# despite a correct-looking service-CIDR allow.
-resource "kubernetes_network_policy" "allow_reset_api_egress" {
-  metadata {
-    name      = "xitter-allow-reset-api-egress"
-    namespace = local.ns
-  }
-
-  spec {
-    policy_types = ["Egress"]
-
-    pod_selector {
-      match_labels = {
-        "app.kubernetes.io/name"     = local.reset_name
-        "app.kubernetes.io/instance" = var.environment
-      }
-    }
-
-    egress {
-      to {
-        ip_block {
-          cidr = var.control_plane_cidr
-        }
-      }
-
-      ports {
-        port     = 6443
         protocol = "TCP"
       }
     }
@@ -510,8 +462,9 @@ resource "kubernetes_network_policy" "allow_postgres_egress" {
 }
 
 # Producers (posts/social/media) and consumers (the three workers) only -
-# feed/search/cms/admin/web never touch Kafka. The reset job joins as a
-# Kafka admin client (nightly consumer-group reset).
+# feed/search/cms/admin/web never touch Kafka. The reset job no longer
+# joins as an admin client (the workers' epoch-gate seek-to-end replaced
+# the consumer-group reset, ADR 0010).
 resource "kubernetes_network_policy" "allow_kafka_egress" {
   metadata {
     name      = "xitter-allow-kafka-egress"
@@ -525,7 +478,7 @@ resource "kubernetes_network_policy" "allow_kafka_egress" {
       match_expressions {
         key      = "app.kubernetes.io/name"
         operator = "In"
-        values   = concat(["posts", "social", "media", "xitter-reset"], local.workers)
+        values   = concat(["posts", "social", "media"], local.workers)
       }
       match_labels = {
         "app.kubernetes.io/instance" = var.environment
@@ -552,7 +505,9 @@ resource "kubernetes_network_policy" "allow_kafka_egress" {
 # creation + interactions → posts, follows/blocks → social, upload slots →
 # media). Cap.js (login captcha) and the ws-token broker also live in web
 # and store through Valkey, so web needs egress too - login 500s without it.
-# The reset job flushes Valkey and writes its run record there (T12).
+# The reset job flushes Valkey, holds its epoch flag and writes the run
+# record there (T12, ADR 0010); the three workers read the epoch from it to
+# pause/resume themselves around the nightly wipe.
 resource "kubernetes_network_policy" "allow_valkey_egress" {
   metadata {
     name      = "xitter-allow-valkey-egress"
@@ -566,7 +521,7 @@ resource "kubernetes_network_policy" "allow_valkey_egress" {
       match_expressions {
         key      = "app.kubernetes.io/name"
         operator = "In"
-        values   = ["feed", "posts", "social", "media", "web", "xitter-reset"]
+        values   = concat(["feed", "posts", "social", "media", "web", "xitter-reset"], local.workers)
       }
       match_labels = {
         "app.kubernetes.io/instance" = var.environment
@@ -763,7 +718,7 @@ resource "kubernetes_network_policy" "kafka_ingress" {
           match_expressions {
             key      = "app.kubernetes.io/name"
             operator = "In"
-            values   = concat(["posts", "social", "media", local.reset_name], local.workers)
+            values   = concat(["posts", "social", "media"], local.workers)
           }
           match_labels = {
             "app.kubernetes.io/instance" = var.environment
@@ -800,7 +755,7 @@ resource "kubernetes_network_policy" "valkey_ingress" {
           match_expressions {
             key      = "app.kubernetes.io/name"
             operator = "In"
-            values   = ["feed", "posts", "social", "media", "web", "xitter-reset"]
+            values   = concat(["feed", "posts", "social", "media", "web", "xitter-reset"], local.workers)
           }
           match_labels = {
             "app.kubernetes.io/instance" = var.environment
