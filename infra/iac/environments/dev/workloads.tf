@@ -102,6 +102,11 @@ module "api_service" {
   port     = 8080
   replicas = 2
 
+  # Schema migrations run before every (re)start; idempotent, and the
+  # only thing that ever created the deployed schemas (previously nothing
+  # did - tables existed only from the cluster's first manual bootstrap).
+  migrate_command = ["npx", "prisma", "migrate", "deploy"]
+
   env = concat(local.common_env, [
     { name = "PORT", value = "8080" },
     { name = "KEYCLOAK_BASE_URL", value = local.keycloak_url },

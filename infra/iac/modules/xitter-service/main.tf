@@ -56,6 +56,12 @@ variable "secret_env" {
   default = []
 }
 
+variable "migrate_command" {
+  description = "When set (non-empty), run this command in an init container (same image/env) before the service starts - e.g. prisma migrate deploy. Empty disables the init container."
+  type        = list(string)
+  default     = []
+}
+
 variable "is_knative" {
   description = "Deploy as a Knative Service (scale-to-zero workers) instead of a Deployment."
   type        = bool
@@ -189,6 +195,54 @@ resource "kubernetes_deployment" "this" {
         security_context {
           run_as_non_root = local.pod_security_context.run_as_non_root
           fs_group        = local.pod_security_context.fs_group
+        }
+
+        # Schema migrations run as an init container before every service
+        # start (prisma migrate deploy is idempotent). The images' Dockerfile
+        # notes "deploy wiring owns those" - until now nothing did, so the
+        # deployed schemas only ever existed because of the cluster's first
+        # manual bootstrap; the nightly reset's truncate step 500s when the
+        # tables are absent (observed: 'table public.Follow does not exist').
+        dynamic "init_container" {
+          for_each = length(var.migrate_command) > 0 ? [1] : []
+
+          content {
+            name  = "migrate"
+            image = var.image
+
+            image_pull_policy = local.image_pull_policy
+
+            command = var.migrate_command
+
+            dynamic "env" {
+              for_each = var.env
+              content {
+                name  = env.value.name
+                value = env.value.value
+              }
+            }
+
+            dynamic "env" {
+              for_each = var.secret_env
+              content {
+                name = env.value.name
+                value_from {
+                  secret_key_ref {
+                    name = env.value.secret_name
+                    key  = env.value.secret_key
+                  }
+                }
+              }
+            }
+
+            security_context {
+              allow_privilege_escalation = false
+              read_only_root_filesystem  = false
+              run_as_non_root            = true
+              run_as_user                = 1000
+              run_as_group               = 1000
+            }
+          }
         }
 
         container {

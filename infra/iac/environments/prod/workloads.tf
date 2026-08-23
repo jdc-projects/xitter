@@ -104,6 +104,9 @@ module "api_service" {
   port     = 8080
   replicas = 2
 
+  # Schema migrations run before every (re)start (same as dev).
+  migrate_command = ["npx", "prisma", "migrate", "deploy"]
+
   env = concat(local.common_env, [
     { name = "PORT", value = "8080" },
     { name = "KEYCLOAK_BASE_URL", value = local.keycloak_url },

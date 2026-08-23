@@ -35,9 +35,10 @@
     "@xitter/health": "*",
     "@xitter/observability": "*",
     "@xitter/service-kit": "*",
-    "ioredis": "^6",
     "fastify": "^5",
+    "ioredis": "^6",
     "pg": "^8",
+    "prisma": "^7",
     "reflect-metadata": "^0.2",
     "rxjs": "^7",
     "zod": "^4"
@@ -53,7 +54,6 @@
     "@xitter/eslint-config": "*",
     "@xitter/testing": "*",
     "@xitter/tsconfig": "*",
-    "prisma": "^7",
     "tsx": "^4",
     "typescript": "^6",
     "vitest": "^4"
