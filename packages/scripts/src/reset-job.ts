@@ -16,7 +16,10 @@ import { runResetFlow, type ResetReport, type WorkerControl } from './reset-flow
 
 const KNATIVE_WORKERS = ['fanout', 'media-process', 'search-index'] as const;
 const MIN_SCALE_ANNOTATION = 'autoscaling.knative.dev/minScale';
-const QUIESCE_TIMEOUT_MS = 180_000;
+// Knative scale-to-zero includes its stability window plus consumer drain;
+// 180s proved too tight on dev (pods reached zero AFTER the job had already
+// aborted). Overridable for slow clusters.
+const QUIESCE_TIMEOUT_MS = Number(process.env.XITTER_RESET_QUIESCE_TIMEOUT_MS ?? 600_000);
 
 interface K8sContext {
   server: string;
