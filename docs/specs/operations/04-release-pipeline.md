@@ -74,7 +74,7 @@ The reconciliation path is **exercised by the first release** (v0.1.0): a merge 
 | Image tag        | mutable `dev` (default)                                                  | **required** `image_tag` var — always an explicit release              |
 | Postgres (CNPG)  | 1 instance                                                               | 2 instances (supervised switchover rolls)                              |
 | OpenSearch       | 2 nodes (forced by the operator's restart guard; zero failure tolerance) | 3 nodes (majority quorum; tolerates one node down)                     |
-| Sentry           | team `xitter` / projects `xitter-*`                                      | team `xitter-prod` / projects `xitter-prod-*` (isolated error streams) |
+| Sentry           | owns the single `xitter` project (team `xitter`)                         | reads the same project via data sources; events tagged `environment=prod` |
 | Alerts           | incl. reset-job rules                                                    | same SLOs, env-interpolated; reset rules land with #13's prod wiring   |
 | Dashboards       | 4 (incl. reset job)                                                      | the 3 env-agnostic dashboards rendered from dev's JSON files           |
 | Reset (CronJob)  | nightly 00:00 UTC (#13)                                                  | deferred to #13's follow-up (schedule/enable per env is its variable)  |

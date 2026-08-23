@@ -6,7 +6,7 @@ namespace on the same cluster (`config_path = "../../../cluster.yml"` → `infra
 | Remote state      | Secret suffix     | Outputs consumed                                                     | Used for                                                                                          |
 | ----------------- | ----------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | `keycloak-config` | `keycloak-config` | `keycloak_admin_username`, `keycloak_admin_password`, `keycloak_url` | `keycloak` provider — realm/client provisioning (T1: demo realm, svc-* clients, audience mappers) |
-| `sentry`          | `sentry`          | `sentry_auth_token`, `sentry_domain`                                 | `jianyuan/sentry` provider — per-app Sentry projects (T11)                                        |
+| `sentry`          | `sentry`          | `sentry_auth_token`, `sentry_domain`                                 | `jianyuan/sentry` provider — the single Sentry project (T11; dev's state owns it, prod reads it)  |
 
 Not consumed (push model, no outputs needed): `prometheus`, `grafana`, `tempo` —
 xitter creates its own `ServiceMonitor`/`PrometheusRule`/Grafana CRs inside its

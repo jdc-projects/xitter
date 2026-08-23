@@ -48,7 +48,7 @@ Full policy: [../specs/operations/04-release-pipeline.md](../specs/operations/04
 3. `curl -sI https://xitter.jd-chapman.dev/` → 2xx/3xx from the edge.
 4. Through the edge: `POST /api/...` unauthenticated → 401 from the oidc-api middleware (proves routing + realm wiring). Full smoke: run the Bruno collection against prod — Actions → **Scheduled suites** → Run workflow → `environment=prod` — or locally `npm run test:api -- --env dev` (dev) / `--env prod` once a prod environment file exists.
 5. Reconciliation: `git rev-list --count origin/prod ^origin/dev` → `0` after merging the reconcile PR.
-6. Sentry: `xitter-prod-*` projects exist; events report `release=vX.Y.Z` (`SENTRY_RELEASE` = image tag).
+6. Sentry: the single `xitter` project exists; prod events report `environment=prod` and `release=vX.Y.Z` (`SENTRY_RELEASE` = image tag).
 7. Scheduled suites: next nightly run (02:30 UTC) green against dev; artifacts `bruno-report-dev` + `artillery-report-dev` present.
 
 ## Notes
