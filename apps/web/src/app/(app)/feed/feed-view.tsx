@@ -145,7 +145,7 @@ export function FeedView({ initialEntries, initialCursor, viewerId }: FeedViewPr
                 size="xs"
                 loading={loading}
                 onClick={() => void loadMore()}
-                data-testid="feed-load-more"
+                data-testid="load-more"
               >
                 Load more
               </Button>

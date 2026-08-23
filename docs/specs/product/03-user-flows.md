@@ -9,7 +9,7 @@ sequenceDiagram
     participant V as Visitor
     participant W as Web
     V->>W: GET /
-    W-->>V: Landing page: public header (home / About / Log in), CMS intro, reset notice, login CTA
+    W-->>V: Landing page: public header (home / About / Log in), hero with CMS intro, reset notice, demo credentials, under-the-hood stack strip
     V->>W: GET /about
     W-->>V: About page: what/why/how, reset schedule, demo credentials, FAQ, PII warning
     Note over V,W: Any attempt to open /feed, /post, /profile/* etc. redirects to login
@@ -138,6 +138,7 @@ sequenceDiagram
     W->>SE: Full-text posts search
     SE-->>W: Matching posts (no deleted), newest-weighted
     W-->>U: Results with standard post cards
+    Note over W: Load more appends the next page in place (shared cursor pattern)
     Note over SE: Index is event-fed (lags seconds, not minutes)
 ```
 

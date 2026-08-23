@@ -23,6 +23,10 @@ async function login(page: Page, username: string) {
  * 30s budget allowed only a handful of polls and slow (but healthy)
  * indexing blew the budget - the failure mode was the empty-state page,
  * not an index problem. An API poll costs milliseconds per iteration.
+ * The default ceiling is generous because the suite's own seeding bursts
+ * (pagination seeds, ~50 posts) can bury the search-index worker's ~1
+ * doc/s drain for tens of seconds; the poll breaks the moment the
+ * snippet lands.
  */
 async function searchUntilFound(page: Page, q: string, snippet: string, timeoutMs = 90_000) {
   const token = await accessToken(page);
@@ -48,16 +52,17 @@ test('unauthenticated search redirects to login and back', async ({ page }) => {
 
 test('header search box navigates to results for the query', async ({ page }) => {
   await login(page, 'demo1');
-  // Two inputs carry the testid once on /search (header + page) - scope to
-  // the header's app nav to stay strict-mode safe. The header box is an
-  // uncontrolled GET form, so the URL (not the header input) reflects the
-  // query after navigation; the page's own box re-renders with it.
+  // The header box hides itself on /search (#39): the page's own box is the
+  // single labelled input, so no strict-mode scoping is needed anymore. The
+  // header box is an uncontrolled GET form, so the URL (not the header
+  // input) reflects the query after navigation; the page's box re-renders
+  // with it.
   const headerSearch = page.getByTestId('app-nav').getByTestId('search-input');
   await headerSearch.fill('hello');
   await headerSearch.press('Enter');
 
   await page.waitForURL(/\/search\?q=hello/);
-  await expect(page.getByTestId('search-input').last()).toHaveValue('hello');
+  await expect(page.getByTestId('search-input')).toHaveValue('hello');
 });
 
 /** Bearer access token for API polls - the session holds it; the ws route
@@ -70,8 +75,9 @@ async function accessToken(page: Page): Promise<string> {
 }
 
 test('search finds a composed post and deletes remove it from results', async ({ page }) => {
-  // Indexing converges in tens of seconds on a loaded stack (all services +
-  // workers + parallel specs), and this test has TWO convergence windows
+  // Indexing converges in tens of seconds on a loaded stack: the worker
+  // drains at roughly one doc/second, the suite's ~50-post seeding bursts
+  // queue behind it, and this test has TWO convergence windows
   // (compose→index up to 120s, delete→tombstone up to 60s) plus a settled
   // render assertion. The budget must exceed their SUM (a 150s budget
   // timed out mid-tombstone-poll on cold CI runners despite both windows
@@ -101,10 +107,12 @@ test('search finds a composed post and deletes remove it from results', async ({
   // on one settled page render. The API is user-gated: poll with the
   // session's bearer so res.ok() reflects the index, not a 401. (Public
   // search path is /v1/posts under the service prefix - api-contracts'
-  // canonical route.)
+  // canonical route.) Same backlog story as searchUntilFound above:
+  // tombstones trail the delete by however long the worker needs to
+  // drain the suite's burst.
   const token = await accessToken(page);
   const searchApi = `/api/search/v1/posts?q=${encodeURIComponent('quokka')}`;
-  const deadline = Date.now() + 60_000;
+  const deadline = Date.now() + 90_000;
   for (;;) {
     const res = await page.request.get(searchApi, {
       headers: { authorization: `Bearer ${token}` },

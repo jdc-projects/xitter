@@ -1,57 +1,14 @@
-import { Button, Container, Group, Text } from '@mantine/core';
+import { AppShellFrame } from '@/components/app-shell';
 import { getSession } from '@/lib/auth/session';
-import { SearchBox } from '@/components/search-box';
 
 /**
- * Authenticated app shell. Pages gate themselves via requireSession() (they
- * know their path for the `next` redirect); the shell renders user bits only
- * when a session exists.
+ * Authenticated app shell (#39): the client frame (Mantine AppShell header,
+ * icons, active states, mobile drawer) renders user bits only when a
+ * session exists. Pages gate themselves via requireSession() - they know
+ * their path for the `next` redirect.
  */
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
 
-  return (
-    <Container size="md" py="md">
-      <Group justify="space-between" mb="xl" data-testid="app-nav">
-        <Group gap="md">
-          <Text fw={700} component="a" href="/feed" inherit>
-            xitter
-          </Text>
-          <Text component="a" href="/feed" size="sm" c="dimmed" inherit>
-            Feed
-          </Text>
-          {session ? (
-            <Text component="a" href="/bookmarks" size="sm" c="dimmed" inherit>
-              Bookmarks
-            </Text>
-          ) : null}
-          {/* Public info stays reachable post-login (reset schedule, FAQ). */}
-          <Text component="a" href="/about" size="sm" c="dimmed" inherit>
-            About
-          </Text>
-        </Group>
-        {session ? (
-          <Group gap="sm">
-            <SearchBox visibleFrom="xs" />
-            <Text
-              size="sm"
-              c="dimmed"
-              inherit
-              component="a"
-              href={`/profile/${session.username}`}
-              data-testid="nav-username"
-            >
-              @{session.username}
-            </Text>
-            <form action="/api/auth/logout" method="post">
-              <Button size="xs" variant="subtle" type="submit" data-testid="logout-button">
-                Log out
-              </Button>
-            </form>
-          </Group>
-        ) : null}
-      </Group>
-      {children}
-    </Container>
-  );
+  return <AppShellFrame username={session?.username ?? null}>{children}</AppShellFrame>;
 }

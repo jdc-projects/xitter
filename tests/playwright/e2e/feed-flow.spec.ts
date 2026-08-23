@@ -180,7 +180,7 @@ test('the feed pages with Load more beyond the first page', async ({ page }) => 
   expect(firstPage).toBeGreaterThan(0);
   expect(firstPage).toBeLessThan(22);
 
-  await page.getByTestId('feed-load-more').click();
+  await page.getByTestId('load-more').click();
   await expect(items).toHaveCount(22, { timeout: 15_000 });
 });
 
