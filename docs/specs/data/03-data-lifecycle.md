@@ -48,19 +48,19 @@ Notes:
 
 ### Scope — every store and what reset does to it
 
-| Store                                                                   | Reset action                                                                                                       |
-| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| social Postgres                                                         | Truncate all tables (profiles, follows, blocks)                                                                    |
-| posts Postgres                                                          | Truncate (posts, interactions)                                                                                     |
-| media Postgres                                                          | Truncate (media assets)                                                                                            |
-| feed Postgres                                                           | Truncate (feed entries)                                                                                            |
-| search Postgres                                                         | Truncate (checkpoints)                                                                                             |
-| cms Postgres                                                            | Truncate Payload _content_ tables only (landing intro, FAQ); CMS admin users/sessions are re-established, not lost |
-| RustFS bucket `xitter-media`                                            | Wipe all objects (all `{userId}/...` keys)                                                                         |
+| Store                                                                   | Reset action                                                                                                                                                                                                                 |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| social Postgres                                                         | Truncate all tables (profiles, follows, blocks)                                                                                                                                                                              |
+| posts Postgres                                                          | Truncate (posts, interactions)                                                                                                                                                                                               |
+| media Postgres                                                          | Truncate (media assets)                                                                                                                                                                                                      |
+| feed Postgres                                                           | Truncate (feed entries)                                                                                                                                                                                                      |
+| search Postgres                                                         | Truncate (checkpoints)                                                                                                                                                                                                       |
+| cms Postgres                                                            | Truncate Payload _content_ tables only (landing intro, FAQ); CMS admin users/sessions are re-established, not lost                                                                                                           |
+| RustFS bucket `xitter-media`                                            | Wipe all objects (all `{userId}/...` keys)                                                                                                                                                                                   |
 | Kafka topics (`xitter.posts.v1`, `xitter.social.v1`, `xitter.media.v1`) | No reset action on the broker: workers seek to the log end when the reset clears its epoch, so retained messages are never replayed ([../../decisions/0010-reset-epoch-pause.md](../../decisions/0010-reset-epoch-pause.md)) |
-| OpenSearch                                                              | Delete the `posts` index (rebuilt empty or by reseed)                                                              |
-| Keycloak                                                                | Recreate the demo realm (only synthetic demo accounts, `demo1`..`demo10`)                                          |
-| Valkey                                                                  | Flush ephemeral keys (pub/sub channels, rate limits); the reset then writes its epoch flag here                    |
+| OpenSearch                                                              | Delete the `posts` index (rebuilt empty or by reseed)                                                                                                                                                                        |
+| Keycloak                                                                | Recreate the demo realm (only synthetic demo accounts, `demo1`..`demo10`)                                                                                                                                                    |
+| Valkey                                                                  | Flush ephemeral keys (pub/sub channels, rate limits); the reset then writes its epoch flag here                                                                                                                              |
 
 ### Ordering / dependencies
 
@@ -83,10 +83,10 @@ Notes:
 
 ## Retention
 
-| Data                                                              | Retention                                                                                                                                                    |
-| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Data                                                              | Retention                                                                                                                                                     |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Kafka messages                                                    | 7 days (topic retention) — irrelevant to product state; workers skip the pre-reset log at every nightly epoch boundary (retained messages are never replayed) |
-| Everything else (DBs, RustFS, OpenSearch, Valkey, Keycloak realm) | Until the nightly reset                                                                                                                                      |
-| Repo seed content files                                           | Indefinite (version-controlled); the only durable data ([02-seeding.md](./02-seeding.md))                                                                    |
+| Everything else (DBs, RustFS, OpenSearch, Valkey, Keycloak realm) | Until the nightly reset                                                                                                                                       |
+| Repo seed content files                                           | Indefinite (version-controlled); the only durable data ([02-seeding.md](./02-seeding.md))                                                                     |
 
 There is no other TTL, archival, or backup: nothing is precious, and privacy posture depends on wipes being final ([04-privacy.md](./04-privacy.md)).

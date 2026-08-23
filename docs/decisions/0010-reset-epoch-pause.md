@@ -32,13 +32,13 @@ Workers pause **themselves** on a shared flag; nothing is scaled.
 
 ## Options
 
-| Option                                    | Pros                                                | Cons                                                                                                                | Verdict    |
-| ----------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------- |
-| Keep minScale quiesce/resume (status quo) | Already worked; no worker changes                   | Slow drains, cold-start races, field-manager conflicts, K8s API RBAC + egress surface                               | Rejected   |
-| Boolean "paused" flag                     | Simplest worker logic                               | A crash between set and clear leaves an ambiguous flag; retries cannot distinguish reset generations                 | Rejected   |
-| **Integer epoch (chosen)**                | Retry-safe (INCR always yields an unacknowledged value); workers can detect superseded epochs; heartbeat matching is exact | Slightly more worker state (last-known epoch)                                                                      | **Chosen** |
-| Reset deletes topics + groups (status quo) | Verifiably empty log                               | Slow (drain + session timeouts), destroys the log nightly, kafkajs offset-reset workaround required                  | Rejected   |
-| **Workers seek to log end (chosen)**      | No broker-side coordination; instant; keeps the log  | Workers must be trusted to implement the pause (they are first-party); pre-reset log retained until topic retention | **Chosen** |
+| Option                                     | Pros                                                                                                                       | Cons                                                                                                                | Verdict    |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ---------- |
+| Keep minScale quiesce/resume (status quo)  | Already worked; no worker changes                                                                                          | Slow drains, cold-start races, field-manager conflicts, K8s API RBAC + egress surface                               | Rejected   |
+| Boolean "paused" flag                      | Simplest worker logic                                                                                                      | A crash between set and clear leaves an ambiguous flag; retries cannot distinguish reset generations                | Rejected   |
+| **Integer epoch (chosen)**                 | Retry-safe (INCR always yields an unacknowledged value); workers can detect superseded epochs; heartbeat matching is exact | Slightly more worker state (last-known epoch)                                                                       | **Chosen** |
+| Reset deletes topics + groups (status quo) | Verifiably empty log                                                                                                       | Slow (drain + session timeouts), destroys the log nightly, kafkajs offset-reset workaround required                 | Rejected   |
+| **Workers seek to log end (chosen)**       | No broker-side coordination; instant; keeps the log                                                                        | Workers must be trusted to implement the pause (they are first-party); pre-reset log retained until topic retention | **Chosen** |
 
 ## Consequences
 

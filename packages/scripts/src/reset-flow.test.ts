@@ -235,9 +235,12 @@ describe('runResetFlow', () => {
       runResetFlow({
         realm: h.realm,
         stores: proxyStores(
-          { ...h.stores, async workersPausedFor() {
-            return [];
-          } },
+          {
+            ...h.stores,
+            async workersPausedFor() {
+              return [];
+            },
+          },
           [],
         ),
         log: () => undefined,
@@ -308,7 +311,12 @@ describe('runResetFlow', () => {
 
   it('writes the status record to the shared Valkey key after the run', async () => {
     const h = harness();
-    await runResetFlow({ realm: h.realm, stores: h.stores, log: () => undefined, jobName: 'xitter-reset-dev' });
+    await runResetFlow({
+      realm: h.realm,
+      stores: h.stores,
+      log: () => undefined,
+      jobName: 'xitter-reset-dev',
+    });
     expect(h.statusWrites.length).toBe(1);
     const status = h.statusWrites[0]!;
     expect(status.success).toBe(true);

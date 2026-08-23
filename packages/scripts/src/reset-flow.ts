@@ -501,7 +501,9 @@ async function defaultStores(): Promise<StoreControls> {
     async workersPausedFor(epoch) {
       const redis = await connectResetValkey<EpochValkeyLike>();
       try {
-        const heartbeats = await redis.mget(...RESET_WORKERS.map((worker) => resetPausedKey(worker)));
+        const heartbeats = await redis.mget(
+          ...RESET_WORKERS.map((worker) => resetPausedKey(worker)),
+        );
         const epochValue = String(epoch);
         return RESET_WORKERS.filter((_, index) => heartbeats[index] === epochValue);
       } finally {

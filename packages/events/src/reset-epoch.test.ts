@@ -49,7 +49,8 @@ class FakeConsumer implements PausableConsumer {
 
   pause(topicPartitions: Array<{ topic: string; partitions?: number[] }>): void {
     for (const { topic, partitions } of topicPartitions) {
-      for (const partition of partitions ?? []) this.calls.push({ kind: 'pause', topic, partition });
+      for (const partition of partitions ?? [])
+        this.calls.push({ kind: 'pause', topic, partition });
     }
   }
 
@@ -166,9 +167,10 @@ describe('createResetEpochGate', () => {
 
     let release!: () => void;
     const blocked = h.gate.track(
-      () => new Promise<void>((resolve) => {
-        release = resolve;
-      }),
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
     );
     await h.gate.check();
     await h.gate.check();
