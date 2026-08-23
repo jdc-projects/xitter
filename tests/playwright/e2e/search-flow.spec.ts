@@ -58,6 +58,10 @@ test('header search box navigates to results for the query', async ({ page }) =>
 });
 
 test('search finds a composed post and deletes remove it from results', async ({ page }) => {
+  // The search-index worker drains at roughly one doc/second locally, so the
+  // suite's ~50-post seeding bursts leave a queue this test must wait out in
+  // both phases - the default 60s test timeout cuts the tombstone poll short.
+  test.setTimeout(180_000);
   await login(page, 'demo2');
   const needle = `t8 searchable quokka ${crypto.randomUUID()}`;
 
