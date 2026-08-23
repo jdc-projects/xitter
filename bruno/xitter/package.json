@@ -2,6 +2,6 @@
   "name": "xitter-bruno",
   "private": true,
   "scripts": {
-    "test": "bru run -r --env local ."
+    "test": "bru run -r --env \"${BRUNO_ENV:-local}\" ."
   }
 }

@@ -1,10 +1,46 @@
 meta {
   name: Search posts
-  seq: 6
+  seq: 1
+}
+
+docs {
+  Public search of indexed posts (derived store - posts flow through
+  Kafka to the search-index worker; the page shape mirrors the feed:
+  hydrated post + author pairs). Requires an authenticated session; this
+  request logs in itself rather than depending on a previous request
+  having populated the env token (order-dependent collections rot in
+  silence).
+}
+
+script:pre-request {
+  const form =
+    "grant_type=password&client_id=web" +
+    "&username=" +
+    encodeURIComponent(bru.getEnvVar("username") || "demo1") +
+    "&password=" +
+    encodeURIComponent(bru.getEnvVar("password") || "DemoPass123!");
+  const res = await bru.sendRequest({
+    method: "POST",
+    url: `${bru.getEnvVar("keycloak")}/realms/${bru.getEnvVar("realm")}/protocol/openid-connect/token`,
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    data: form,
+  });
+  // sendRequest returns one of string / ArrayBuffer / parsed object
+  // depending on transport - decode all three or access_token reads
+  // undefined off a Buffer.
+  const raw =
+    typeof res.data === "string"
+      ? res.data
+      : res.data && typeof res.data === "object" && "byteLength" in res.data
+        ? new TextDecoder().decode(res.data)
+        : typeof res.data === "object" && res.data !== null
+          ? JSON.stringify(res.data)
+          : String(res.data ?? "");
+  bru.setEnvVar("token", JSON.parse(raw).access_token);
 }
 
 get {
-  url: {{seedBase}}/api/search/v1/posts?q=hello
+  url: {{seedBase}}/api/search/v1/posts?q=hello&limit=10
   body: none
   auth: bearer
 }
@@ -15,24 +51,26 @@ auth:bearer {
 
 assert {
   res.status: 200
-  res.body.items !== undefined
-  res.body.nextCursor !== undefined
 }
 
-script:post-response {
-  // Page items are hydrated (post + author) per spec 03 - the search
-  // contract mirrors the feed page shape.
+tests {
+  // Bare expect statements (the collection's CLI 4.0.0 style; bru.test
+  // does not exist here). The assert DSL only supports `expression:
+  // literal` pairs - JS like `!== undefined` there fails collection
+  // PARSING and takes the whole `bru run` down before any request is
+  // sent; that exact bug disabled the nightly API suite twice.
+  expect(res.body.items).to.not.be.undefined;
+  expect(res.body.nextCursor).to.not.be.undefined;
+
+  // Page items are hydrated (post + author) per the API spec - the
+  // search contract mirrors the feed page shape.
   const item = res.body.items && res.body.items[0];
   if (item) {
-    bru.test('items are hydrated post+author pairs', () => {
-      bru.expect(item.post).to.be.an('object');
-      bru.expect(item.post.id).to.be.a('string');
-      bru.expect(item.author).to.be.an('object');
-      bru.expect(item.author.username).to.be.a('string');
-    });
+    expect(item.post).to.be.an("object");
+    expect(item.post.id).to.be.a("string");
+    expect(item.author).to.be.an("object");
+    expect(item.author.username).to.be.a("string");
   } else {
-    bru.test('empty page is a valid result', () => {
-      bru.expect(res.body.items).to.be.an('array');
-    });
+    expect(res.body.items).to.be.an("array");
   }
 }
