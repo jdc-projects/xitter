@@ -197,6 +197,14 @@ resource "kubernetes_cron_job_v1" "reset" {
                 }
               }
 
+              # CMS content reset step: without this the target falls back
+              # to the local-stack default (localhost) and the step cannot
+              # reach the cms service in-cluster.
+              env {
+                name  = "XITTER_CMS_URL"
+                value = "http://cms.${local.ns}.svc:3000"
+              }
+
               # Realm contract (keycloak.ts must recreate exactly this).
               env {
                 name  = "XITTER_SEED_KEYCLOAK_URL"

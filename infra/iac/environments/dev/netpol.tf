@@ -325,7 +325,6 @@ resource "kubernetes_network_policy" "allow_keycloak_egress" {
 variable "cloudflare_ipv4" {
   description = "Cloudflare IPv4 ranges permitted for TLS egress (identity fronting). Refresh from https://www.cloudflare.com/ips-v4."
   type        = list(string)
-
   default = [
     "173.245.48.0/20",
     "103.21.244.0/22",
@@ -343,6 +342,16 @@ variable "cloudflare_ipv4" {
     "172.64.0.0/13",
     "131.0.72.0/22",
   ]
+}
+
+# Control-plane node LAN. kube-proxy DNATs the kubernetes.default service
+# here before egress policy is evaluated (see allow_reset_api_egress), so
+# API access must be allowed by the nodes' real addresses, not the service
+# CIDR. Verified: the API endpoint is 192.168.100.190:6443.
+variable "control_plane_cidr" {
+  description = "CIDR covering the cluster's control-plane nodes (the API server endpoint after kube-proxy DNAT)."
+  type        = string
+  default     = "192.168.100.0/24"
 }
 
 locals {
@@ -384,6 +393,44 @@ resource "kubernetes_network_policy" "allow_identity_tls_egress" {
   }
 }
 
+# Kubernetes API access for the reset job (quiesce/resume patches Knative
+# services). The service CIDR rules above do NOT cover this: kube-proxy
+# DNATs kubernetes.default.svc (10.43.0.1:443) to the API server's real
+# endpoint on the control-plane node LAN (192.168.100.x:6443) BEFORE
+# Calico evaluates egress policy, so the packet's destination matches no
+# ipBlock - live-observed as a 10s connect timeout (ConnectTimeoutError)
+# despite a correct-looking service-CIDR allow.
+resource "kubernetes_network_policy" "allow_reset_api_egress" {
+  metadata {
+    name      = "xitter-allow-reset-api-egress"
+    namespace = local.ns
+  }
+
+  spec {
+    policy_types = ["Egress"]
+
+    pod_selector {
+      match_labels = {
+        "app.kubernetes.io/name"     = local.reset_name
+        "app.kubernetes.io/instance" = var.environment
+      }
+    }
+
+    egress {
+      to {
+        ip_block {
+          cidr = var.control_plane_cidr
+        }
+      }
+
+      ports {
+        port     = 6443
+        protocol = "TCP"
+      }
+    }
+  }
+}
+
 # Same-namespace service-to-service: workers → internal APIs, web → SSR
 # service calls, service → service. Scoped to the five API service pods as
 # destinations (spec 07: per-dependency egress) - dependency pods (Postgres,
@@ -411,7 +458,9 @@ resource "kubernetes_network_policy" "allow_same_namespace_egress" {
           match_expressions {
             key      = "app.kubernetes.io/name"
             operator = "In"
-            values   = ["social", "posts", "media", "feed", "search"]
+            # cms is a destination for web's SSR copy fetches and the reset
+            # job's content step (XITTER_CMS_URL) - not just the five APIs.
+            values = ["social", "posts", "media", "feed", "search", "cms"]
           }
           match_labels = {
             "app.kubernetes.io/instance" = var.environment
