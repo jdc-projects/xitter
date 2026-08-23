@@ -4,13 +4,14 @@
  * CronJob container entry (`node dist/reset-job.js [--seed]`): the shared
  * reset flow (reset-flow.ts) with the in-cluster worker control - workers
  * are Knative Services, so quiesce/resume is a minScale patch (0 -> 1)
- * through the Kubernetes API using the job's ServiceAccount. No extra
- * client dependency: plain fetch against kubernetes.default.svc.
+ * through the Kubernetes API using the job's ServiceAccount (undici
+ * dispatcher with the serviceaccount CA - see inClusterContext).
  *
  * Locally the same flow is `npm run reset:live` (reset-flow.ts CLI), where
  * worker control degrades to a liveness warning - see reset-flow.ts.
  */
 import { readFile } from 'node:fs/promises';
+import { Agent, type Dispatcher } from 'undici';
 import { runResetFlow, type ResetReport, type WorkerControl } from './reset-flow.js';
 
 const KNATIVE_WORKERS = ['fanout', 'media-process', 'search-index'] as const;
@@ -22,6 +23,7 @@ interface K8sContext {
   token: string;
   ca: Buffer;
   namespace: string;
+  dispatcher: Dispatcher;
 }
 
 async function inClusterContext(): Promise<K8sContext | null> {
@@ -38,6 +40,11 @@ async function inClusterContext(): Promise<K8sContext | null> {
     token: token.trim(),
     ca,
     namespace: namespace.trim(),
+    // The API server's certificate chains to the cluster CA; global fetch
+    // (undici) does not read the serviceaccount CA, so every request fails
+    // TLS verification ("fetch failed"). The dispatcher is the only way to
+    // give undici a custom CA.
+    dispatcher: new Agent({ connect: { ca } }),
   };
 }
 
@@ -48,18 +55,17 @@ function parseK8sResponse(res: Response, body: string, method: string, path: str
   return body ? JSON.parse(body) : null;
 }
 
-async function k8sRequest(
-  ctx: K8sContext,
-  path: string,
-  init: RequestInit & { ca?: Buffer } = {},
-): Promise<unknown> {
+async function k8sRequest(ctx: K8sContext, path: string, init: RequestInit = {}): Promise<unknown> {
   const res = await fetch(`${ctx.server}${path}`, {
     ...init,
+    // Node's global fetch is undici's and honours a per-request dispatcher
+    // (the DOM RequestInit type just doesn't know about it).
+    dispatcher: ctx.dispatcher,
     headers: {
       authorization: `Bearer ${ctx.token}`,
       ...(init.headers ?? {}),
     },
-  });
+  } as RequestInit);
   return parseK8sResponse(res, await res.text(), init.method ?? 'GET', path);
 }
 
