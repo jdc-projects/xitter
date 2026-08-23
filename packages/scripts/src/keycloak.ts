@@ -66,7 +66,11 @@ async function withRetry<T>(call: () => Promise<T>, what: string, attempts = 5):
 // @xitter/auth so services' guards and the provisioner cannot drift.
 export { SERVICE_CLIENTS, WORKER_CLIENTS };
 
-const edgeUrl = () => localUrl('edge');
+// Deployed runs (nightly reset, ensure-demo-users job) must converge the
+// web client on the edge origin tofu manages (keycloak.tf
+// valid_redirect_uris) - the local localhost default would clobber it on
+// every upsert and break PKCE login until the next apply (observed live).
+const edgeUrl = () => envString('XITTER_EDGE_URL', localUrl('edge'));
 
 async function ensureRealm(kc: KcAdminClient, realm: string): Promise<void> {
   // Keycloak 26 keep-alive race: a pooled connection can be closed by the

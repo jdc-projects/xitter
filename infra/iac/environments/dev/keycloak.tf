@@ -1,8 +1,10 @@
 # Keycloak: the xitter-demo realm and its clients. Mirrors the logic in
 # packages/scripts/src/keycloak.ts (which stays local/reset-only), so the
 # local bootstrap and the deployed realm converge on the same contract.
-# Demo users themselves are NOT Tofu-managed - the nightly reset/seeder owns
-# them (see docs/specs/operations/02-data-reset.md).
+# Demo users are NOT keycloak_user resources - the nightly reset/seeder
+# owns wipe+reseed (docs/specs/operations/02-data-reset.md) and the deploy
+# path guarantees they exist via the ensure-demo-users Job (reset.tf),
+# which runs the same idempotent initDemoRealm.
 
 locals {
   demo_realm = "xitter-demo"
@@ -90,7 +92,7 @@ resource "keycloak_role" "demo_user" {
   realm_id = keycloak_realm.demo.id
   name     = "demo-user"
 
-  description = "Demo users seeded by the nightly reset (demo1..demo10)."
+  description = "Demo users (demo1..demo10), guaranteed by the ensure-demo-users deploy job and reseeded nightly."
 }
 
 # Browser client for the web app (PKCE, public). direct grants stay enabled

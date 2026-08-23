@@ -321,7 +321,12 @@ export function defaultJobName(): string {
   return envString('XITTER_RESET_JOB_NAME', `xitter-reset-${process.env.XITTER_ENV ?? 'local'}`);
 }
 
-function defaultRealmControl(): RealmControl {
+/**
+ * The env-driven realm control shared by the full reset (realm.reset +
+ * realm.init) and the deploy-path `--ensure-users` mode (realm.init only) -
+ * one code path for "the demo realm contract + users exist".
+ */
+export function defaultRealmControl(): RealmControl {
   return {
     async reset() {
       const { resetDemoRealm } = await import('./keycloak.js');

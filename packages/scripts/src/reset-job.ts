@@ -1,16 +1,24 @@
 #!/usr/bin/env node
-// fallow-ignore-file unused-file -- CronJob container entrypoint (image CMD), not imported
 /**
- * CronJob container entry (`node dist/reset-job.js [--seed]`): the shared
- * reset flow (reset-flow.ts) with the in-cluster worker control - workers
- * are Knative Services, so quiesce/resume is a minScale patch (0 -> 1)
- * through the Kubernetes API using the job's ServiceAccount (undici
- * dispatcher with the serviceaccount CA - see inClusterContext).
+ * Container entry of the xitter-reset image (`node dist/reset-job.js [...]`),
+ * serving two Tofu-provisioned workloads:
+ *
+ *  - default (`[--seed]`, the nightly CronJob): the shared reset flow
+ *    (reset-flow.ts) with the in-cluster worker control - workers are
+ *    Knative Services, so quiesce/resume is a minScale patch (0 -> 1)
+ *    through the Kubernetes API using the job's ServiceAccount (undici
+ *    dispatcher with the serviceaccount CA - see inClusterContext).
+ *  - `--ensure-users` (the deploy-path Job): ONLY the flow's realm-init
+ *    step (`initDemoRealm`) - guarantees the 10 demo users exist after any
+ *    realm (re)creation without wiping data or touching workers (#67).
+ *    Needs no Kubernetes API access.
  *
  * Locally the same flow is `npm run reset:live` (reset-flow.ts CLI), where
  * worker control degrades to a liveness warning - see reset-flow.ts.
  */
 import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Agent, type Dispatcher } from 'undici';
 import { runResetFlow, type ResetReport, type WorkerControl } from './reset-flow.js';
 
@@ -126,8 +134,10 @@ async function waitForScaleToZero(ctx: K8sContext, log: (message: string) => voi
   }
 }
 
-async function k8sWorkerControl(log: (message: string) => void): Promise<WorkerControl> {
-  const ctx = (await inClusterContext())!;
+async function k8sWorkerControl(
+  ctx: K8sContext,
+  log: (message: string) => void,
+): Promise<WorkerControl> {
   return {
     async quiesce() {
       for (const worker of KNATIVE_WORKERS) {
@@ -146,23 +156,89 @@ async function k8sWorkerControl(log: (message: string) => void): Promise<WorkerC
   };
 }
 
-const ctx = await inClusterContext();
-const workers = ctx ? await k8sWorkerControl(console.log) : undefined;
-if (!ctx) {
-  console.error('reset-job: not running in a Kubernetes pod (no KUBERNETES_SERVICE_HOST)');
-  process.exit(1);
+// ---------------------------------------------------------------------------
+// CLI: modes, arg parsing, dispatch (unit-tested without a cluster)
+// ---------------------------------------------------------------------------
+
+export type ResetJobMode = 'reset' | 'ensure-users';
+
+export interface ResetJobArgs {
+  mode: ResetJobMode;
+  seed: boolean;
 }
 
-try {
-  const report: ResetReport = await runResetFlow({
-    seed: process.argv.includes('--seed'),
-    workers,
-  });
-  console.log(
+/**
+ * Strict on purpose: the same entrypoint serves the destructive full reset,
+ * so a mistyped flag must fail fast instead of silently falling through to
+ * it (e.g. `--ensure-user` wiping the environment on a deploy).
+ */
+export function parseResetJobArgs(argv: readonly string[]): ResetJobArgs {
+  const unknown = argv.filter((arg) => arg !== '--seed' && arg !== '--ensure-users');
+  if (unknown.length > 0) {
+    throw new Error(
+      `unknown argument(s): ${unknown.join(', ')} - supported: --seed, --ensure-users`,
+    );
+  }
+  const seed = argv.includes('--seed');
+  if (seed && argv.includes('--ensure-users')) {
+    throw new Error(
+      '--seed applies to the full reset only - the ensure-users job never seeds content',
+    );
+  }
+  return { mode: argv.includes('--ensure-users') ? 'ensure-users' : 'reset', seed };
+}
+
+/** Environment-dependent halves of the entrypoint, injectable for tests. */
+export interface ResetJobDeps {
+  /** The reset flow's realm-init step (shared with `reset:live`). */
+  ensureUsers(): Promise<Array<{ username: string }>>;
+  /** In-cluster worker control; unavailable outside a Kubernetes pod. */
+  workerControl(): Promise<WorkerControl>;
+  resetFlow(options: { seed: boolean; workers: WorkerControl }): Promise<ResetReport>;
+}
+
+/** Runs one mode and returns the success summary line. */
+export async function runResetJob(args: ResetJobArgs, deps: ResetJobDeps): Promise<string> {
+  if (args.mode === 'ensure-users') {
+    const users = await deps.ensureUsers();
+    const first = users.at(0)?.username ?? '-';
+    const last = users.at(-1)?.username ?? '-';
+    return `ensure-users: ${users.length} demo user(s) present (${first}..${last})`;
+  }
+  const workers = await deps.workerControl();
+  const report = await deps.resetFlow({ seed: args.seed, workers });
+  return (
     `reset-job: success in ${report.durationMs}ms ` +
-      `(reseeded=${report.reseeded}, fingerprint=${report.fingerprint ?? '-'})`,
+    `(reseeded=${report.reseeded}, fingerprint=${report.fingerprint ?? '-'})`
   );
-} catch (err) {
-  console.error(`reset-job: FAILED - ${err instanceof Error ? err.message : String(err)}`);
-  process.exit(1);
+}
+
+function defaultDeps(): ResetJobDeps {
+  return {
+    async ensureUsers() {
+      const { defaultRealmControl } = await import('./reset-flow.js');
+      return defaultRealmControl().init();
+    },
+    async workerControl() {
+      const ctx = await inClusterContext();
+      if (!ctx) {
+        throw new Error('full reset requires a Kubernetes pod (no KUBERNETES_SERVICE_HOST)');
+      }
+      return k8sWorkerControl(ctx, console.log);
+    },
+    async resetFlow(options) {
+      return runResetFlow(options);
+    },
+  };
+}
+
+// Only dispatch when run as the entry file (the image CMD): tests import
+// this module and must not trigger either mode.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    console.log(await runResetJob(parseResetJobArgs(process.argv.slice(2)), defaultDeps()));
+  } catch (err) {
+    console.error(`reset-job: FAILED - ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
 }
