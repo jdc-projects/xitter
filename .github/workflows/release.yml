@@ -157,6 +157,14 @@ jobs:
     needs: [version, release-images]
     runs-on: self-hosted
     timeout-minutes: 60
+    # Prod applies serialize in their own group (queue, never cancel - a
+    # cancelled apply holds the tofu state lock until timeout). Distinct from
+    # the workflow-level `release` group so a future prod-applying workflow
+    # (e.g. a hotfix path) can join the same queue without coupling to the
+    # full release pipeline.
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
       - uses: opentofu/setup-opentofu@v2

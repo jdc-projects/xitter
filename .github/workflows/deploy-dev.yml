@@ -5,6 +5,13 @@ on:
     branches: [dev]
   workflow_dispatch:
 
+# Serialize per branch (effectively per env: this workflow only runs on dev).
+# Queue, never cancel: cancelling mid-apply abandons the job while it holds
+# the tofu state lock, which then hangs until timeout - worse than waiting.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   full-mutation:
     runs-on: ubuntu-latest
