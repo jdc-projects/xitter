@@ -148,7 +148,17 @@ export function PostsListPage() {
             key: 'deletedAt',
             width: 110,
             render: (deletedAt: string | null) =>
-              deletedAt ? <Tag color="red">deleted</Tag> : <Tag color="green">live</Tag>,
+              // Preset tag text fails AA (green #389e0d on #f6ffed = 3.37:1);
+              // the inline dark overrides match health.tsx's pattern.
+              deletedAt ? (
+                <Tag color="red" style={{ color: '#a8071a' }}>
+                  deleted
+                </Tag>
+              ) : (
+                <Tag color="green" style={{ color: '#135200' }}>
+                  live
+                </Tag>
+              ),
           },
           {
             title: 'Actions',

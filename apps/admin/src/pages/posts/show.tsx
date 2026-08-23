@@ -21,9 +21,14 @@ export function PostsShowPage() {
         <Descriptions column={1} bordered size="small" data-testid="posts-show-details">
           <Descriptions.Item label="State">
             {post.deletedAt ? (
-              <Tag color="red">deleted {post.deletedAt}</Tag>
+              // Preset tag text fails AA - dark overrides per health.tsx.
+              <Tag color="red" style={{ color: '#a8071a' }}>
+                deleted {post.deletedAt}
+              </Tag>
             ) : (
-              <Tag color="green">live</Tag>
+              <Tag color="green" style={{ color: '#135200' }}>
+                live
+              </Tag>
             )}
           </Descriptions.Item>
           <Descriptions.Item label="Author">{post.authorId}</Descriptions.Item>

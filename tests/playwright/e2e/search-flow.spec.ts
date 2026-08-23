@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { loginViaKeycloak } from './helpers';
+import { loginViaKeycloak, waitForComposerHydration } from './helpers';
 
 /**
  * Search flows against the real stack (#9): the header box submits to the
@@ -16,19 +16,27 @@ async function login(page: Page, username: string) {
   await page.waitForURL(/\/feed$/);
 }
 
-/** Reload-poll the results page until the snippet appears (index lag). */
-async function searchUntilFound(page: Page, q: string, snippet: string, timeoutMs = 30_000) {
+/**
+ * Poll the search API until the snippet is indexed, then assert on ONE
+ * settled page render. The old reload-poll navigated the full page per
+ * iteration: on 2-core CI runners each SSR navigation costs seconds, so a
+ * 30s budget allowed only a handful of polls and slow (but healthy)
+ * indexing blew the budget - the failure mode was the empty-state page,
+ * not an index problem. An API poll costs milliseconds per iteration.
+ */
+async function searchUntilFound(page: Page, q: string, snippet: string, timeoutMs = 90_000) {
+  const token = await accessToken(page);
+  const searchApi = `/api/search/v1/posts?q=${encodeURIComponent(q)}`;
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    await page.goto(`/search?q=${encodeURIComponent(q)}`);
-    const results = page.getByTestId('search-results');
-    if ((await results.isVisible().catch(() => false)) && (await results.textContent())) {
-      const text = (await results.textContent()) ?? '';
-      if (text.includes(snippet)) return;
-    }
+    const res = await page.request.get(searchApi, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    if (res.ok() && ((await res.text()) ?? '').includes(snippet)) break;
     if (Date.now() > deadline) break;
     await page.waitForTimeout(1_000);
   }
+  await page.goto(`/search?q=${encodeURIComponent(q)}`);
   await expect(page.getByTestId('search-results')).toContainText(snippet);
 }
 
@@ -62,19 +70,23 @@ async function accessToken(page: Page): Promise<string> {
 }
 
 test('search finds a composed post and deletes remove it from results', async ({ page }) => {
-  // Indexing converges in tens of seconds on a fully-loaded local stack
-  // (all services + workers + parallel specs); the two convergence windows
-  // below need more than the default 60s test budget.
-  test.setTimeout(150_000);
+  // Indexing converges in tens of seconds on a loaded stack (all services +
+  // workers + parallel specs), and this test has TWO convergence windows
+  // (compose→index up to 120s, delete→tombstone up to 60s) plus a settled
+  // render assertion. The budget must exceed their SUM (a 150s budget
+  // timed out mid-tombstone-poll on cold CI runners despite both windows
+  // being individually healthy).
+  test.setTimeout(240_000);
   await login(page, 'demo2');
   const needle = `t8 searchable quokka ${crypto.randomUUID()}`;
 
   // Compose through the real composer so the full posts -> events -> index
   // pipeline runs.
+  await waitForComposerHydration(page);
   await page.getByTestId('composer-textarea').fill(needle);
   await page.getByTestId('composer-submit').click();
 
-  await searchUntilFound(page, 'quokka', needle, 60_000);
+  await searchUntilFound(page, 'quokka', needle, 120_000);
   const item = page.locator('[data-testid^="post-item-"]', { hasText: needle }).first();
   await expect(item).toBeVisible();
   const postId = (await item.getAttribute('data-testid'))!.replace('post-item-', '');

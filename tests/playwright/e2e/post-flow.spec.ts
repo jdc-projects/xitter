@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { loginViaKeycloak } from './helpers';
+import { loginViaKeycloak, waitForComposerHydration } from './helpers';
 
 /**
  * Post flows against the real stack: compose -> own profile + detail, reply
@@ -25,6 +25,7 @@ async function loggedInPage(browser: Browser, username: string): Promise<Page> {
 }
 
 async function compose(page: Page, text: string) {
+  await waitForComposerHydration(page);
   await page.getByTestId('composer-textarea').fill(text);
   await page.getByTestId('composer-submit').click();
 }
@@ -86,6 +87,7 @@ test('reply threads render with reply counts', async ({ page, browser }) => {
   await page.goto(`/post/${rootId}`);
 
   const replyText = `t4 e2e reply ${crypto.randomUUID()}`;
+  await waitForComposerHydration(page, 'reply-composer');
   await page.getByTestId('reply-composer-textarea').fill(replyText);
   await page.getByTestId('reply-composer-submit').click();
 

@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { loginViaKeycloak } from './helpers';
+import { loginViaKeycloak, waitForComposerHydration } from './helpers';
 
 /**
  * Admin panel (T10) against the real stack through the edge (/admin):
@@ -48,6 +48,7 @@ test('admin soft-delete removes a post for users; audit log records it', async (
   await loginViaKeycloak(user, 'demo9', 'DemoPass123!');
   await user.waitForURL(/\/feed$/);
   const text = `t10 admin moderation target ${crypto.randomUUID()}`;
+  await waitForComposerHydration(user);
   await user.getByTestId('composer-textarea').fill(text);
   await user.getByTestId('composer-submit').click();
   const item = user.locator('[data-testid^="post-item-"]', { hasText: text }).first();

@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { loginViaKeycloak } from './helpers';
+import { loginViaKeycloak, waitForComposerHydration } from './helpers';
 
 /**
  * Feed flows against the real stack (T6): follow backfill, fanout visibility,
@@ -23,6 +23,7 @@ async function loggedInPage(browser: Browser, username: string): Promise<Page> {
 }
 
 async function compose(page: Page, text: string) {
+  await waitForComposerHydration(page);
   await page.getByTestId('composer-textarea').fill(text);
   await page.getByTestId('composer-submit').click();
 }
