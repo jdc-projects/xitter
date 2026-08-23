@@ -187,6 +187,11 @@ jobs:
       - name: tofu apply (prod)
         if: needs.version.outputs.dry_run != 'true'
         working-directory: infra/iac/environments/prod
+        # TF_VAR_cap_*: bot protection keys (spec 02 §3.2) - web is
+        # XITTER_CAP_REQUIRED and crashloops without them.
+        env:
+          TF_VAR_cap_site_key: ${{ secrets.XITTER_CAP_SITE_KEY }}
+          TF_VAR_cap_secret_key: ${{ secrets.XITTER_CAP_SECRET_KEY }}
         run: |
           tofu init
           tofu apply -auto-approve -input=false -var image_tag=${{ needs.version.outputs.version }}

@@ -238,17 +238,41 @@ module "web" {
     # Session store (and rate-limit reads) - without it web defaults to a
     # localhost Valkey and login cannot persist sessions.
     { name = "XITTER_VALKEY_URL", value = local.valkey_url },
+    # Bot protection (spec 02 §3.2): enabled only when the keys are wired
+    # (local.cap_enabled); all four vars are required together or web
+    # fail-fasts at boot. REQUIRED makes a keys-less deploy crashloop
+    # loudly instead of serving an unprotected login form.
+    { name = "XITTER_CAP_REQUIRED", value = "true" },
+    { name = "XITTER_CAP_ENABLED", value = tostring(local.cap_enabled) },
+    { name = "XITTER_CAP_SITE_URL", value = local.cap_url },
+    { name = "XITTER_CAP_VERIFY_URL", value = local.cap_url },
   ])
 
   # Sentry DSN (T11): used server-side via initSentry and relayed to the
   # browser SDK through the layout's config script tag (spec 06).
-  secret_env = [
-    {
-      name        = "SENTRY_DSN"
-      secret_name = kubernetes_secret.sentry_dsn["web"].metadata[0].name
-      secret_key  = "SENTRY_DSN"
-    },
-  ]
+  secret_env = concat(
+    [
+      {
+        name        = "SENTRY_DSN"
+        secret_name = kubernetes_secret.sentry_dsn["web"].metadata[0].name
+        secret_key  = "SENTRY_DSN"
+      },
+    ],
+    local.cap_enabled
+    ? [
+      {
+        name        = "XITTER_CAP_SITE_KEY"
+        secret_name = kubernetes_secret.cap.metadata[0].name
+        secret_key  = "XITTER_CAP_SITE_KEY"
+      },
+      {
+        name        = "XITTER_CAP_SECRET_KEY"
+        secret_name = kubernetes_secret.cap.metadata[0].name
+        secret_key  = "XITTER_CAP_SECRET_KEY"
+      },
+    ]
+    : [],
+  )
 }
 
 # ---------------------------------------------------------------------------

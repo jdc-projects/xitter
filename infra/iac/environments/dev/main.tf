@@ -110,6 +110,24 @@ variable "image_tag" {
   default     = "dev"
 }
 
+# Cap.js bot protection (spec 02 §3.2). Keys come from repo secrets
+# (docs/runbooks/04-ci-and-secrets.md); empty defaults keep tofu
+# plan/validate working without the secrets - captcha is only enabled
+# when both keys are provided (web fail-fasts on half-config anyway).
+variable "cap_site_key" {
+  description = "Cap.js site key (gh secret XITTER_CAP_SITE_KEY)."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "cap_secret_key" {
+  description = "Cap.js secret key (gh secret XITTER_CAP_SECRET_KEY)."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 module "namespace" {
   source      = "../../modules/namespace"
   environment = var.environment
@@ -120,6 +138,12 @@ module "namespace" {
 # environment is backed up, matching the nightly-reset data policy.
 locals {
   ns = module.namespace.name
+
+  # Cap.js (bot protection, spec 02 §3.2): enabled only when both keys are
+  # wired (deploy passes the repo secrets as TF_VARs; empty-key runs -
+  # plan/validate - stay disabled rather than half-configured).
+  cap_enabled = var.cap_site_key != "" && var.cap_secret_key != ""
+  cap_url     = "https://cap.jd-chapman.dev"
 
   # Canonical Keycloak: the token issuer for every realm (browser PKCE login,
   # edge middleware discovery, service JWKS validation). From the homelab's
