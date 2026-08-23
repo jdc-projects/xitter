@@ -763,7 +763,7 @@ resource "kubernetes_network_policy" "kafka_ingress" {
           match_expressions {
             key      = "app.kubernetes.io/name"
             operator = "In"
-            values   = concat(["posts", "social", "media"], local.workers)
+            values   = concat(["posts", "social", "media", local.reset_name], local.workers)
           }
           match_labels = {
             "app.kubernetes.io/instance" = var.environment
@@ -858,6 +858,19 @@ resource "kubernetes_network_policy" "opensearch_ingress" {
       }
 
       from {
+        pod_selector {
+          match_expressions {
+            key      = "app.kubernetes.io/name"
+            operator = "In"
+            values   = ["xitter-reset"]
+          }
+          match_labels = {
+            "app.kubernetes.io/instance" = var.environment
+          }
+        }
+      }
+
+      from {
         namespace_selector {
           match_labels = { "kubernetes.io/metadata.name" = "opensearch-operator" }
         }
@@ -906,7 +919,7 @@ resource "kubernetes_network_policy" "rustfs_ingress" {
           match_expressions {
             key      = "app.kubernetes.io/name"
             operator = "In"
-            values   = ["media", "media-process", "rustfs-provision"]
+            values   = ["media", "media-process", "rustfs-provision", "xitter-reset"]
           }
           match_labels = {
             "app.kubernetes.io/instance" = var.environment
