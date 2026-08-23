@@ -3,8 +3,7 @@
  * (ADR 0003). Deployed as a Knative service; consumes Kafka only and calls
  * back through the services' internal APIs.
  */
-import { realmUrls } from '@xitter/auth';
-import { FeedClient, PostsClient, SocialClient } from '@xitter/api-client';
+import { FeedClient, internalCredentials, PostsClient, SocialClient } from '@xitter/api-client';
 import {
   kafkaBrokers,
   localPort,
@@ -37,11 +36,7 @@ const env = parseEnv(
 // Internal clients build /api/{service}/internal/... from the bare base URL
 // (mirrors media-process); M2M tokens carry the scoped audiences
 // (svc-social, svc-posts, svc-feed - packages/auth clients.ts).
-const internal = {
-  tokenUrl: realmUrls(env.KEYCLOAK_BASE_URL, env.DEMO_REALM).token,
-  clientId: env.KEYCLOAK_CLIENT_ID,
-  clientSecret: env.KEYCLOAK_CLIENT_SECRET,
-};
+const internal = internalCredentials(env);
 
 // Constructed once: each client instance owns its JWT cache, so per-event
 // construction would fetch a fresh Keycloak token per message.

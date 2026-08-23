@@ -1,5 +1,5 @@
 import client from 'prom-client';
-import { Kafka, type EachMessagePayload } from 'kafkajs';
+import { Kafka, type Consumer, type EachMessagePayload } from 'kafkajs';
 import { createLogger, createMetricsServer, initSentry, initTracing } from '@xitter/observability';
 import type { ResetWorkerName } from '@xitter/config';
 import {
@@ -55,38 +55,8 @@ export async function runEventWorker(options: EventWorkerOptions): Promise<void>
   // pause protocol cannot work, so a worker that cannot reach it must not
   // start consuming.
   const gate = options.resetPause
-    ? createResetEpochGate({
-        worker: options.resetPause.worker,
-        store: await connectValkeyEpochStore(options.resetPause.valkeyUrl),
-        // kafkajs has no seekToEnd: offset -1 (LATEST) is the same seek,
-        // resolved against broker metadata at fetch time.
-        consumer: {
-          pause: (topicPartitions) => consumer.consumer.pause(topicPartitions),
-          resume: (topicPartitions) => consumer.consumer.resume(topicPartitions),
-          seekToEnd: (topic, partition) =>
-            consumer.consumer.seek({ topic, partition, offset: '-1' }),
-        },
-        logger: { info: (m) => logger.info(m), warn: (e, m) => logger.warn(e, m) },
-      })
+    ? await createWorkerResetGate(options, consumer.consumer, metrics.registry, logger)
     : null;
-  const startPaused = gate ? await gate.initialize() : false;
-  if (gate) {
-    const pausedGauge = new client.Gauge({
-      name: 'xitter_reset_epoch_paused',
-      help: '1 while this worker is paused for an in-progress reset epoch',
-      registers: [metrics.registry],
-    });
-    const pauses = new client.Counter({
-      name: 'xitter_reset_epoch_pauses_total',
-      help: 'Reset epochs this worker paused for since boot',
-      registers: [metrics.registry],
-    });
-    pausedGauge.set(startPaused ? 1 : 0);
-    gate.onTransition((next, previous) => {
-      pausedGauge.set(next === 'running' ? 0 : 1);
-      if (previous === 'running' && next !== 'running') pauses.inc();
-    });
-  }
 
   // Rebalance events for the Kafka dashboard (spec 06, #12): GROUP_JOIN fires
   // on the initial assignment and on every subsequent group rebalance.
@@ -142,6 +112,48 @@ export async function runEventWorker(options: EventWorkerOptions): Promise<void>
 
 export interface ConsumerLagTracker {
   stop(): Promise<void>;
+}
+
+/**
+ * Build the worker's reset-epoch gate (ADR 0010) and register its pause
+ * metrics. Returns an INITIALISED gate (already past the boot epoch read).
+ */
+async function createWorkerResetGate(
+  options: EventWorkerOptions,
+  consumer: Consumer,
+  registry: client.Registry,
+  logger: { info(message: string): unknown; warn(entry: object, message: string): unknown },
+): Promise<ReturnType<typeof createResetEpochGate>> {
+  const resetPause = options.resetPause!;
+  const gate = createResetEpochGate({
+    worker: resetPause.worker,
+    store: await connectValkeyEpochStore(resetPause.valkeyUrl),
+    // kafkajs has no seekToEnd: offset -1 (LATEST) is the same seek,
+    // resolved against broker metadata at fetch time.
+    consumer: {
+      pause: (topicPartitions) => consumer.pause(topicPartitions),
+      resume: (topicPartitions) => consumer.resume(topicPartitions),
+      seekToEnd: (topic, partition) => consumer.seek({ topic, partition, offset: '-1' }),
+    },
+    logger: { info: (m) => logger.info(m), warn: (e, m) => logger.warn(e, m) },
+  });
+  const pausedGauge = new client.Gauge({
+    name: 'xitter_reset_epoch_paused',
+    help: '1 while this worker is paused for an in-progress reset epoch',
+    registers: [registry],
+  });
+  const pauses = new client.Counter({
+    name: 'xitter_reset_epoch_pauses_total',
+    help: 'Reset epochs this worker paused for since boot',
+    registers: [registry],
+  });
+  const startPaused = await gate.initialize();
+  pausedGauge.set(startPaused ? 1 : 0);
+  gate.onTransition((next, previous) => {
+    pausedGauge.set(next === 'running' ? 0 : 1);
+    if (previous === 'running' && next !== 'running') pauses.inc();
+  });
+  return gate;
 }
 
 /**

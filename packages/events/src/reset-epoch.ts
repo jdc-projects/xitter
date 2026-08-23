@@ -173,75 +173,11 @@ export function createResetEpochGate(options: ResetEpochGateOptions): ResetEpoch
 
     async check() {
       try {
-        if (state === 'running') {
-          const epoch = await options.store.get(RESET_EPOCH_KEY);
-          if (epoch !== null && epoch !== knownEpoch) {
-            knownEpoch = epoch;
-            pauseAssigned(); // stop fetches immediately; drain what is in flight
-            idlePolls = 0;
-            transition('pausing');
-            log.info(`reset epoch ${epoch} observed - pausing consumption`);
-          }
-          return;
-        }
-
-        if (state === 'pausing') {
-          const epoch = await options.store.get(RESET_EPOCH_KEY);
-          if (epoch === null) {
-            // The reset that started this pause vanished (its Valkey flush
-            // ran again, or it failed before we acknowledged). No wipe is
-            // in progress: resume where we left off - nothing was skipped.
-            resumeAssigned();
-            knownEpoch = null;
-            idlePolls = 0;
-            transition('running');
-            log.info('reset epoch cleared before pause completed - resuming');
-            return;
-          }
-          if (epoch !== knownEpoch) {
-            // A newer epoch superseded ours mid-drain; acknowledge that one.
-            knownEpoch = epoch;
-          }
-          if (inFlight > 0) {
-            idlePolls = 0;
-            return;
-          }
-          // Require the queue to be idle across two consecutive polls
-          // before promising the reset we are quiet: batches fetched in
-          // the same cycle as the pause() can still be draining.
-          idlePolls += 1;
-          if (idlePolls < 2) return;
-          await options.store.setEx(resetPausedKey(options.worker), knownEpoch, heartbeatTtlMs);
-          heartbeatAt = now();
-          idlePolls = 0;
-          transition('paused');
-          log.info(`paused for reset epoch ${knownEpoch} (heartbeat written)`);
-          return;
-        }
-
-        // paused
-        const epoch = await options.store.get(RESET_EPOCH_KEY);
-        if (epoch === null) {
-          // Reset complete: skip the pre-reset backlog entirely and resume.
-          seekAssignedToEnd();
-          resumeAssigned();
-          knownEpoch = null;
-          idlePolls = 0;
-          transition('running');
-          log.info('reset epoch cleared - seeking to log end and resuming');
-          return;
-        }
-        if (epoch !== knownEpoch) {
-          // Epoch bumped while already paused (reset retried): re-ack.
-          knownEpoch = epoch;
-          await options.store.setEx(resetPausedKey(options.worker), knownEpoch, heartbeatTtlMs);
-          heartbeatAt = now();
-          return;
-        }
-        if (now() - heartbeatAt > heartbeatTtlMs / 3) {
-          await options.store.setEx(resetPausedKey(options.worker), knownEpoch, heartbeatTtlMs);
-          heartbeatAt = now();
-        }
+        // One poll = one state-specific transition (Valkey errors defer to
+        // the next tick; see the catch below).
+        if (state === 'running') await checkRunning();
+        else if (state === 'pausing') await checkPausing();
+        else await checkPaused();
       } catch (err) {
         // Valkey unavailable: never crash the worker over the gate. In
         // `running` the transition simply defers (the reset fails safely
@@ -264,6 +200,80 @@ export function createResetEpochGate(options: ResetEpochGateOptions): ResetEpoch
       );
     },
   };
+
+  /** Running: pause as soon as a NEW epoch appears. */
+  async function checkRunning(): Promise<void> {
+    const epoch = await options.store.get(RESET_EPOCH_KEY);
+    if (epoch === null || epoch === knownEpoch) return;
+    knownEpoch = epoch;
+    pauseAssigned(); // stop fetches immediately; drain what is in flight
+    idlePolls = 0;
+    transition('pausing');
+    log.info(`reset epoch ${epoch} observed - pausing consumption`);
+  }
+
+  /**
+   * Pausing: the epoch is held but in-flight work may still be draining.
+   * Only promise the reset we are quiet once the queue is fully idle.
+   */
+  async function checkPausing(): Promise<void> {
+    const epoch = await options.store.get(RESET_EPOCH_KEY);
+    if (epoch === null) {
+      // The reset that started this pause vanished (its Valkey flush ran
+      // again, or it failed before we acknowledged). No wipe is in
+      // progress: resume where we left off - nothing was skipped.
+      resumeAssigned();
+      knownEpoch = null;
+      idlePolls = 0;
+      transition('running');
+      log.info('reset epoch cleared before pause completed - resuming');
+      return;
+    }
+    if (epoch !== knownEpoch) {
+      // A newer epoch superseded ours mid-drain; acknowledge that one.
+      knownEpoch = epoch;
+    }
+    if (inFlight > 0) {
+      idlePolls = 0;
+      return;
+    }
+    // Require the queue to be idle across two consecutive polls before
+    // promising the reset we are quiet: batches fetched in the same cycle
+    // as the pause() can still be draining.
+    idlePolls += 1;
+    if (idlePolls < 2) return;
+    await writeHeartbeat();
+    idlePolls = 0;
+    transition('paused');
+    log.info(`paused for reset epoch ${knownEpoch} (heartbeat written)`);
+  }
+
+  /** Paused: idle until the epoch key is removed, then skip + resume. */
+  async function checkPaused(): Promise<void> {
+    const epoch = await options.store.get(RESET_EPOCH_KEY);
+    if (epoch === null) {
+      // Reset complete: skip the pre-reset backlog entirely and resume.
+      seekAssignedToEnd();
+      resumeAssigned();
+      knownEpoch = null;
+      idlePolls = 0;
+      transition('running');
+      log.info('reset epoch cleared - seeking to log end and resuming');
+      return;
+    }
+    if (epoch !== knownEpoch) {
+      // Epoch bumped while already paused (reset retried): re-ack.
+      knownEpoch = epoch;
+      await writeHeartbeat();
+      return;
+    }
+    if (now() - heartbeatAt > heartbeatTtlMs / 3) await writeHeartbeat();
+  }
+
+  async function writeHeartbeat(): Promise<void> {
+    await options.store.setEx(resetPausedKey(options.worker), knownEpoch!, heartbeatTtlMs);
+    heartbeatAt = now();
+  }
 
   return gate;
 }
