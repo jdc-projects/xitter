@@ -29,6 +29,7 @@
     "@opentelemetry/instrumentation-undici": "^0.31",
     "@opentelemetry/sdk-node": "^0.221",
     "@sentry/node": "^10",
+    "ioredis": "^6",
     "pino": "^10",
     "pino-pretty": "^13",
     "prom-client": "^15"
