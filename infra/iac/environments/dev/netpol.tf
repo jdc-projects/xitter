@@ -751,7 +751,7 @@ resource "kubernetes_network_policy" "valkey_ingress" {
           match_expressions {
             key      = "app.kubernetes.io/name"
             operator = "In"
-            values   = ["feed", "posts", "social", "media"]
+            values   = ["feed", "posts", "social", "media", "web", "xitter-reset"]
           }
           match_labels = {
             "app.kubernetes.io/instance" = var.environment
