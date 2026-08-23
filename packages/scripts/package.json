@@ -25,6 +25,7 @@
     "zod": "^4"
   },
   "devDependencies": {
+    "@usebruno/filestore": "^0.11.0",
     "@xitter/eslint-config": "*",
     "@xitter/tsconfig": "*",
     "vitest": "^4"

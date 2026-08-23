@@ -51,7 +51,11 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - name: Run collection (${{ needs.target.outputs.environment }})
-        run: npm run test:api -- --env ${{ needs.target.outputs.environment }}
+        # BRUNO_ENV, not `-- --env <env>`: the root script nests `npm test
+        # --prefix`, and npm re-parses a forwarded --env as its own flag
+        # (dropping it) - the nightly then ran --env local against a
+        # runner with no stack. Environment variables survive npm chains.
+        run: BRUNO_ENV=${{ needs.target.outputs.environment }} npm run test:api
       - name: Publish run summary
         if: always()
         uses: actions/upload-artifact@v7

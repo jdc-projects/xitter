@@ -4,10 +4,11 @@ meta {
 }
 
 docs {
-  The negative half of the admin pair: a verified demo-user token is NOT an
-  admin principal, so the internal admin endpoints must refuse it with 403
-  (not 401 - the token is valid, the role is missing). This is the API-side
-  enforcement behind the panel's login gate.
+  The negative half of the admin pair: a demo-realm user token is not an
+  admin principal (admin routes accept the admin realm's user tokens or
+  the svc-admin machine client - the shared guard owns that decision), so
+  the internal admin endpoints must refuse it with 401: for these routes
+  the demo token is simply not an authenticated caller.
 }
 
 script:pre-request {
@@ -23,8 +24,20 @@ script:pre-request {
     headers: { "content-type": "application/x-www-form-urlencoded" },
     data: form,
   });
-  const json = typeof res.data === "string" ? JSON.parse(res.data) : res.data;
-  bru.setEnvVar("token", json.access_token);
+  // sendRequest returns one of string / ArrayBuffer / parsed object
+  // depending on transport - decode all three or access_token reads
+  // undefined off a Buffer and the bearer becomes literally "undefined"
+  // (observed: the gate then 401s for the wrong reason and the run is
+  // indistinguishable from a broken login).
+  const raw =
+    typeof res.data === "string"
+      ? res.data
+      : res.data && typeof res.data === "object" && "byteLength" in res.data
+        ? new TextDecoder().decode(res.data)
+        : typeof res.data === "object" && res.data !== null
+          ? JSON.stringify(res.data)
+          : String(res.data ?? "");
+  bru.setEnvVar("token", JSON.parse(raw).access_token);
 }
 
 get {
@@ -38,5 +51,5 @@ auth:bearer {
 }
 
 assert {
-  res.status: 403
+  res.status: 401
 }
