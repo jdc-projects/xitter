@@ -222,6 +222,7 @@ test('a blocked user cannot like, repost or reply', async ({ page, browser }) =>
   await card.getByTestId('count-reposts').click();
   await expect(error).toContainText(/cannot interact/i);
 
+  await waitForComposerHydration(demo3, 'reply-composer');
   await demo3.getByTestId('reply-composer-textarea').fill('blocked reply');
   await demo3.getByTestId('reply-composer-submit').click();
   await expect(demo3.getByTestId('reply-composer-error')).toContainText(/cannot reply/i);

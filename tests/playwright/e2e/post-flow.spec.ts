@@ -110,6 +110,7 @@ test('oversize post is rejected with a friendly error and the draft is preserved
   page,
 }) => {
   await login(page, 'demo8');
+  await waitForComposerHydration(page);
   const tooLong = 'x'.repeat(513);
 
   await page.getByTestId('composer-textarea').fill(tooLong);

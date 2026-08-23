@@ -1,7 +1,8 @@
-import { Card, Descriptions, Space, Tag, Typography } from 'antd';
+import { Card, Descriptions, Space, Typography } from 'antd';
 import { useOne } from '@refinedev/core';
 import { useParams } from 'react-router';
 import type { Post } from '@xitter/api-contracts';
+import { A11yTag } from '../../components/a11y-tag.js';
 
 /** Moderation detail: everything the posts service knows, tombstones included. */
 export function PostsShowPage() {
@@ -21,14 +22,9 @@ export function PostsShowPage() {
         <Descriptions column={1} bordered size="small" data-testid="posts-show-details">
           <Descriptions.Item label="State">
             {post.deletedAt ? (
-              // Preset tag text fails AA - dark overrides per health.tsx.
-              <Tag color="red" style={{ color: '#a8071a' }}>
-                deleted {post.deletedAt}
-              </Tag>
+              <A11yTag color="red">deleted {post.deletedAt}</A11yTag>
             ) : (
-              <Tag color="green" style={{ color: '#135200' }}>
-                live
-              </Tag>
+              <A11yTag color="green">live</A11yTag>
             )}
           </Descriptions.Item>
           <Descriptions.Item label="Author">{post.authorId}</Descriptions.Item>
