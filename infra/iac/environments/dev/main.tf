@@ -47,9 +47,9 @@ provider "helm" {
 
 provider "random" {}
 
-# Sentry (T11): single org-wide project + shared DSN secret, self-hosted at
-# sentry.jd-chapman.dev. The org-scoped token comes from the homelab's sentry
-# remote state - the same source iac/grafana uses for its own project.
+# Sentry (T11): per-app projects + DSNs, self-hosted at sentry.jd-chapman.dev.
+# The org-scoped token comes from the homelab's sentry remote state - the same
+# source iac/grafana uses for its own project.
 provider "sentry" {
   token    = data.terraform_remote_state.sentry.outputs.sentry_auth_token
   base_url = "https://${data.terraform_remote_state.sentry.outputs.sentry_domain}/api/"
