@@ -115,7 +115,7 @@ Namespace-per-environment, deployed via Tofu environments using the homelab ingr
 | Versioning | GHCR image per app/service on every merge: immutable `sha-<short>` + mutable `dev` tag | same, promoted via release tag     |
 | Reset      | nightly                                                                                | nightly                            |
 
-Both environments are demo environments: data is ephemeral, Velero backup excludes both namespaces, and the nightly reset (00:00 UTC, configurable) wipes and optionally reseeds state — see [05-data-platform.md](05-data-platform.md) and the [operations specs](../operations/).
+Both environments are demo environments: data is ephemeral, Velero backup excludes both namespaces, and the nightly reset (00:30 UTC, configurable) wipes and optionally reseeds state — see [05-data-platform.md](05-data-platform.md) and the [operations specs](../operations/).
 
 ## Local parity
 

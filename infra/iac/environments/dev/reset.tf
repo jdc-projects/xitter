@@ -19,7 +19,12 @@
 variable "reset_schedule" {
   description = "Cron schedule (UTC) for the nightly data reset."
   type        = string
-  default     = "0 0 * * *"
+
+  # 00:30, not 00:00 (#82): deploys land on merges and the midnight run
+  # raced one's pod churn - the seed saw 503/ECONNREFUSED from rolled
+  # pods. Half past midnight is quiet by construction: the evening's
+  # deploys have long settled and the next merge window is hours away.
+  default = "30 0 * * *"
 }
 
 variable "reset_reseed" {

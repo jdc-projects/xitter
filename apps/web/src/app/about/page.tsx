@@ -74,7 +74,7 @@ export default async function AboutPage({ searchParams }: AboutPageProps) {
             {/* Already on the About page - the read-more link would self-reference. */}
             <ResetNotice compact link={false} />
             <Stack mt="sm" gap={4}>
-              <Text size="sm">When: every night at 00:00 UTC.</Text>
+              <Text size="sm">When: every night at 00:30 UTC.</Text>
               <Text size="sm">
                 What: everything - posts, follows, media, search indices, and demo account sessions.
                 Accounts are restored to their original state, with original passwords.

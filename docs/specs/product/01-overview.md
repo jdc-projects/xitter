@@ -2,7 +2,7 @@
 
 ## What xitter is
 
-xitter is a public, disposable Twitter/X-style microblog: post short text with optional images, follow accounts, read a feed of followed accounts, reply, like, bookmark, repost, search. It looks and feels like a real product, but it is explicitly a demo — every account is a shared demo account and **all data is wiped nightly** (default 00:00 UTC, configurable), optionally reseeded with a deterministic corpus.
+xitter is a public, disposable Twitter/X-style microblog: post short text with optional images, follow accounts, read a feed of followed accounts, reply, like, bookmark, repost, search. It looks and feels like a real product, but it is explicitly a demo — every account is a shared demo account and **all data is wiped nightly** (default 00:30 UTC, configurable), optionally reseeded with a deterministic corpus.
 
 ## Why it exists
 

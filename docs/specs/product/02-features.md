@@ -7,7 +7,7 @@ Acceptance-style catalogue of every user-facing feature area. "Must" = required 
 | #   | Acceptance criteria                                                                                                                                                                 |
 | --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1.1 | Public (unauthenticated). Serves as the site's front door with a short intro managed in the CMS.                                                                                    |
-| 1.2 | Shows an **unmissable reset notice**: all data is wiped nightly (default 00:00 UTC).                                                                                                |
+| 1.2 | Shows an **unmissable reset notice**: all data is wiped nightly (default 00:30 UTC).                                                                                                |
 | 1.3 | Links to the About page (which includes the FAQ section).                                                                                                                           |
 | 1.4 | Provides a clear path to login. No user-generated content is visible.                                                                                                               |
 | 1.5 | Renders the shared **public header** (brand → home, About, Log in); the authenticated shell renders its own nav instead and links back to the About page.                           |
@@ -21,7 +21,7 @@ Acceptance-style catalogue of every user-facing feature area. "Must" = required 
 | --- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | 2.1 | Public. Always referred to as the "About page" in UI copy (it contains an FAQ section but is never called a "FAQ page").                        |
 | 2.2 | Explains what xitter is, why it exists, and how it works (microservices demo).                                                                  |
-| 2.3 | Documents the data reset, including the schedule (nightly, default 00:00 UTC) and that reseed may restore a fixed corpus.                       |
+| 2.3 | Documents the data reset, including the schedule (nightly, default 00:30 UTC) and that reseed may restore a fixed corpus.                       |
 | 2.4 | Lists demo credentials (`demo1`..`demo10` / `DemoPass123!`).                                                                                    |
 | 2.5 | Contains an FAQ section with entries managed in the CMS.                                                                                        |
 | 2.6 | Carries the PII warning: do not enter personal or sensitive data.                                                                               |
@@ -147,7 +147,7 @@ their internal admin endpoints — the panel gate is UX, not the boundary).
 
 | #    | Acceptance criteria                                                                                                                     |
 | ---- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| 12.1 | Nightly wipe at a configurable time (default 00:00 UTC) of all user data.                                                               |
+| 12.1 | Nightly wipe at a configurable time (default 00:30 UTC) of all user data.                                                               |
 | 12.2 | Optional deterministic reseed immediately after the wipe (same corpus every time — see [../data/02-seeding.md](../data/02-seeding.md)). |
 | 12.3 | Reset and reseed status is visible (admin health + user-facing notice).                                                                 |
 | 12.4 | Curated (promoted) content survives resets.                                                                                             |

@@ -40,11 +40,11 @@ Notes:
 
 ### Trigger
 
-| Aspect   | Spec                                                             |
-| -------- | ---------------------------------------------------------------- |
-| Schedule | Configurable; default **00:00 UTC** daily                        |
-| Step 1   | Wipe (below), in dependency order                                |
-| Step 2   | Optional deterministic reseed ([02-seeding.md](./02-seeding.md)) |
+| Aspect   | Spec                                                                         |
+| -------- | ---------------------------------------------------------------------------- |
+| Schedule | Configurable; default **00:30 UTC** daily (offset from deploy churn windows) |
+| Step 1   | Wipe (below), in dependency order                                            |
+| Step 2   | Optional deterministic reseed ([02-seeding.md](./02-seeding.md))             |
 
 ### Scope — every store and what reset does to it
 

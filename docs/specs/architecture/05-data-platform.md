@@ -69,6 +69,6 @@ Valkey holds no durable state; losing it degrades realtime hints and rate-limit 
 Everything is ephemeral by design:
 
 - **No long-term retention** anywhere: Postgres tables, RustFS objects, OpenSearch indices, Kafka topic data, and Valkey keys are all disposable demo state.
-- **Nightly reset** runs at 00:00 UTC (schedule configurable) in both environments: truncate service DBs, delete RustFS bucket contents, delete + recreate Kafka consumer groups and topic data, delete OpenSearch indices, recreate the Keycloak demo realm — then optionally reseed deterministically (faker seed `42`).
+- **Nightly reset** runs at 00:30 UTC (schedule configurable; offset from deploy churn windows, #82) in both environments: truncate service DBs, delete RustFS bucket contents, delete + recreate Kafka consumer groups and topic data, delete OpenSearch indices, recreate the Keycloak demo realm — then optionally reseed deterministically (faker seed `42`).
 - The full runbook (CronJob, ordering, verification) lives in the [operations specs](../operations/); the reset's effect on each store is exactly the table above.
 - Anything that must survive the reset belongs in the repo: seed content, Tofu, code.

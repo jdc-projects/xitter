@@ -6,7 +6,7 @@ Demo data is disposable by design: every environment can be wiped to a known sta
 
 | Aspect          | Behaviour                                                                                                                  |
 | --------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Schedule        | Nightly at 00:00 UTC via Kubernetes CronJob (`xitter-reset`)                                                               |
+| Schedule        | Nightly at 00:30 UTC via Kubernetes CronJob (`xitter-reset`) — offset from deploy churn windows (#82)                      |
 | Configurability | Schedule is a Tofu variable on the reset CronJob resource (per env); reseed on/off is a Tofu variable driving the job args |
 | Manual trigger  | `kubectl -n xitter-<env> create job --from=cronjob/xitter-reset xitter-reset-manual`                                       |
 | Idempotency     | Every step is safe to re-run; a repeated reset converges to the same state                                                 |
@@ -81,6 +81,7 @@ The implementation is `runResetFlow` in `packages/scripts/src/reset-flow.ts`; it
 - Faker seed is fixed at `42` so counts and content are deterministic and assertable; the corpus digest (fingerprint) is recorded with every reseeded run.
 - Curated content that should survive resets is promoted to repo seed files and replayed by reseed — see [03-backups.md](03-backups.md).
 - Derived stores (feed, search) are rebuilt by the workers from the seed's Kafka events, never written directly — see [../data/02-seeding.md](../data/02-seeding.md).
+- Seed service calls retry transient failures (502/503/504, connection refused) up to 3 times on a 2s backoff before failing the run (#82) — a deploy's pod-churn during the seed no longer wastes the night. The retry lives on the seed's call path only; the reset steps' wipes stay one-shot.
 
 ## Verification
 

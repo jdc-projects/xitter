@@ -2,7 +2,7 @@
 
 ## Context
 
-Deployed environments reset nightly (full data reset at 00:00 UTC). Content authored in a deployed environment — CMS edits, seed tweaks made while demoing — is disposable unless it is promoted back to the repo, where the deterministic reseed can reproduce it.
+Deployed environments reset nightly (full data reset at 00:30 UTC). Content authored in a deployed environment — CMS edits, seed tweaks made while demoing — is disposable unless it is promoted back to the repo, where the deterministic reseed can reproduce it.
 
 Only CMS-managed site content participates (landing intro, FAQ entries — spec [product 04](../specs/product/04-content-guidelines.md)); user posts are never promoted. Content is keyed by the unique `slug` field on both collections: promotion upserts by slug, so ids can differ freely between environments.
 
@@ -30,6 +30,6 @@ Only CMS-managed site content participates (landing intro, FAQ entries — spec 
 
 ## Validation steps
 
-1. Reset the environment (trigger the reset job or wait for the nightly reset at 00:00 UTC).
+1. Reset the environment (trigger the reset job or wait for the nightly reset at 00:30 UTC).
 2. Confirm the promoted content is present after reseed — via the site (landing/About) or `GET /cms/api/landing-content`.
 3. If content is missing, re-check that the PR merged to the environment's deploy branch (`dev` for xitter-dev) and that the seed files parse (`npm run content:apply` fails loudly on malformed JSON).

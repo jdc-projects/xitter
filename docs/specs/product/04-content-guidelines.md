@@ -33,7 +33,7 @@ Both warnings must appear on **landing, login, and the About page** — no excep
 | Requirement | Reset warning                                                                   | PII warning                                                                                                |
 | ----------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | Placement   | Above the fold / pre-login                                                      | Adjacent to every input that accepts user text (post composer, bio editor) and on the three required pages |
-| Must state  | All data is wiped nightly, default 00:00 UTC, reseed may restore a fixed corpus | Do not enter personal or sensitive data — anyone can read it and nothing is retained                       |
+| Must state  | All data is wiped nightly, default 00:30 UTC, reseed may restore a fixed corpus | Do not enter personal or sensitive data — anyone can read it and nothing is retained                       |
 | Must be     | Unmissable (landing: prominent banner, not fine print)                          | Unmissable on the composer                                                                                 |
 
 Exact wording may vary by surface, but every instance must cover the points above.
