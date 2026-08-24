@@ -245,9 +245,10 @@ resource "kubernetes_manifest" "prometheus_rule" {
           #    (schedule is 00:30 - reset.tf, #82 - so 02:00 is comfortably
           #    past run end; arming at 01:00 would fire mid-run).
           #  - Failed: a recently-completed run reported failure. This also
-          #    covers #82's "failed twice in 24h" suggestion - any single
-          #    failed run in the window is a stronger condition, so no
-          #    separate two-failure rule is needed.
+          #    covers #82's "failed twice in 24h" suggestion - a
+          #    single-failure rule is more sensitive (fires more often),
+          #    which suits a nightly demo, so no separate two-failure rule
+          #    is needed.
           name = "xitter-reset"
           rules = [
             {

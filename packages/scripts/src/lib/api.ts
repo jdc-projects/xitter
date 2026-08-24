@@ -41,10 +41,17 @@ export interface RetryPolicy {
 /**
  * Seed call policy (#82): a deploy landing near the nightly window rolls
  * service pods, and the seed can catch one mid-roll as a 502/503/504 or an
- * ECONNREFUSED. The corpus is idempotent (keyed upserts through the public
- * APIs), so a short bounded retry rides out the churn instead of wasting
- * the whole run on the first hiccup. Seed context only by design - the
- * reset steps' wipes keep their one-shot semantics.
+ * ECONNREFUSED. A short bounded retry rides out the churn instead of
+ * wasting the whole run on the first hiccup.
+ *
+ * Idempotency is PARTIAL: profiles/follows/interactions are keyed upserts,
+ * but post and media-upload creates are plain POSTs - a retried ambiguous
+ * failure (502/ECONNRESET after the server committed) can double-create.
+ * Accepted risk, loudly detected: a duplicate post fails verifySeeded's
+ * per-user count check (XitterResetJobFailed fires) and the next night's
+ * wipe clears it; an orphaned media slot lingers as pending until wiped.
+ * Seed context only by design - the reset steps' wipes keep their own
+ * (pre-existing, bespoke) retry semantics.
  */
 export const SEED_RETRY: RetryPolicy = { retries: 3, backoffMs: 2_000 };
 
