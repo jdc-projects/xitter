@@ -492,7 +492,14 @@ async function defaultStores(): Promise<StoreControls> {
         // INCR, not SET: an epoch left behind by a crashed run (the flow's
         // flush normally clears it, but belt-and-braces) still yields a
         // value no live worker has acknowledged.
-        return await redis.incr(RESET_EPOCH_KEY);
+        const epoch = await redis.incr(RESET_EPOCH_KEY);
+        // Hard-crash safety: without an expiry, a run killed between here
+        // and the clear leaves every worker paused FOREVER (paused workers
+        // never self-clear). The TTL must comfortably exceed the whole
+        // flow's worst case - the next run's leading flush clears the key
+        // long before it can expire mid-wipe.
+        await redis.expire(RESET_EPOCH_KEY, 7_200);
+        return epoch;
       } finally {
         await redis.quit().catch(() => undefined);
       }
@@ -554,6 +561,7 @@ interface ValkeyLike {
 
 interface EpochValkeyLike extends ValkeyLike {
   incr(key: string): Promise<number>;
+  expire(key: string, seconds: number): Promise<unknown>;
   del(...keys: string[]): Promise<unknown>;
   mget(...keys: string[]): Promise<Array<string | null>>;
 }

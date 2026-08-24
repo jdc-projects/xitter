@@ -32,6 +32,15 @@ export interface EventWorkerOptions extends EventConsumerOptions {
    * when the reset clears it. Takes over start-position semantics - a
    * fresh group starts at the log end (never replays an unknown log), so
    * `fromBeginning` is ignored when this is set.
+   *
+   * ACCEPTED TRADE-OFF: a worker RESTART outside a reset (crash, OOM,
+   * revision roll) with committed offsets mid-stream also seeks its first
+   * assignment to the log end - the gap between the last commit and the
+   * log end is skipped until the nightly reseed. Partitions covered by a
+   * durable `resumeFrom` checkpoint are exempt. This is deliberate: the
+   * nightly reset makes derived stores disposable, and never replaying a
+   * partially-unknown log after a worker was down through a reset is the
+   * safer failure direction.
    */
   resetPause?: { worker: ResetWorkerName; valkeyUrl: string; brokers: string[] };
 }
@@ -144,6 +153,9 @@ async function createWorkerResetGate(
       clientId: `xitter-${resetPause.worker}-reset-seeker`,
       brokers: resetPause.brokers,
     }),
+    // Checkpointed partitions keep their durable resume positions; the
+    // fresh-boot seek exempts them (search-index's resume contract).
+    resumeFrom: options.resumeFrom,
     logger: { info: (m) => logger.info(m), warn: (e, m) => logger.warn(e, m) },
   });
   const pausedGauge = new client.Gauge({

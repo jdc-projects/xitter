@@ -96,20 +96,22 @@ class FakeSeeker implements EndOffsetSeeker {
 interface Harness {
   store: FakeStore;
   consumer: FakeConsumer;
+  seeker: FakeSeeker;
   gate: ReturnType<typeof createResetEpochGate>;
 }
 
 function harness(worker = 'fanout'): Harness {
   const store = new FakeStore();
   const consumer = new FakeConsumer();
+  const seeker = new FakeSeeker();
   const gate = createResetEpochGate({
     worker,
     store,
     consumer,
-    seeker: new FakeSeeker(),
+    seeker,
     logger: { info: () => undefined, warn: () => undefined },
   });
-  return { store, consumer, gate };
+  return { store, consumer, seeker, gate };
 }
 
 describe('createResetEpochGate', () => {
@@ -293,5 +295,51 @@ describe('createResetEpochGate', () => {
     await h.gate.check();
     expect(h.consumer.of('seek')).toContain('xitter.social.v1:4');
     expect(h.consumer.of('resume')).toContain('xitter.social.v1:4');
+  });
+
+  it('a FAILED resume seek stays paused - never resumes into a replay', async () => {
+    const h = harness();
+    h.store.values.set(RESET_EPOCH_KEY, '5');
+    await h.gate.initialize();
+    h.gate.onAssignment(ASSIGNMENT);
+    await h.gate.check(); // pausing
+    await h.gate.check(); // paused (heartbeat written)
+
+    // Epoch clears, but the end-offset resolution fails (broker blip).
+    h.store.values.delete(RESET_EPOCH_KEY);
+    const boom = async (): Promise<void> => {
+      throw new Error('fetchTopicOffsets failed');
+    };
+    const original = h.seeker.seekToEnd;
+    h.seeker.seekToEnd = boom;
+    await h.gate.check();
+    // Still paused, nothing resumed, no replay.
+    expect(h.gate.state()).toBe('paused');
+    expect(h.consumer.of('resume')).toHaveLength(0);
+
+    // Broker recovers: the next tick retries the whole transition.
+    h.seeker.seekToEnd = original;
+    await h.gate.check();
+    expect(h.gate.state()).toBe('running');
+    expect(h.consumer.of('resume')).toHaveLength(3);
+  });
+
+  it('fresh-boot seek exempts partitions covered by a durable resumeFrom checkpoint', async () => {
+    const consumer = new FakeConsumer();
+    const store = new FakeStore();
+    const gate = createResetEpochGate({
+      worker: 'search-index',
+      store,
+      consumer,
+      seeker: new FakeSeeker(),
+      // Checkpoint owns posts:0 - the gate must not touch it.
+      resumeFrom: new Map([['xitter.posts.v1:0', 42]]),
+      logger: { info: () => undefined, warn: () => undefined },
+    });
+    await gate.initialize(); // no epoch -> bootedFresh
+    gate.onAssignment(ASSIGNMENT);
+    // Give the fire-and-forget seek a microtask to land.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(consumer.of('seek')).toEqual(['xitter.posts.v1:1', 'xitter.social.v1:2']);
   });
 });

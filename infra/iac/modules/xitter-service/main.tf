@@ -497,11 +497,10 @@ resource "kubernetes_manifest" "knative" {
     "spec.traffic",
   ]
 
-  # The nightly reset job patches minScale (0 -> 1) out-of-band to quiesce
-  # workers; its merge-patch takes field ownership under the patching
-  # client's manager name, which then blocks tofu's server-side apply
-  # ("field manager conflict" - every deploy after a reset failed). tofu
-  # is the source of truth: take ownership back on conflict.
+  # Tofu is the source of truth for the worker manifests: any out-of-band
+  # patch (kubectl hotfix, historic tooling) loses field ownership to this
+  # apply silently rather than blocking it. The reset job no longer
+  # touches these manifests (ADR 0010 - workers pause on the epoch flag).
   field_manager {
     name            = "tofu"
     force_conflicts = true

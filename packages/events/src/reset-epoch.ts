@@ -66,6 +66,16 @@ export interface ResetEpochGateOptions {
   consumer: PausableConsumer;
   /** Seeks the current assignment to the real log end (see EndOffsetSeeker). */
   seeker: EndOffsetSeeker;
+  /**
+   * Durable resume positions (`topic:partition` -> next offset, e.g.
+   * search-index's checkpoints). The fresh-boot seek NEVER applies to
+   * partitions covered here: the checkpoint is strictly better than the
+   * log end, and the gate's async seek would otherwise clobber the
+   * consumer's synchronous checkpoint seeks (kafkajs SeekOffsets is
+   * last-write-wins). Checkpoints are wiped by the reset, so the
+   * fail-safe still governs exactly when it matters.
+   */
+  resumeFrom?: ReadonlyMap<string, number>;
   /** Consecutive fully-idle polls required before the heartbeat is written. */
   pollIntervalMs?: number;
   heartbeatTtlMs?: number;
@@ -132,6 +142,29 @@ export function createResetEpochGate(options: ResetEpochGateOptions): ResetEpoch
   const seekAssignedToEnd = (): Promise<void> =>
     options.seeker.seekToEnd(options.consumer, assignment);
 
+  /** Partitions owned by a durable resume cursor - exempt from the boot seek. */
+  const resumeCovered = (topic: string, partition: number): boolean =>
+    options.resumeFrom?.has(`${topic}:${partition}`) ?? false;
+
+  /**
+   * Fresh-boot seek, checkpoint-aware: only partitions with NO durable
+   * resume position jump to the log end (never replay an unknown log).
+   * Checkpointed partitions keep the consumer's own resume seeks - the
+   * gate's async end-seek must not overwrite them (last-write-wins in
+   * kafkajs, and the seek COMMITS - a clobbered checkpoint orphans the
+   * gap between it and the log end).
+   */
+  const seekUncoveredToLogEnd = (): Promise<void> => {
+    const uncovered = assignment
+      .map(({ topic, partitions }) => ({
+        topic,
+        partitions: partitions.filter((p) => !resumeCovered(topic, p)),
+      }))
+      .filter(({ partitions }) => partitions.length > 0);
+    if (uncovered.length === 0) return Promise.resolve();
+    return options.seeker.seekToEnd(options.consumer, uncovered);
+  };
+
   const transition = (next: ResetEpochState): void => {
     const previous = state;
     state = next;
@@ -167,16 +200,25 @@ export function createResetEpochGate(options: ResetEpochGateOptions): ResetEpoch
       if (bootedFresh && !soughtFreshBoot) {
         // Fresh boot against an unknown log: never replay it. This covers
         // both a brand-new consumer group and a group whose committed
-        // offsets predate a reset the worker did not observe. Fire-and-
+        // offsets predate a reset the worker did not observe. Checkpointed
+        // partitions are EXEMPT (see seekUncoveredToLogEnd). Fire-and-
         // forget: the default start position is already the log end, this
         // seek only pins it for groups with stale committed offsets.
         soughtFreshBoot = true;
-        seekAssignedToEnd().catch((err) => log.warn({ err }, 'fresh-boot seek to log end failed'));
+        seekUncoveredToLogEnd().catch((err) =>
+          log.warn({ err }, 'fresh-boot seek to log end failed'),
+        );
       }
       if (state !== 'running') {
         // Boot into an in-progress reset, or a rebalance while paused:
         // everything we now hold must be held paused.
         pauseAssigned();
+      } else {
+        // kafkajs pause marks persist per topic-partition across
+        // rebalances; a partition paused during an epoch, moved away, and
+        // re-assigned after the clear would otherwise stay silently
+        // paused. resume() is a no-op for unpaused partitions.
+        resumeAssigned();
       }
     },
 
@@ -230,8 +272,11 @@ export function createResetEpochGate(options: ResetEpochGateOptions): ResetEpoch
   async function checkRunning(): Promise<void> {
     const epoch = await options.store.get(RESET_EPOCH_KEY);
     if (epoch === null || epoch === knownEpoch) return;
-    knownEpoch = epoch;
     pauseAssigned(); // stop fetches immediately; drain what is in flight
+    // Record the epoch only after a successful pause: a throwing pause
+    // (pre-run edge case) must retry the whole transition next tick, not
+    // silently ignore the epoch it failed to react to.
+    knownEpoch = epoch;
     idlePolls = 0;
     transition('pausing');
     log.info(`reset epoch ${epoch} observed - pausing consumption`);
@@ -347,8 +392,12 @@ export function createAdminEndOffsetSeeker(options: {
   const connected = async (): Promise<AdminLike> => {
     if (!admin) {
       const { Kafka } = await import('kafkajs');
-      admin = new Kafka(options).admin();
-      await admin.connect();
+      const client = new Kafka(options).admin();
+      await client.connect();
+      // Only cache after a successful connect: a cached client whose
+      // initial connect failed would never retry, wedging the worker in
+      // `paused` on a dead handle.
+      admin = client;
     }
     return admin;
   };
