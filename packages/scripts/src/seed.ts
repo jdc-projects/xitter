@@ -23,7 +23,7 @@ import {
   type SeedCorpus,
 } from './corpus.js';
 import { demoPng } from './lib/images.js';
-import { requestJson } from './lib/api.js';
+import { requestJson, SEED_RETRY } from './lib/api.js';
 import { PasswordGrant, serviceBase, type ApiTarget } from './lib/targets.js';
 
 const POSTS_PAGE_LIMIT = 50;
@@ -91,8 +91,10 @@ export async function runSeed(options: SeedOptions = {}): Promise<SeedReport> {
     grants: new PasswordGrant({ fetchImpl: doFetch }),
     convergenceTimeoutMs: options.convergenceTimeoutMs ?? 90_000,
     log: options.log ?? console.log,
+    // SEED_RETRY (#82): rides out deploy pod-churn (5xx/ECONNREFUSED);
+    // scoped here so the reset steps' one-shot wipes never silently retry.
     call: (target, init, token) =>
-      requestJson(serviceBase(target), init.path, init, token, doFetch),
+      requestJson(serviceBase(target), init.path, init, token, doFetch, SEED_RETRY),
   };
 
   // --- Probe: fresh / seeded / partial -------------------------------------

@@ -30,7 +30,7 @@ export function ResetNotice({
     >
       <Stack gap="xs">
         <Text size={compact ? 'sm' : 'md'}>
-          Everything you post here is wiped every night at 00:00 UTC. Do not enter personal or
+          Everything you post here is wiped every night at 00:30 UTC. Do not enter personal or
           sensitive information - this is a public demo.
         </Text>
         {link ? (

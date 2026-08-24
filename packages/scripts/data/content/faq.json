@@ -8,7 +8,7 @@
   {
     "slug": "faq-data-disappears",
     "question": "Why does the data disappear?",
-    "answer": "Every environment resets nightly at 00:00 UTC - posts, follows, media, the lot. A deterministic reseed can restore a fixed corpus afterwards. It keeps the demo healthy and guarantees nothing lingers.",
+    "answer": "Every environment resets nightly at 00:30 UTC - posts, follows, media, the lot. A deterministic reseed can restore a fixed corpus afterwards. It keeps the demo healthy and guarantees nothing lingers.",
     "order": 1
   },
   {

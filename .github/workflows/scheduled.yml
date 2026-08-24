@@ -2,7 +2,7 @@ name: Scheduled suites
 
 on:
   schedule:
-    # Nightly 02:30 UTC - after the 00:00 UTC reset/reseed window, so the
+    # Nightly 02:30 UTC - after the 00:30 UTC reset/reseed window, so the
     # suites run against freshly reseeded dev state (verified content, no
     # reset-in-progress races).
     - cron: '30 2 * * *'

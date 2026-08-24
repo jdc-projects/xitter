@@ -64,7 +64,7 @@ Dashboards are `GrafanaDashboard` CRs in the environment root module (the grafan
 | API p95 latency SLO   | >500ms over 10m (API endpoints)                                                       |
 | Page p95 SLO          | >2s over 10m (web page loads, measured at the edge)                                   |
 | Consumer lag          | Group lag above threshold for 10m (per-group tunable; fanout is the SLO-critical one) |
-| Reset job failure     | Nightly CronJob not `Succeeded` by 01:00 UTC                                          |
+| Reset job failure     | Nightly CronJob not `Succeeded` by 02:00 UTC                                          |
 | Cert / ingress errors | Edge 5xx on ingress routes, cert expiry <14d, TLS validation failures                 |
 
 Rules live as one `PrometheusRule` per environment root module. Routing rides the homelab convention: alerts carry a `severity` label (`warning`/`critical`) and the homelab Alertmanager config routes them to its email receiver (`severity = none` goes to null), so no xitter-specific notification resources exist.

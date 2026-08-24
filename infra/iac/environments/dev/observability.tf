@@ -241,8 +241,14 @@ resource "kubernetes_manifest" "prometheus_rule" {
         {
           # Reset job (#13 lands the CronJob; these rules render empty until
           # then and get their job_name regex confirmed in that ticket):
-          #  - Stale: past 01:00 UTC with no completed run in the last 24h.
-          #  - Failed: a recently-completed run reported failure.
+          #  - Stale: past 02:00 UTC with no completed run in the last 24h
+          #    (schedule is 00:30 - reset.tf, #82 - so 02:00 is comfortably
+          #    past run end; arming at 01:00 would fire mid-run).
+          #  - Failed: a recently-completed run reported failure. This also
+          #    covers #82's "failed twice in 24h" suggestion - a
+          #    single-failure rule is more sensitive (fires more often),
+          #    which suits a nightly demo, so no separate two-failure rule
+          #    is needed.
           name = "xitter-reset"
           rules = [
             {
@@ -252,12 +258,12 @@ resource "kubernetes_manifest" "prometheus_rule" {
               # stale alert's RHS goes empty. Absent() keeps the stale
               # condition armed in that case too.
               alert  = "XitterResetJobStale"
-              expr   = "(hour() >= 1) and on () ((time() - max(kube_job_status_completion_time{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"}) > 86400) or absent(kube_job_status_completion_time{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"}))"
+              expr   = "(hour() >= 2) and on () ((time() - max(kube_job_status_completion_time{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"}) > 86400) or absent(kube_job_status_completion_time{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"}))"
               for    = "15m"
               labels = { severity = "warning" }
               annotations = {
                 summary     = "Nightly reset job has not completed"
-                description = "It is past 01:00 UTC and no xitter reset job has completed successfully in the last 24h."
+                description = "It is past 02:00 UTC and no xitter reset job has completed successfully in the last 24h."
               }
             },
             {
