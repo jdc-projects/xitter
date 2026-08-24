@@ -43,9 +43,9 @@ provider "helm" {
 
 provider "random" {}
 
-# Sentry (T11 pattern, prod projects): per-app projects + DSNs, self-hosted at
-# sentry.jd-chapman.dev. Prod keeps its own team + projects (xitter-prod-*)
-# so dev and prod error streams stay isolated.
+# Sentry (T11 pattern, single shared project - see observability.tf): the
+# dev-owned `xitter` project + shared DSN, self-hosted at
+# sentry.jd-chapman.dev. Prod separates its events via SENTRY_ENVIRONMENT.
 provider "sentry" {
   token    = data.terraform_remote_state.sentry.outputs.sentry_auth_token
   base_url = "https://${data.terraform_remote_state.sentry.outputs.sentry_domain}/api/"

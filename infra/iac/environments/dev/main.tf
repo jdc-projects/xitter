@@ -95,7 +95,8 @@ data "terraform_remote_state" "keycloak" {
 }
 
 # Sentry org-scoped auth token + web domain (homelab iac/sentry outputs).
-# Consumed by the jianyuan/sentry provider when T11 creates per-app projects.
+# Consumed by the jianyuan/sentry provider: dev's state owns the single
+# xitter project (T11), prod reads it via data sources.
 data "terraform_remote_state" "sentry" {
   backend = "kubernetes"
 
