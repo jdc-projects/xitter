@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@xitter/api-contracts": "*",
+    "@xitter/config": "*",
     "@xitter/observability": "*",
     "kafkajs": "^2",
     "prom-client": "^15",

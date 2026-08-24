@@ -17,18 +17,19 @@ kubectl -n xitter-dev create job --from=cronjob/xitter-reset xitter-reset-manual
 kubectl -n xitter-dev logs -f job/xitter-reset-manual
 ```
 
-The same flow, against a local stack, is `npm run reset:live [-- --seed]`. Run the stack as two trees (`npm run start:apps` + `npm run start:workers`): the flow stops the worker processes for the wipe (Kafka rejects group operations while members are attached) and restarts them via `npm run start:workers`; killing workers inside a combined `npm run start` makes that turbo exit and take the services with it. The services must stay up throughout (the flow calls their `/internal/reseed`).
+The same flow, against a local stack, is `npm run reset:live [-- --seed]`. Nothing is stopped: the flow writes the reset epoch to the local Valkey and the running workers pause themselves (same code path as in-cluster). The services must stay up throughout (the flow calls their `/internal/reseed`).
 
 ## Partial reset recovery
 
 The flow logs one line per step in order (`reset: <step> ok (<ms>ms)`); the last `ok` line is the last completed step.
 
 1. Read the job logs; identify the failed step (also recorded in the status record's `steps` array).
-2. Nothing needs undoing — every step is idempotent and the run replays from the top.
+2. Nothing needs undoing — every step is idempotent and the run replays from the top. A failed run has already cleared the reset epoch (the flow's `finally` deletes it, plus the next run's leading Valkey flush), so workers keep consuming — safe: the only wipe risk would have been between `wait-workers-paused` and the failure, and every store step is idempotent anyway.
 3. Re-trigger the job (manual trigger above). If the same step fails twice, treat it as a real incident:
    - `truncate-service-dbs` → check the named service's health/logs (it answered non-2xx).
    - `wipe-media-bucket` / `delete-search-index` → check RustFS / OpenSearch pods.
-   - `reset-consumer-groups` → check the Kafka cluster. The step drains group membership (Kafka evicts stopped consumers after their session timeout, ~45s), then deletes + recreates every topic and deletes the drained groups — a "still has members" failure means a worker did not actually stop (quiesce failed); find it before re-running.
+   - `wait-workers-paused` → a worker never acknowledged the epoch. Check that worker's logs (did it see the epoch? is its Valkey connection healthy — `VALKEY_URL`, the valkey netpols) and that it is actually running; the flow aborts before any store is wiped, so nothing needs recovery beyond re-running.
+   - `set-reset-epoch` / `clear-reset-epoch` → check Valkey itself.
    - `recreate-keycloak-realm` → check the homelab Keycloak; the realm returns on the next run with the same client secrets.
 4. After recovery, verify (spec ops 02 table): demo1 login, feed/search state, bucket object count.
 

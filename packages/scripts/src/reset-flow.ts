@@ -3,29 +3,37 @@
  * The nightly reset - the shared implementation behind BOTH the Kubernetes
  * CronJob (reset-job.ts) and local verification runs
  * (`npm run reset:live [--seed]`). Ordering is AUTHORITATIVE from
- * docs/specs/operations/02-data-reset.md:
+ * docs/specs/operations/02-data-reset.md (ADR 0010):
  *
- *   quiesce workers -> recreate Keycloak demo realm -> truncate service DBs
- *   (+ CMS content) -> wipe RustFS bucket -> delete OpenSearch index ->
- *   reset Kafka consumer groups -> flush Valkey -> resume workers ->
- *   optional deterministic seed -> verify + report.
+ *   flush Valkey -> set the reset epoch -> wait for every worker to pause
+ *   itself (heartbeat ack) -> recreate Keycloak demo realm -> truncate
+ *   service DBs (+ CMS content) -> wipe RustFS bucket -> delete OpenSearch
+ *   index -> clear the reset epoch (workers seek to the log end and
+ *   resume) -> optional deterministic seed -> verify + report.
+ *
+ * Workers pause THEMSELVES on the epoch flag (packages/events
+ * createResetEpochGate): nothing is scaled, no Kubernetes API is touched,
+ * and the retained Kafka log is skipped by the workers' own
+ * seek-to-the-end on resume instead of a consumer-group reset.
  *
  * Every step is idempotent: a retry (k8s backoffLimit) replays safely from
- * the top. A failed step halts the run after attempting to resume workers,
- * leaving the system in a safe (empty or partially wiped) state.
+ * the top (the flush clears any stale epoch first, workers just keep
+ * consuming until the new epoch appears). A failed step halts the run
+ * after clearing the epoch, leaving the system in a safe (empty or
+ * partially wiped) state with workers consuming again.
  */
 import client from 'prom-client';
 import {
   envInt,
   envString,
   loadRepoEnv,
-  localPort,
   localUrl,
+  RESET_EPOCH_KEY,
   RESET_STATUS_KEY,
+  RESET_WORKERS,
+  resetPausedKey,
 } from '@xitter/config';
 import { createJwtCache, realmUrls } from '@xitter/auth';
-import { ALL_TOPICS, CONSUMER_GROUPS } from '@xitter/events';
-import { Kafka } from 'kafkajs';
 import { requestJson } from './lib/api.js';
 import { keycloakBase, serviceBase, type ApiTarget } from './lib/targets.js';
 
@@ -34,12 +42,6 @@ const SERVICES: ApiTarget[] = ['social', 'posts', 'media', 'feed', 'search'];
 // ---------------------------------------------------------------------------
 // Contracts
 // ---------------------------------------------------------------------------
-
-/** How the flow stops/restarts event consumption before/after the wipe. */
-export interface WorkerControl {
-  quiesce(): Promise<void>;
-  resume(): Promise<void>;
-}
 
 export interface RealmControl {
   reset(): Promise<void>;
@@ -55,9 +57,21 @@ export interface StoreControls {
   wipeBucket(): Promise<number>;
   /** Delete the OpenSearch posts index (recreated on the next event/boot). */
   deleteSearchIndex(): Promise<void>;
-  /** Reset the worker consumer groups to the new epoch (log end). */
-  resetConsumerGroups(): Promise<string[]>;
+  /**
+   * Wipe ephemeral Valkey state. Runs FIRST: it clears any stale epoch/
+   * heartbeat state while workers are still live (harmless - they just
+   * keep consuming until the new epoch appears).
+   */
   flushValkey(): Promise<void>;
+  /** Bump and publish the reset epoch; workers pause when they see it. */
+  setResetEpoch(): Promise<number>;
+  /** One poll: RESET_WORKERS whose heartbeat already matches the epoch. */
+  workersPausedFor(epoch: number): Promise<string[]>;
+  /**
+   * Clear the epoch and every worker heartbeat - the workers' signal to
+   * seek to the log end and resume consuming post-reset events.
+   */
+  clearResetEpoch(): Promise<void>;
   /** Persist the run record for the admin health tile (after the flush). */
   writeStatus(status: ResetStatus): Promise<void>;
   /** Zero-state check used when the reseed flag is off (spec: verification). */
@@ -89,7 +103,6 @@ export interface ResetReport extends ResetStatus {
 export interface ResetFlowOptions {
   seed?: boolean;
   log?: (message: string) => void;
-  workers?: WorkerControl;
   realm?: RealmControl;
   stores?: StoreControls;
   /** Overridable seed step (tests inject; default = packages/scripts seed). */
@@ -98,6 +111,10 @@ export interface ResetFlowOptions {
   pushgatewayUrl?: string;
   jobName?: string;
   now?: () => number;
+  /** Bounded wait for every worker's pause heartbeat (XITTER_RESET_PAUSE_TIMEOUT_MS). */
+  pauseTimeoutMs?: number;
+  /** Heartbeat poll cadence during that wait. */
+  pausePollIntervalMs?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -108,12 +125,11 @@ export async function runResetFlow(options: ResetFlowOptions = {}): Promise<Rese
   loadRepoEnv();
   const log = options.log ?? console.log;
   const now = options.now ?? Date.now;
-  const workers = options.workers ?? localWorkerControl(log);
   const realm = options.realm ?? defaultRealmControl();
   const stores = options.stores ?? (await defaultStores());
   const startedAt = new Date(now()).toISOString();
   const steps: ResetStepReport[] = [];
-  let quiesced = false;
+  let epochActive = false;
   let fingerprint: string | null = null;
 
   const step = async <T>(name: string, action: () => Promise<T>): Promise<T> => {
@@ -140,9 +156,32 @@ export async function runResetFlow(options: ResetFlowOptions = {}): Promise<Rese
 
   let success = false;
   try {
-    await step('quiesce-workers', async () => {
-      await workers.quiesce();
-      quiesced = true;
+    // FIRST, before anything epoch-shaped: the flush clears stale epoch/
+    // heartbeat state from any earlier (failed) run while workers are
+    // still live and consuming - harmless by design.
+    await step('flush-valkey', () => stores.flushValkey());
+
+    const epoch = await step('set-reset-epoch', () => stores.setResetEpoch());
+    steps.at(-1)!.detail = `epoch ${epoch}`;
+    epochActive = true;
+
+    await step('wait-workers-paused', async () => {
+      const waiting = [...RESET_WORKERS];
+      await waitFor(
+        async () => {
+          const paused = new Set(await stores.workersPausedFor(epoch));
+          return waiting.filter((worker) => !paused.has(worker));
+        },
+        (pending) => {
+          log(
+            `reset: ${waiting.length - pending.length}/${waiting.length} worker(s) paused, waiting on ${pending.join(', ')}`,
+          );
+        },
+        options.pauseTimeoutMs ?? envInt('XITTER_RESET_PAUSE_TIMEOUT_MS', 300_000),
+        options.pausePollIntervalMs ?? 2_000,
+        `workers did not acknowledge reset epoch ${epoch} within the pause timeout - aborting before any store is wiped`,
+      );
+      steps.at(-1)!.detail = [...RESET_WORKERS].join(', ');
     });
 
     const users = await step('recreate-keycloak-realm', async () => {
@@ -170,16 +209,9 @@ export async function runResetFlow(options: ResetFlowOptions = {}): Promise<Rese
 
     await step('delete-search-index', () => stores.deleteSearchIndex());
 
-    await step('reset-consumer-groups', async () => {
-      const groups = await stores.resetConsumerGroups();
-      steps.at(-1)!.detail = groups.length ? groups.join(', ') : 'none active';
-    });
-
-    await step('flush-valkey', () => stores.flushValkey());
-
-    await step('resume-workers', async () => {
-      await workers.resume();
-      quiesced = false;
+    await step('clear-reset-epoch', async () => {
+      await stores.clearResetEpoch();
+      epochActive = false;
     });
 
     if (options.seed) {
@@ -210,10 +242,12 @@ export async function runResetFlow(options: ResetFlowOptions = {}): Promise<Rese
     );
     return await finish();
   } finally {
-    // Never leave workers scaled to zero on a failed run - the alert fires
-    // either way, but the platform should keep consuming what exists.
-    if (quiesced) {
-      await workers.resume().catch((err) => log(`reset: resume failed: ${String(err)}`));
+    // Never leave workers paused on a failed run: an uncleared epoch is an
+    // event blackhole (workers idle until the key goes away).
+    if (epochActive) {
+      await stores
+        .clearResetEpoch()
+        .catch((err) => log(`reset: clearing reset epoch failed: ${String(err)}`));
     }
   }
 
@@ -443,60 +477,58 @@ async function defaultStores(): Promise<StoreControls> {
       }
     },
 
-    async resetConsumerGroups() {
-      const { kafkaBrokers } = await import('@xitter/config');
-      const kafka = new Kafka({
-        clientId: `xitter-reset-${process.env.XITTER_ENV ?? 'local'}`,
-        brokers: (process.env.KAFKA_BROKERS ?? kafkaBrokers()).split(','),
-      });
-      const admin = kafka.admin();
-      await admin.connect();
+    async flushValkey() {
+      const redis = await connectResetValkey();
       try {
-        const wanted = Object.values(CONSUMER_GROUPS);
-        const existing = new Set((await admin.listGroups()).groups.map((g) => g.groupId));
-        const targets = wanted.filter((g) => existing.has(g));
-        if (targets.length > 0) {
-          await waitForGroupsEmpty(admin, targets, logDrainDeadline());
-        }
-
-        // New epoch = new topic instances. kafkajs admin.resetOffsets does
-        // NOT durably commit against Kafka 4 (verified: fetchOffsets reads
-        // -1 right after a "successful" reset), so pinning group offsets at
-        // the log end is not achievable that way. Deleting and recreating
-        // the topics empties the log instead - the drained groups are then
-        // deleted too, and the resumed workers (fromBeginning) replay only
-        // post-reset events on the fresh log. Verified by offsets at 0.
-        const existingTopics = (await admin.listTopics()).filter((t) =>
-          (ALL_TOPICS as readonly string[]).includes(t),
-        );
-        if (existingTopics.length > 0) {
-          await admin.deleteTopics({ topics: existingTopics });
-        }
-        const { ensureTopics } = await import('./topics.js');
-        await ensureTopics(kafka);
-        const stillExisting = new Set((await admin.listGroups()).groups.map((g) => g.groupId));
-        const groups = targets.filter((g) => stillExisting.has(g));
-        if (groups.length > 0) {
-          await admin.deleteGroups(groups);
-        }
-        return [...existingTopics.map((t) => `topic:${t}`), ...groups.map((g) => `group:${g}`)];
+        await redis.flushall();
       } finally {
-        await admin.disconnect().catch(() => undefined);
+        await redis.quit().catch(() => undefined);
       }
     },
 
-    async flushValkey() {
-      const { valkeyUrl } = await import('@xitter/config');
-      const { connectValkey } = await import('@xitter/observability');
-      const redis = await connectValkey<ValkeyLike>({ url: process.env.VALKEY_URL ?? valkeyUrl() });
-      await redis.flushall();
-      await redis.quit();
+    async setResetEpoch() {
+      const redis = await connectResetValkey<EpochValkeyLike>();
+      try {
+        // INCR, not SET: an epoch left behind by a crashed run (the flow's
+        // flush normally clears it, but belt-and-braces) still yields a
+        // value no live worker has acknowledged.
+        const epoch = await redis.incr(RESET_EPOCH_KEY);
+        // Hard-crash safety: without an expiry, a run killed between here
+        // and the clear leaves every worker paused FOREVER (paused workers
+        // never self-clear). The TTL must comfortably exceed the whole
+        // flow's worst case - the next run's leading flush clears the key
+        // long before it can expire mid-wipe.
+        await redis.expire(RESET_EPOCH_KEY, 7_200);
+        return epoch;
+      } finally {
+        await redis.quit().catch(() => undefined);
+      }
+    },
+
+    async workersPausedFor(epoch) {
+      const redis = await connectResetValkey<EpochValkeyLike>();
+      try {
+        const heartbeats = await redis.mget(
+          ...RESET_WORKERS.map((worker) => resetPausedKey(worker)),
+        );
+        const epochValue = String(epoch);
+        return RESET_WORKERS.filter((_, index) => heartbeats[index] === epochValue);
+      } finally {
+        await redis.quit().catch(() => undefined);
+      }
+    },
+
+    async clearResetEpoch() {
+      const redis = await connectResetValkey<EpochValkeyLike>();
+      try {
+        await redis.del(RESET_EPOCH_KEY, ...RESET_WORKERS.map((worker) => resetPausedKey(worker)));
+      } finally {
+        await redis.quit().catch(() => undefined);
+      }
     },
 
     async writeStatus(status) {
-      const { valkeyUrl } = await import('@xitter/config');
-      const { connectValkey } = await import('@xitter/observability');
-      const redis = await connectValkey<ValkeyLike>({ url: process.env.VALKEY_URL ?? valkeyUrl() });
+      const redis = await connectResetValkey();
       try {
         await redis.set(RESET_STATUS_KEY, JSON.stringify(status));
       } finally {
@@ -526,128 +558,47 @@ interface ValkeyLike {
   set(key: string, value: string): Promise<unknown>;
   quit(): Promise<unknown>;
 }
-interface AdminLike {
-  describeGroups(
-    groupIds: string[],
-  ): Promise<{ groups: Array<{ state: string; members: unknown[] }> }>;
+
+interface EpochValkeyLike extends ValkeyLike {
+  incr(key: string): Promise<number>;
+  expire(key: string, seconds: number): Promise<unknown>;
+  del(...keys: string[]): Promise<unknown>;
+  mget(...keys: string[]): Promise<Array<string | null>>;
 }
 
-function logDrainDeadline(): number {
-  return Date.now() + envInt('XITTER_RESET_GROUP_DRAIN_MS', 90_000);
+/** Connect to the reset's Valkey, typed as the caller's structural slice. */
+async function connectResetValkey<T extends ValkeyLike = ValkeyLike>(): Promise<T> {
+  const { valkeyUrl } = await import('@xitter/config');
+  const { connectValkey } = await import('@xitter/observability');
+  return connectValkey<T>({ url: process.env.VALKEY_URL ?? valkeyUrl() });
 }
 
 /**
- * Kafka keeps a killed consumer's group membership until its session times
- * out (~30s with kafkajs defaults) - in-cluster scale-to-zero AND the local
- * SIGTERM quiesce both land here. AlterConsumerGroupOffsets is rejected
- * while any member is attached, so wait the sessions out (bounded).
+ * Bounded poll loop for the worker-pause barrier. The reset must never
+ * wipe a store while a worker is still consuming: on timeout this throws
+ * BEFORE any store is touched, failing the run (alert) instead of risking
+ * half-processed events.
  */
-async function waitForGroupsEmpty(
-  admin: AdminLike,
-  groups: string[],
-  deadline: number,
+async function waitFor(
+  probe: () => Promise<string[]>,
+  onProgress: (pending: string[]) => void,
+  timeoutMs: number,
+  intervalMs: number,
+  timeoutMessage: string,
 ): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let lastPending = '';
   for (;;) {
-    const described = (await admin.describeGroups(groups)).groups;
-    const attached = described
-      .map((group, index) => ({ name: groups[index], group }))
-      .filter(({ group }) => group.members.length > 0 && group.state !== 'Dead');
-    if (attached.length === 0) return;
-    if (Date.now() > deadline) {
-      throw new Error(
-        `consumer groups still have members after drain wait: ${attached.map((a) => a.name).join(', ')}`,
-      );
+    const pending = await probe();
+    const signature = pending.join(',');
+    if (pending.length === 0) return;
+    if (signature !== lastPending) {
+      lastPending = signature;
+      onProgress(pending);
     }
-    await new Promise((resolve) => setTimeout(resolve, 2_000));
+    if (Date.now() > deadline) throw new Error(timeoutMessage);
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
-}
-
-/**
- * Local worker control: the reset CLI runs where the workers are plain node
- * processes. A live reset (`reset:live`) needs them STOPPED while stores are
- * wiped (Kafka rejects group resets while members are attached), so quiesce
- * SIGTERMs the worker processes found on their metrics ports and resume
- * respawns them via `npm run start:workers`. Run the workers in their own
- * tree (`start:workers`) - killing workers inside a combined `npm run start`
- * makes that turbo exit and take the services with it. The volume twin
- * (`npm run reset`) never gets here: the whole stack is down already.
- */
-export function localWorkerControl(log: (message: string) => void): WorkerControl {
-  const ports = [
-    localPort('fanoutMetrics'),
-    localPort('mediaProcessMetrics'),
-    localPort('searchIndexMetrics'),
-  ];
-  let stoppedAny = false;
-  return {
-    async quiesce() {
-      const pidLists = await Promise.all(ports.map((port) => pidsOnPort(port)));
-      const pids = [...new Set(pidLists.flat())];
-      if (pids.length === 0) {
-        log('reset: no local workers on their metrics ports (already quiesced)');
-        return;
-      }
-      log(`reset: stopping ${pids.length} local worker process(es) for the wipe`);
-      for (const pid of pids) {
-        try {
-          process.kill(pid, 'SIGTERM');
-        } catch {
-          /* raced exit - fine */
-        }
-      }
-      const deadline = Date.now() + 15_000;
-      const busy = async () =>
-        (await Promise.all(ports.map((port) => portAnswers(port)))).filter(Boolean).length;
-      while ((await busy()) > 0 && Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 250));
-      }
-      stoppedAny = true;
-    },
-    async resume() {
-      // Ensure workers are running at the END of the flow, whether we
-      // stopped them, they were already down, or a previous failed run
-      // never restored them - the seed step needs them consuming.
-      const alive = (await Promise.all(ports.map((port) => portAnswers(port)))).filter(Boolean);
-      if (alive.length === ports.length && !stoppedAny) return;
-      if (stoppedAny) {
-        log('reset: restarting local workers (npm run start:workers)');
-      } else {
-        log(`reset: ${ports.length - alive.length} worker(s) not running - starting them`);
-      }
-      stoppedAny = false;
-      const { spawn } = await import('node:child_process');
-      const { findRepoRoot } = await import('@xitter/config');
-      const child = spawn('npm', ['run', 'start:workers'], {
-        cwd: findRepoRoot(),
-        detached: true,
-        stdio: 'ignore',
-      });
-      child.unref();
-    },
-  };
-}
-
-async function pidsOnPort(port: number): Promise<number[]> {
-  const { execFile } = await import('node:child_process');
-  const { promisify } = await import('node:util');
-  const runLsof = promisify(execFile) as (
-    file: string,
-    args: string[],
-  ) => Promise<{ stdout: string }>;
-  try {
-    const { stdout } = await runLsof('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t']);
-    return stdout
-      .split('\n')
-      .map((line) => Number.parseInt(line, 10))
-      .filter((pid) => Number.isFinite(pid));
-  } catch {
-    return []; // lsof exits 1 when nothing listens
-  }
-}
-
-async function portAnswers(port: number): Promise<boolean> {
-  const { checkPort } = await import('./lib/port.js');
-  return checkPort(port);
 }
 
 // --- CLI: npm run reset:live [-- --seed] -------------------------------------

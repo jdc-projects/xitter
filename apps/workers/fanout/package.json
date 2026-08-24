@@ -17,7 +17,6 @@
     "@xitter/api-client": "*",
     "@xitter/api-contracts": "*",
     "@xitter/observability": "*",
-    "@xitter/auth": "*",
     "@xitter/config": "*",
     "@xitter/eslint-config": "*",
     "@xitter/events": "*",

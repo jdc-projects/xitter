@@ -39,17 +39,6 @@ function harness(overrides: Partial<ResetJobDeps> = {}): Harness {
       calls.push('ensure-users');
       return [{ username: 'demo1' }, { username: 'demo2' }];
     },
-    async workerControl() {
-      calls.push('worker-control');
-      return {
-        async quiesce() {
-          calls.push('quiesce');
-        },
-        async resume() {
-          calls.push('resume');
-        },
-      };
-    },
     async resetFlow(options) {
       calls.push('reset-flow');
       seedFlagSeen.push(options.seed);
@@ -92,28 +81,27 @@ describe('runResetJob', () => {
     expect(summary).toContain('demo1..demo2');
   });
 
-  it('reset mode requires worker control and forwards the seed flag to the flow', async () => {
+  it('reset mode runs the flow directly (workers pause themselves) and forwards the seed flag', async () => {
     const h = harness();
     const summary = await runResetJob({ mode: 'reset', seed: true }, h);
 
-    expect(h.calls).toEqual(['worker-control', 'reset-flow']);
+    expect(h.calls).toEqual(['reset-flow']);
     expect(h.seedFlagSeen).toEqual([true]);
     expect(summary).toMatch(/^reset-job: success in \d+ms/);
   });
 
-  it('reset mode without a cluster (worker control unavailable) fails loudly', async () => {
+  it('propagates reset-flow failures as the job failure', async () => {
     const h = harness({
-      async workerControl() {
-        throw new Error('no KUBERNETES_SERVICE_HOST');
+      async resetFlow() {
+        throw new Error('workers did not acknowledge reset epoch');
       },
     });
     await expect(runResetJob({ mode: 'reset', seed: false }, h)).rejects.toThrow(
-      /KUBERNETES_SERVICE_HOST/,
+      /acknowledge reset epoch/,
     );
-    expect(h.calls).toEqual([]);
   });
 
-  it('ensure-users mode never touches the worker control even if reset deps are wired', async () => {
+  it('ensure-users mode never touches the reset flow even if reset deps are wired', async () => {
     const h = harness({
       async ensureUsers() {
         h.calls.push('ensure-users');

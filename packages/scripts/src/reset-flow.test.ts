@@ -5,43 +5,33 @@ import {
   type RealmControl,
   type ResetStatus,
   type StoreControls,
-  type WorkerControl,
 } from './reset-flow.js';
 
 /**
- * Flow contracts (spec ops 02): exact step ordering, idempotent retry shape,
- * workers always resumed, status record after the flush, and failure that
- * halts at the broken step. Store/worker mechanics are faked; the default
- * implementations are exercised by the live e2e cycle.
+ * Flow contracts (spec ops 02, ADR 0010): exact step ordering (flush ->
+ * epoch -> worker-pause barrier -> data steps -> clear epoch -> seed),
+ * the epoch always cleared on failure, status record after the run, and
+ * failure that halts at the broken step. Store mechanics are faked; the
+ * default implementations are exercised by the live e2e cycle.
  */
 
 interface Harness {
-  workers: WorkerControl & { events: string[] };
   realm: RealmControl & { events: string[] };
   stores: StoreControls & { events: string[] };
   statusWrites: ResetStatus[];
 }
 
 function harness(overrides: Partial<Harness> = {}): Harness {
-  const events = { workers: [] as string[], realm: [] as string[], stores: [] as string[] };
+  const events = { realm: [] as string[], stores: [] as string[] };
   const statusWrites: ResetStatus[] = [];
   const h: Harness = {
-    workers: {
-      events: events.workers,
-      async quiesce() {
-        events.workers.push('quiesce');
-      },
-      async resume() {
-        events.workers.push('resume');
-      },
-    },
     realm: {
       events: events.realm,
       async reset() {
-        events.realm.push('reset');
+        events.realm.push('realm-reset');
       },
       async init() {
-        events.realm.push('init');
+        events.realm.push('realm-init');
         return [{ username: 'demo1', userId: 'u1' }];
       },
     },
@@ -62,12 +52,19 @@ function harness(overrides: Partial<Harness> = {}): Harness {
       async deleteSearchIndex() {
         events.stores.push('index');
       },
-      async resetConsumerGroups() {
-        events.stores.push('groups');
-        return ['xitter-fanout-worker'];
-      },
       async flushValkey() {
         events.stores.push('flush');
+      },
+      async setResetEpoch() {
+        events.stores.push('set-epoch');
+        return 41;
+      },
+      async workersPausedFor() {
+        events.stores.push('workers-paused');
+        return ['fanout', 'media-process', 'search-index'];
+      },
+      async clearResetEpoch() {
+        events.stores.push('clear-epoch');
       },
       async writeStatus(status) {
         events.stores.push('status');
@@ -102,19 +99,27 @@ function proxyStores(stores: StoreControls, order: string[]): StoreControls {
       order.push('index');
       return stores.deleteSearchIndex();
     },
-    async resetConsumerGroups() {
-      order.push('groups');
-      return stores.resetConsumerGroups();
-    },
     async flushValkey() {
       order.push('flush');
       return stores.flushValkey();
+    },
+    async setResetEpoch() {
+      order.push('set-epoch');
+      return stores.setResetEpoch();
+    },
+    async workersPausedFor(epoch) {
+      order.push('workers-paused');
+      return stores.workersPausedFor(epoch);
+    },
+    async clearResetEpoch() {
+      order.push('clear-epoch');
+      return stores.clearResetEpoch();
     },
     async writeStatus(status) {
       order.push('status');
       return stores.writeStatus(status);
     },
-    async countFeedItems(username: string) {
+    async countFeedItems(username) {
       order.push('verify-empty');
       return stores.countFeedItems(username);
     },
@@ -122,77 +127,64 @@ function proxyStores(stores: StoreControls, order: string[]): StoreControls {
 }
 
 describe('runResetFlow', () => {
-  it('runs the authoritative step order (spec ops 02)', async () => {
+  it('runs the authoritative step order (spec ops 02, ADR 0010)', async () => {
     const h = harness();
     const order: string[] = [];
     const report = await runResetFlow({
-      workers: {
-        quiesce: async () => {
-          order.push('quiesce');
-        },
-        resume: async () => {
-          order.push('resume');
-        },
-      },
       realm: {
         reset: async () => {
           order.push('realm-reset');
+          await h.realm.reset();
         },
         init: async () => {
           order.push('realm-init');
-          return [{ username: 'demo1', userId: 'u1' }];
+          return h.realm.init();
         },
       },
       stores: proxyStores(h.stores, order),
       log: () => undefined,
     });
 
+    // The flush precedes everything (clears stale epoch state while the
+    // workers are still live); the epoch barrier precedes every wipe; the
+    // epoch clears before the seed so workers can consume seed events.
     expect(order).toEqual([
-      'quiesce',
+      'flush',
+      'set-epoch',
+      'workers-paused',
       'realm-reset',
       'realm-init',
       'reseed',
       'cms',
       'bucket',
       'index',
-      'groups',
-      'flush',
-      'resume',
+      'clear-epoch',
       'verify-empty',
       'status',
     ]);
-    expect(h.workers.events).toEqual([]); // not used in this run
     expect(report.success).toBe(true);
     expect(report.reseeded).toBe(false);
     expect(report.fingerprint).toBeNull();
     expect(report.steps.map((s) => s.name)).toEqual([
-      'quiesce-workers',
+      'flush-valkey',
+      'set-reset-epoch',
+      'wait-workers-paused',
       'recreate-keycloak-realm',
       'truncate-service-dbs',
       'reset-cms-content',
       'wipe-media-bucket',
       'delete-search-index',
-      'reset-consumer-groups',
-      'flush-valkey',
-      'resume-workers',
+      'clear-reset-epoch',
       'verify-empty',
     ]);
   });
 
-  it('seeds after workers resume when the flag is set', async () => {
+  it('seeds after the epoch clears when the flag is set', async () => {
     const h = harness();
     const order: string[] = [];
     const seeded: string[] = [];
     const report = await runResetFlow({
       seed: true,
-      workers: {
-        quiesce: async () => {
-          order.push('quiesce');
-        },
-        resume: async () => {
-          order.push('resume');
-        },
-      },
       realm: h.realm,
       stores: proxyStores(h.stores, order),
       log: () => undefined,
@@ -204,16 +196,122 @@ describe('runResetFlow', () => {
     });
 
     expect(seeded).toEqual(['demo1']);
-    expect(order.indexOf('seed')).toBeGreaterThan(order.indexOf('resume'));
+    expect(order.indexOf('seed')).toBeGreaterThan(order.indexOf('clear-epoch'));
     expect(order.indexOf('seed')).toBeLessThan(order.indexOf('status'));
     expect(report.reseeded).toBe(true);
     expect(report.fingerprint).toBe('abc123');
   });
 
-  it('writes the status record to the shared Valkey key after the flush', async () => {
+  it('waits for the epoch to be acknowledged by every worker before wiping', async () => {
+    const h = harness();
+    let polls = 0;
+    const seen: number[] = [];
+    const report = await runResetFlow({
+      realm: h.realm,
+      stores: proxyStores(
+        {
+          ...h.stores,
+          async workersPausedFor(epoch) {
+            seen.push(epoch);
+            polls += 1;
+            return polls < 3 ? ['fanout'] : ['fanout', 'media-process', 'search-index'];
+          },
+        },
+        [],
+      ),
+      log: () => undefined,
+      pausePollIntervalMs: 1,
+    });
+
+    expect(polls).toBe(3);
+    expect(seen).toEqual([41, 41, 41]); // the barrier polls with the epoch it set
+    expect(report.steps.find((s) => s.name === 'wait-workers-paused')?.ok).toBe(true);
+    expect(h.stores.events).toContain('reseed'); // wipes ran after the barrier
+  });
+
+  it('aborts before any store is wiped when workers never acknowledge the epoch', async () => {
+    const h = harness();
+    await expect(
+      runResetFlow({
+        realm: h.realm,
+        stores: proxyStores(
+          {
+            ...h.stores,
+            async workersPausedFor() {
+              return [];
+            },
+          },
+          [],
+        ),
+        log: () => undefined,
+        pauseTimeoutMs: 10,
+        pausePollIntervalMs: 5,
+      }),
+    ).rejects.toBeInstanceOf(ResetFlowError);
+
+    // No wipe step ran - and the finally cleared the epoch (unpause).
+    expect(h.stores.events).not.toContain('reseed');
+    expect(h.stores.events).not.toContain('realm-reset');
+    expect(h.stores.events).toContain('clear-epoch');
+    expect(h.statusWrites[0]!.success).toBe(false);
+    expect(h.statusWrites[0]!.steps.find((s) => s.name === 'wait-workers-paused')?.ok).toBe(false);
+  });
+
+  it('halts at a failed step, clears the epoch, and reports failure', async () => {
+    const h = harness();
+    const failing: StoreControls = {
+      ...h.stores,
+      async wipeBucket() {
+        await h.stores.wipeBucket();
+        throw new Error('rustfs exploded');
+      },
+    };
+
+    await expect(
+      runResetFlow({ realm: h.realm, stores: failing, log: () => undefined }),
+    ).rejects.toBeInstanceOf(ResetFlowError);
+
+    // Epoch was set before the failure and MUST be cleared after it (an
+    // uncleared epoch is an event blackhole), and no step after the
+    // failure ran (realm steps land in the realm's own log).
+    expect(h.stores.events).toEqual([
+      'flush',
+      'set-epoch',
+      'workers-paused',
+      'reseed',
+      'cms',
+      'bucket',
+      'status',
+      'clear-epoch',
+    ]);
+    expect(h.realm.events).toEqual(['realm-reset', 'realm-init']);
+    expect(h.statusWrites[0]!.success).toBe(false);
+    expect(h.statusWrites[0]!.steps.find((s) => s.name === 'wipe-media-bucket')?.ok).toBe(false);
+  });
+
+  it('still clears the epoch when clearing it is what failed mid-flow', async () => {
+    const h = harness();
+    let clearCalls = 0;
+    const failing: StoreControls = {
+      ...h.stores,
+      async clearResetEpoch() {
+        clearCalls += 1;
+        if (clearCalls === 1) throw new Error('valkey down');
+        await h.stores.clearResetEpoch();
+      },
+    };
+
+    await expect(
+      runResetFlow({ realm: h.realm, stores: failing, log: () => undefined }),
+    ).rejects.toBeInstanceOf(ResetFlowError);
+    // The finally retried the clear (second call succeeded) even though the
+    // step itself failed.
+    expect(clearCalls).toBe(2);
+  });
+
+  it('writes the status record to the shared Valkey key after the run', async () => {
     const h = harness();
     await runResetFlow({
-      workers: h.workers,
       realm: h.realm,
       stores: h.stores,
       log: () => undefined,
@@ -226,67 +324,17 @@ describe('runResetFlow', () => {
     expect(status.durationMs).toBeGreaterThanOrEqual(0);
     // Every step lands in the record the health tile renders.
     expect(status.steps.map((s) => s.name)).toContain('flush-valkey');
-  });
-
-  it('halts at a failed step, resumes workers, and reports failure', async () => {
-    const h = harness();
-    const failing: StoreControls = {
-      ...h.stores,
-      async wipeBucket() {
-        await h.stores.wipeBucket();
-        throw new Error('rustfs exploded');
-      },
-    };
-
-    await expect(
-      runResetFlow({
-        workers: h.workers,
-        realm: h.realm,
-        stores: failing,
-        log: () => undefined,
-      }),
-    ).rejects.toBeInstanceOf(ResetFlowError);
-
-    // Workers quiesced before the failure MUST be resumed (finally), and no
-    // step after the failure ran.
-    expect(h.workers.events).toEqual(['quiesce', 'resume']);
-    expect(h.stores.events).not.toContain('groups');
-    expect(h.stores.events).not.toContain('flush');
-    expect(h.statusWrites[0]!.success).toBe(false);
-    expect(h.statusWrites[0]!.steps.find((s) => s.name === 'wipe-media-bucket')?.ok).toBe(false);
-  });
-
-  it('resumes workers even when resuming them is the failing step', async () => {
-    const h = harness();
-    const failing: WorkerControl = {
-      async quiesce() {
-        await h.workers.quiesce();
-      },
-      resume: () => Promise.reject(new Error('k8s api down')),
-    };
-    await expect(
-      runResetFlow({
-        workers: failing,
-        realm: h.realm,
-        stores: h.stores,
-        log: () => undefined,
-      }),
-    ).rejects.toBeInstanceOf(ResetFlowError);
+    expect(status.steps.map((s) => s.name)).toContain('wait-workers-paused');
   });
 
   it('emits the xitter_reset_* metric contract', async () => {
     const h = harness();
-    const report = await runResetFlow({
-      workers: h.workers,
-      realm: h.realm,
-      stores: h.stores,
-      log: () => undefined,
-    });
+    const report = await runResetFlow({ realm: h.realm, stores: h.stores, log: () => undefined });
     const names = report.metrics.map((line) => line.split(/[ {]/)[0]);
     expect(names).toContain('xitter_reset_success');
     expect(names).toContain('xitter_reset_duration_seconds');
     expect(names).toContain('xitter_reset_reseeded');
     expect(names).toContain('xitter_reset_step_duration_seconds');
-    expect(report.metrics.join('\n')).toContain('step="flush-valkey"');
+    expect(report.metrics.join('\n')).toContain('step="wait-workers-paused"');
   });
 });

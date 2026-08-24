@@ -109,3 +109,22 @@ export class ServiceClient {
 export function internalTokenUrl(keycloakBaseUrl: string, realm: string): string {
   return realmUrls(keycloakBaseUrl, realm).token;
 }
+
+/**
+ * The internal client-credentials triple for a worker's API clients, from
+ * the standard worker env (KEYCLOAK_BASE_URL / DEMO_REALM /
+ * KEYCLOAK_CLIENT_ID / KEYCLOAK_CLIENT_SECRET) - one shape shared by every
+ * worker main instead of a per-worker rewrite of the same object.
+ */
+export function internalCredentials(env: {
+  KEYCLOAK_BASE_URL: string;
+  DEMO_REALM: string;
+  KEYCLOAK_CLIENT_ID: string;
+  KEYCLOAK_CLIENT_SECRET: string;
+}): { tokenUrl: string; clientId: string; clientSecret: string } {
+  return {
+    tokenUrl: internalTokenUrl(env.KEYCLOAK_BASE_URL, env.DEMO_REALM),
+    clientId: env.KEYCLOAK_CLIENT_ID,
+    clientSecret: env.KEYCLOAK_CLIENT_SECRET,
+  };
+}

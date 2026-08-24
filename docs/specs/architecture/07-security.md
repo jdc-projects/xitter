@@ -44,7 +44,7 @@ Default deny; every allow is explicit (NetworkPolicies deployed with each env vi
 
 - One ServiceAccount per app/service/worker; no shared identities.
 - No cluster-wide roles; workload SAs get no Kubernetes API permissions beyond none-by-default.
-- Knative worker revisions run under their worker's SA; reset CronJob has a dedicated SA scoped to its job.
+- Knative worker revisions run under their worker's SA; the reset CronJob talks only to Valkey/Kafka/stores over the network and mounts no service-account token.
 
 ## Secrets management
 

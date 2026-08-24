@@ -1,11 +1,17 @@
 import client from 'prom-client';
-import { Kafka, type EachMessagePayload } from 'kafkajs';
+import { Kafka, type Consumer, type EachMessagePayload } from 'kafkajs';
 import { createLogger, createMetricsServer, initSentry, initTracing } from '@xitter/observability';
+import type { ResetWorkerName } from '@xitter/config';
 import {
   createEventConsumer,
   type EventConsumerOptions,
   type EventConsumerRunOptions,
 } from './consumer.js';
+import {
+  createAdminEndOffsetSeeker,
+  createResetEpochGate,
+  connectValkeyEpochStore,
+} from './reset-epoch.js';
 import { TOPICS } from './topics.js';
 
 export interface EventWorkerOptions extends EventConsumerOptions {
@@ -20,6 +26,23 @@ export interface EventWorkerOptions extends EventConsumerOptions {
    * on partition assignment - see EventConsumerRunOptions.resumeFrom.
    */
   resumeFrom?: ReadonlyMap<string, number>;
+  /**
+   * Reset-epoch pause gate (ADR 0010): while the nightly reset holds an
+   * epoch in Valkey the worker pauses itself, then resumes at the log end
+   * when the reset clears it. Takes over start-position semantics - a
+   * fresh group starts at the log end (never replays an unknown log), so
+   * `fromBeginning` is ignored when this is set.
+   *
+   * ACCEPTED TRADE-OFF: a worker RESTART outside a reset (crash, OOM,
+   * revision roll) with committed offsets mid-stream also seeks its first
+   * assignment to the log end - the gap between the last commit and the
+   * log end is skipped until the nightly reseed. Partitions covered by a
+   * durable `resumeFrom` checkpoint are exempt. This is deliberate: the
+   * nightly reset makes derived stores disposable, and never replaying a
+   * partially-unknown log after a worker was down through a reset is the
+   * safer failure direction.
+   */
+  resetPause?: { worker: ResetWorkerName; valkeyUrl: string; brokers: string[] };
 }
 
 /**
@@ -33,11 +56,20 @@ export async function runEventWorker(options: EventWorkerOptions): Promise<void>
   const tracing = initTracing(options.service);
   initSentry(options.service);
 
-  const consumer = createEventConsumer(options);
+  const consumer = createEventConsumer(
+    options.resetPause ? { ...options, fromBeginning: false } : options,
+  );
   const metrics = createMetricsServer(options.metricsPort);
   await metrics.started;
   logger.info(`metrics on :${options.metricsPort}`);
 
+  // Reset-epoch gate (ADR 0010): the worker pauses itself while the nightly
+  // reset holds an epoch flag in Valkey. Boot fail-fast: without Valkey the
+  // pause protocol cannot work, so a worker that cannot reach it must not
+  // start consuming.
+  const gate = options.resetPause
+    ? await createWorkerResetGate(options, consumer.consumer, metrics.registry, logger)
+    : null;
   // Rebalance events for the Kafka dashboard (spec 06, #12): GROUP_JOIN fires
   // on the initial assignment and on every subsequent group rebalance.
   const rebalances = new client.Counter({
@@ -46,8 +78,9 @@ export async function runEventWorker(options: EventWorkerOptions): Promise<void>
     labelNames: ['group'],
     registers: [metrics.registry],
   });
-  consumer.consumer.on(consumer.consumer.events.GROUP_JOIN, () => {
+  consumer.consumer.on(consumer.consumer.events.GROUP_JOIN, (event) => {
     rebalances.inc({ group: options.groupId });
+    gate?.onAssignment(event.payload.memberAssignment);
   });
 
   const lag = startConsumerLagTracker(options, metrics.registry, logger);
@@ -55,9 +88,17 @@ export async function runEventWorker(options: EventWorkerOptions): Promise<void>
   const runOptions: EventConsumerRunOptions = options.resumeFrom
     ? { resumeFrom: options.resumeFrom }
     : {};
+  // The gate timer starts before run() resolves (it never does while
+  // healthy); first tick lands after the group has joined in practice, and
+  // a too-early tick just retries on the next one.
+  gate?.start();
   await consumer
     .run(async (envelope, raw) => {
-      await options.handle(envelope, raw);
+      if (!gate) {
+        await options.handle(envelope, raw);
+        return;
+      }
+      await gate.track(() => options.handle(envelope, raw));
     }, runOptions)
     .catch((err: unknown) => {
       // Consumer crash (handler failure exhausted all retries): without this
@@ -70,6 +111,7 @@ export async function runEventWorker(options: EventWorkerOptions): Promise<void>
   process.once('SIGTERM', () => {
     void (async () => {
       await lag.stop();
+      await gate?.stop();
       await consumer.disconnect();
       await metrics.stop();
       await tracing.shutdown();
@@ -82,6 +124,57 @@ export async function runEventWorker(options: EventWorkerOptions): Promise<void>
 
 export interface ConsumerLagTracker {
   stop(): Promise<void>;
+}
+
+/**
+ * Build the worker's reset-epoch gate (ADR 0010) and register its pause
+ * metrics. Returns an INITIALISED gate (already past the boot epoch read).
+ */
+async function createWorkerResetGate(
+  options: EventWorkerOptions,
+  consumer: Consumer,
+  registry: client.Registry,
+  logger: { info(message: string): unknown; warn(entry: object, message: string): unknown },
+): Promise<ReturnType<typeof createResetEpochGate>> {
+  const resetPause = options.resetPause!;
+  const gate = createResetEpochGate({
+    worker: resetPause.worker,
+    store: await connectValkeyEpochStore(resetPause.valkeyUrl),
+    consumer: {
+      pause: (topicPartitions) => consumer.pause(topicPartitions),
+      resume: (topicPartitions) => consumer.resume(topicPartitions),
+      seek: (seek) => consumer.seek(seek),
+    },
+    // Never seek the special '-1' (LATEST) offset: kafkajs 2.2.4's
+    // autoCommit persists the raw value to the broker and poisons the
+    // group (silent stop, reproduced live). The admin seeker resolves
+    // concrete end offsets instead.
+    seeker: createAdminEndOffsetSeeker({
+      clientId: `xitter-${resetPause.worker}-reset-seeker`,
+      brokers: resetPause.brokers,
+    }),
+    // Checkpointed partitions keep their durable resume positions; the
+    // fresh-boot seek exempts them (search-index's resume contract).
+    resumeFrom: options.resumeFrom,
+    logger: { info: (m) => logger.info(m), warn: (e, m) => logger.warn(e, m) },
+  });
+  const pausedGauge = new client.Gauge({
+    name: 'xitter_reset_epoch_paused',
+    help: '1 while this worker is paused for an in-progress reset epoch',
+    registers: [registry],
+  });
+  const pauses = new client.Counter({
+    name: 'xitter_reset_epoch_pauses_total',
+    help: 'Reset epochs this worker paused for since boot',
+    registers: [registry],
+  });
+  const startPaused = await gate.initialize();
+  pausedGauge.set(startPaused ? 1 : 0);
+  gate.onTransition((next, previous) => {
+    pausedGauge.set(next === 'running' ? 0 : 1);
+    if (previous === 'running' && next !== 'running') pauses.inc();
+  });
+  return gate;
 }
 
 /**
