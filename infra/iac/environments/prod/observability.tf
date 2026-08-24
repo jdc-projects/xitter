@@ -1,10 +1,13 @@
 # Observability for prod (T11 pattern, see dev/observability.tf): everything
 # provisioned, nothing hand-clicked.
 #
-#   - Sentry: prod keeps its OWN team + projects (xitter-prod-*) - Sentry
-#     slugs are org-global, so reusing dev's `xitter-*` slugs would collide.
-#     Dev and prod error streams stay isolated; SENTRY_RELEASE = the semver
-#     image tag makes each event traceable to a release.
+#   - Sentry: the single org-wide `xitter` project is OWNED by the dev
+#     environment's state (prod only reads it below) - one tofu resource
+#     cannot live in two states, and dev applies on every merge to dev,
+#     so the project always exists before a prod apply cuts from it. Prod
+#     events separate from dev's via SENTRY_ENVIRONMENT=prod; per-workload
+#     filtering rides the `service` tag. SENTRY_RELEASE = the semver image
+#     tag makes each event traceable to a release.
 #   - Scrape config: ServiceMonitor for the API services (/metrics on the app
 #     port), PodMonitors for the Knative workers (their dedicated metrics
 #     ports - workers expose no k8s Service, so a ServiceMonitor cannot
@@ -20,54 +23,26 @@
 #     gets its reset wiring.
 
 locals {
-  # One Sentry project per app/service/worker. Platforms follow the SDK
-  # actually reporting: web/cms are Next.js (@sentry/nextjs), admin is a
-  # static browser bundle, services/workers run @sentry/node.
-  sentry_apps = {
-    web           = { platform = "javascript-nextjs" }
-    cms           = { platform = "javascript-nextjs" }
-    admin         = { platform = "javascript" }
-    social        = { platform = "node" }
-    posts         = { platform = "node" }
-    media         = { platform = "node" }
-    feed          = { platform = "node" }
-    search        = { platform = "node" }
-    fanout        = { platform = "node" }
-    media-process = { platform = "node" }
-    search-index  = { platform = "node" }
-  }
-
   # Workloads whose runtime consumes the DSN secret. admin ships a static
   # bundle served by its image - wiring needs build-time injection plumbing
-  # in the image pipeline, so the project + secret exist but stay unwired
-  # until then (tracked in the T11 PR notes).
+  # in the image pipeline, so it stays unwired until then (tracked in the
+  # T11 PR notes).
   sentry_wired = ["web", "cms", "social", "posts", "media", "feed", "search", "fanout", "media-process", "search-index"]
 }
 
 # ---------------------------------------------------------------------------
-# Sentry: team, projects, DSN keys, per-workload K8s secrets
+# Sentry: single shared project (owned by dev's state), DSN key, K8s secret
 # ---------------------------------------------------------------------------
-resource "sentry_team" "xitter" {
+# Read-only lookups of the project dev's state creates - see the header
+# comment for why prod must not declare it as a resource.
+data "sentry_project" "xitter" {
   organization = "sentry"
-  name         = "xitter prod"
-  slug         = "xitter-prod"
+  slug         = "xitter"
 }
 
-resource "sentry_project" "app" {
-  for_each = local.sentry_apps
-
-  organization = sentry_team.xitter.organization
-  teams        = [sentry_team.xitter.slug]
-  name         = "xitter-prod-${each.key}"
-  slug         = "xitter-prod-${each.key}"
-  platform     = each.value.platform
-}
-
-data "sentry_key" "app" {
-  for_each = local.sentry_apps
-
-  organization = sentry_project.app[each.key].organization
-  project      = sentry_project.app[each.key].id
+data "sentry_key" "xitter" {
+  organization = "sentry"
+  project      = data.sentry_project.xitter.slug
   first        = true
 }
 
@@ -86,20 +61,19 @@ resource "kubernetes_secret" "cap" {
   }
 }
 
-# One secret per workload, keyed exactly as the env var the SDK reads
-# (SENTRY_DSN). Deployments inject it per-key via secret_env; Knative workers
-# envFrom whole secrets, so the key naming is the contract either way.
+# One shared DSN secret (same value as dev's - same project), keyed exactly
+# as the env var the SDK reads (SENTRY_DSN). Deployments inject it per-key
+# via secret_env; Knative workers envFrom whole secrets, so the key naming
+# is the contract either way.
 resource "kubernetes_secret" "sentry_dsn" {
-  for_each = local.sentry_apps
-
   metadata {
-    name      = "sentry-${each.key}"
+    name      = "xitter-sentry"
     namespace = local.ns
     labels    = module.namespace.labels
   }
 
   data = {
-    SENTRY_DSN = data.sentry_key.app[each.key].dsn["public"]
+    SENTRY_DSN = data.sentry_key.xitter.dsn["public"]
   }
 }
 

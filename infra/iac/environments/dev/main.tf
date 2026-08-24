@@ -49,10 +49,20 @@ provider "random" {}
 
 # Sentry (T11): per-app projects + DSNs, self-hosted at sentry.jd-chapman.dev.
 # The org-scoped token comes from the homelab's sentry remote state - the same
-# source iac/grafana uses for its own project.
+# source iac/grafana uses for its own project. In-cluster override: the deploy
+# runs tofu on the LAN self-hosted runner; pointed at the public URL its
+# requests present the home IP at Cloudflare and die whenever CrowdSec has it
+# banned. TF_VAR_provider_sentry_base_url (deploy workflow) routes the
+# provider at the in-cluster service instead - no edge in the path.
 provider "sentry" {
   token    = data.terraform_remote_state.sentry.outputs.sentry_auth_token
-  base_url = "https://${data.terraform_remote_state.sentry.outputs.sentry_domain}/api/"
+  base_url = coalesce(var.provider_sentry_base_url, "https://${data.terraform_remote_state.sentry.outputs.sentry_domain}/api/")
+}
+
+variable "provider_sentry_base_url" {
+  description = "Override the Sentry provider base URL (e.g. in-cluster http://sentry-web.sentry:9000/api/ when running on the LAN runner)."
+  type        = string
+  default     = ""
 }
 
 # The ingress module provisions Keycloak clients where auth_mode is set, so a
@@ -62,7 +72,16 @@ provider "keycloak" {
   client_id = "admin-cli"
   username  = data.terraform_remote_state.keycloak.outputs.keycloak_admin_username
   password  = data.terraform_remote_state.keycloak.outputs.keycloak_admin_password
-  url       = data.terraform_remote_state.keycloak.outputs.keycloak_url
+  url       = coalesce(var.provider_keycloak_url, data.terraform_remote_state.keycloak.outputs.keycloak_url)
+}
+
+# In-cluster override for LAN runs (see provider_sentry_base_url note) -
+# keeps the deploy's admin-cli grants off the public edge and out of
+# CrowdSec's ban radius.
+variable "provider_keycloak_url" {
+  description = "Override the Keycloak provider URL (e.g. in-cluster http://keycloak-keycloakx-http.keycloak:80 when running on the LAN runner)."
+  type        = string
+  default     = ""
 }
 
 data "terraform_remote_state" "keycloak" {
@@ -76,7 +95,8 @@ data "terraform_remote_state" "keycloak" {
 }
 
 # Sentry org-scoped auth token + web domain (homelab iac/sentry outputs).
-# Consumed by the jianyuan/sentry provider when T11 creates per-app projects.
+# Consumed by the jianyuan/sentry provider: dev's state owns the single
+# xitter project (T11), prod reads it via data sources.
 data "terraform_remote_state" "sentry" {
   backend = "kubernetes"
 

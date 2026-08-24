@@ -33,6 +33,9 @@ if (config?.dsn) {
     dsn: config.dsn,
     release: config.release,
     environment: config.environment ?? 'local',
+    // Same `service` tag initSentry stamps server-side: one project for
+    // everything, filtered per workload through this tag (spec 06).
+    initialScope: { tags: { service: 'web' } },
     // Demo system: no user PII should ever exist, keep sendDefaultPii off regardless.
     sendDefaultPii: false,
   });

@@ -53,7 +53,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const sentryConfig = JSON.stringify({
     dsn: process.env.SENTRY_DSN,
     release: process.env.SENTRY_RELEASE,
-    environment: process.env.XITTER_ENV ?? 'local',
+    environment: process.env.SENTRY_ENVIRONMENT ?? process.env.XITTER_ENV ?? 'local',
   });
 
   return (

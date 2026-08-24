@@ -119,6 +119,11 @@ jobs:
         env:
           TF_VAR_cap_site_key: ${{ secrets.XITTER_CAP_SITE_KEY }}
           TF_VAR_cap_secret_key: ${{ secrets.XITTER_CAP_SECRET_KEY }}
+          # Providers route in-cluster: the runner is on the LAN, and the
+          # public idp/sentry URLs present the home IP at Cloudflare - any
+          # CrowdSec ban on it kills deploys. Internal services have no edge.
+          TF_VAR_provider_keycloak_url: http://keycloak-keycloakx-http.keycloak:80
+          TF_VAR_provider_sentry_base_url: http://sentry-web.sentry:9000/api/
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
           echo "Applying with image tag sha-${SHORT_SHA}"
