@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { RESET_EPOCH_KEY, resetPausedKey } from '@xitter/config';
 import {
   createResetEpochGate,
+  type EndOffsetSeeker,
   type PausableConsumer,
   type ResetEpochStore,
 } from './reset-epoch.js';
@@ -61,8 +62,12 @@ class FakeConsumer implements PausableConsumer {
     }
   }
 
-  seekToEnd(topic: string, partition: number): void {
-    this.calls.push({ kind: 'seek', topic, partition });
+  seek(topicPartitionOffset: { topic: string; partition: number; offset: string }): void {
+    this.calls.push({
+      kind: 'seek',
+      topic: topicPartitionOffset.topic,
+      partition: topicPartitionOffset.partition,
+    });
   }
 
   of(kind: RecordedCall['kind']): string[] {
@@ -71,6 +76,22 @@ class FakeConsumer implements PausableConsumer {
 }
 
 const ASSIGNMENT = { 'xitter.posts.v1': [0, 1], 'xitter.social.v1': [2] };
+
+/** Deterministic admin-backed seeker stand-in: end offset = partition + 100. */
+class FakeSeeker implements EndOffsetSeeker {
+  async seekToEnd(
+    consumer: PausableConsumer,
+    assignment: Array<{ topic: string; partitions: readonly number[] }>,
+  ): Promise<void> {
+    for (const { topic, partitions } of assignment) {
+      for (const partition of partitions) {
+        consumer.seek({ topic, partition, offset: String(partition + 100) });
+      }
+    }
+  }
+
+  async close(): Promise<void> {}
+}
 
 interface Harness {
   store: FakeStore;
@@ -85,6 +106,7 @@ function harness(worker = 'fanout'): Harness {
     worker,
     store,
     consumer,
+    seeker: new FakeSeeker(),
     logger: { info: () => undefined, warn: () => undefined },
   });
   return { store, consumer, gate };
@@ -225,6 +247,7 @@ describe('createResetEpochGate', () => {
       worker: 'media-process',
       store,
       consumer,
+      seeker: new FakeSeeker(),
       logger: { info: () => undefined, warn: () => undefined },
       now: () => clock,
     });

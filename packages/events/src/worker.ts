@@ -7,7 +7,11 @@ import {
   type EventConsumerOptions,
   type EventConsumerRunOptions,
 } from './consumer.js';
-import { createResetEpochGate, connectValkeyEpochStore } from './reset-epoch.js';
+import {
+  createAdminEndOffsetSeeker,
+  createResetEpochGate,
+  connectValkeyEpochStore,
+} from './reset-epoch.js';
 import { TOPICS } from './topics.js';
 
 export interface EventWorkerOptions extends EventConsumerOptions {
@@ -29,7 +33,7 @@ export interface EventWorkerOptions extends EventConsumerOptions {
    * fresh group starts at the log end (never replays an unknown log), so
    * `fromBeginning` is ignored when this is set.
    */
-  resetPause?: { worker: ResetWorkerName; valkeyUrl: string };
+  resetPause?: { worker: ResetWorkerName; valkeyUrl: string; brokers: string[] };
 }
 
 /**
@@ -57,7 +61,6 @@ export async function runEventWorker(options: EventWorkerOptions): Promise<void>
   const gate = options.resetPause
     ? await createWorkerResetGate(options, consumer.consumer, metrics.registry, logger)
     : null;
-
   // Rebalance events for the Kafka dashboard (spec 06, #12): GROUP_JOIN fires
   // on the initial assignment and on every subsequent group rebalance.
   const rebalances = new client.Counter({
@@ -128,13 +131,19 @@ async function createWorkerResetGate(
   const gate = createResetEpochGate({
     worker: resetPause.worker,
     store: await connectValkeyEpochStore(resetPause.valkeyUrl),
-    // kafkajs has no seekToEnd: offset -1 (LATEST) is the same seek,
-    // resolved against broker metadata at fetch time.
     consumer: {
       pause: (topicPartitions) => consumer.pause(topicPartitions),
       resume: (topicPartitions) => consumer.resume(topicPartitions),
-      seekToEnd: (topic, partition) => consumer.seek({ topic, partition, offset: '-1' }),
+      seek: (seek) => consumer.seek(seek),
     },
+    // Never seek the special '-1' (LATEST) offset: kafkajs 2.2.4's
+    // autoCommit persists the raw value to the broker and poisons the
+    // group (silent stop, reproduced live). The admin seeker resolves
+    // concrete end offsets instead.
+    seeker: createAdminEndOffsetSeeker({
+      clientId: `xitter-${resetPause.worker}-reset-seeker`,
+      brokers: resetPause.brokers,
+    }),
     logger: { info: (m) => logger.info(m), warn: (e, m) => logger.warn(e, m) },
   });
   const pausedGauge = new client.Gauge({

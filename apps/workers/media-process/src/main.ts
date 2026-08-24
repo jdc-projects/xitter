@@ -65,7 +65,11 @@ await runEventWorker({
   // end, and pre-reset media events are skipped when a reset clears (the
   // worker seeks to the end before resuming). Variants are only generated
   // for objects of the current epoch.
-  resetPause: { worker: 'media-process', valkeyUrl: env.VALKEY_URL },
+  resetPause: {
+    worker: 'media-process',
+    valkeyUrl: env.VALKEY_URL,
+    brokers: env.KAFKA_BROKERS.split(','),
+  },
   metricsPort: env.METRICS_PORT,
   handle: (envelope) => handleEvent(envelope, { media, storage }),
 });

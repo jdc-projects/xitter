@@ -97,7 +97,11 @@ await runEventWorker({
   metricsPort: env.METRICS_PORT,
   // Restart resume comes from the search checkpoints (seeks below); a
   // fresh group starts at the log end (reset epoch gate, ADR 0010).
-  resetPause: { worker: 'search-index', valkeyUrl: env.VALKEY_URL },
+  resetPause: {
+    worker: 'search-index',
+    valkeyUrl: env.VALKEY_URL,
+    brokers: env.KAFKA_BROKERS.split(','),
+  },
   resumeFrom,
   handle: (envelope, raw) =>
     handleEvent(envelope, raw, {

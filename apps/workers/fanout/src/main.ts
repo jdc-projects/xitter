@@ -55,7 +55,11 @@ await runEventWorker({
   // end (never replaying an unknown log), and a reset clears the backlog
   // by having this worker seek to the end before resuming. The materialised
   // feed therefore only ever holds events from the current epoch.
-  resetPause: { worker: 'fanout', valkeyUrl: env.VALKEY_URL },
+  resetPause: {
+    worker: 'fanout',
+    valkeyUrl: env.VALKEY_URL,
+    brokers: env.KAFKA_BROKERS.split(','),
+  },
   metricsPort: env.METRICS_PORT,
   handle: (envelope) => handleEvent(envelope, { social, posts, feed }),
 });

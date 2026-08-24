@@ -34,7 +34,27 @@ export interface ResetEpochStore {
 export interface PausableConsumer {
   pause(topicPartitions: Array<{ topic: string; partitions?: number[] }>): void;
   resume(topicPartitions: Array<{ topic: string; partitions?: number[] }>): void;
-  seekToEnd(topic: string, partition: number): void;
+  seek(topicPartitionOffset: { topic: string; partition: number; offset: string }): void;
+}
+
+export interface TopicPartitionsLike {
+  topic: string;
+  partitions: readonly number[];
+}
+
+/**
+ * Resolves the REAL log-end offsets and seeks the consumer there.
+ *
+ * kafkajs has no seekToEnd, and the tempting shortcut - seek to the special
+ * offset '-1' (LATEST) - POISONS the group under kafkajs 2.2.4's autoCommit:
+ * offsetManager.seek COMMITS the raw '-1' to the broker, every later fetch
+ * resolves against the invalid committed offset, and the consumer silently
+ * stops consuming forever (reproduced against the live broker). Concrete
+ * end offsets commit cleanly and survive worker restarts.
+ */
+export interface EndOffsetSeeker {
+  seekToEnd(consumer: PausableConsumer, assignment: TopicPartitionsLike[]): Promise<void>;
+  close(): Promise<void>;
 }
 
 export type ResetEpochState = 'running' | 'pausing' | 'paused';
@@ -44,6 +64,8 @@ export interface ResetEpochGateOptions {
   worker: string;
   store: ResetEpochStore;
   consumer: PausableConsumer;
+  /** Seeks the current assignment to the real log end (see EndOffsetSeeker). */
+  seeker: EndOffsetSeeker;
   /** Consecutive fully-idle polls required before the heartbeat is written. */
   pollIntervalMs?: number;
   heartbeatTtlMs?: number;
@@ -107,13 +129,8 @@ export function createResetEpochGate(options: ResetEpochGateOptions): ResetEpoch
     if (assignment.length > 0) options.consumer.resume(assignedTopicPartitions());
   };
 
-  const seekAssignedToEnd = (): void => {
-    // kafkajs resolves the special offset -1 (LATEST) against broker
-    // metadata at fetch time - the documented seek-to-end.
-    for (const { topic, partitions } of assignment) {
-      for (const partition of partitions) options.consumer.seekToEnd(topic, partition);
-    }
-  };
+  const seekAssignedToEnd = (): Promise<void> =>
+    options.seeker.seekToEnd(options.consumer, assignment);
 
   const transition = (next: ResetEpochState): void => {
     const previous = state;
@@ -150,9 +167,11 @@ export function createResetEpochGate(options: ResetEpochGateOptions): ResetEpoch
       if (bootedFresh && !soughtFreshBoot) {
         // Fresh boot against an unknown log: never replay it. This covers
         // both a brand-new consumer group and a group whose committed
-        // offsets predate a reset the worker did not observe.
+        // offsets predate a reset the worker did not observe. Fire-and-
+        // forget: the default start position is already the log end, this
+        // seek only pins it for groups with stale committed offsets.
         soughtFreshBoot = true;
-        seekAssignedToEnd();
+        seekAssignedToEnd().catch((err) => log.warn({ err }, 'fresh-boot seek to log end failed'));
       }
       if (state !== 'running') {
         // Boot into an in-progress reset, or a rebalance while paused:
@@ -194,10 +213,16 @@ export function createResetEpochGate(options: ResetEpochGateOptions): ResetEpoch
     async stop() {
       if (timer) clearInterval(timer);
       timer = null;
-      await options.store.quit().then(
-        () => undefined,
-        () => undefined,
-      );
+      await Promise.all([
+        options.store.quit().then(
+          () => undefined,
+          () => undefined,
+        ),
+        options.seeker.close().then(
+          () => undefined,
+          () => undefined,
+        ),
+      ]);
     },
   };
 
@@ -253,7 +278,9 @@ export function createResetEpochGate(options: ResetEpochGateOptions): ResetEpoch
     const epoch = await options.store.get(RESET_EPOCH_KEY);
     if (epoch === null) {
       // Reset complete: skip the pre-reset backlog entirely and resume.
-      seekAssignedToEnd();
+      // A failed seek must NOT resume into a replay - stay paused and
+      // retry the whole transition on the next poll.
+      await seekAssignedToEnd();
       resumeAssigned();
       knownEpoch = null;
       idlePolls = 0;
@@ -303,4 +330,54 @@ export async function connectValkeyEpochStore(url: string): Promise<ResetEpochSt
       );
     },
   };
+}
+
+/**
+ * Kafka-admin-backed EndOffsetSeeker: resolves each assigned topic's real
+ * end offsets (fetchTopicOffsets) and seeks every assigned partition to
+ * its concrete value. One lazily-connected admin client per worker,
+ * reused across resets and closed with the gate.
+ */
+export function createAdminEndOffsetSeeker(options: {
+  clientId: string;
+  brokers: string[];
+}): EndOffsetSeeker {
+  let admin: AdminLike | null = null;
+
+  const connected = async (): Promise<AdminLike> => {
+    if (!admin) {
+      const { Kafka } = await import('kafkajs');
+      admin = new Kafka(options).admin();
+      await admin.connect();
+    }
+    return admin;
+  };
+
+  return {
+    async seekToEnd(consumer, assignment) {
+      if (assignment.length === 0) return;
+      const client = await connected();
+      const byTopic = new Map(assignment.map(({ topic, partitions }) => [topic, partitions]));
+      for (const topic of byTopic.keys()) {
+        const ends = await client.fetchTopicOffsets(topic);
+        for (const { partition, offset } of ends) {
+          if (!byTopic.get(topic)!.includes(partition)) continue;
+          consumer.seek({ topic, partition, offset });
+        }
+      }
+    },
+    async close() {
+      await admin?.disconnect().then(
+        () => undefined,
+        () => undefined,
+      );
+      admin = null;
+    },
+  };
+}
+
+interface AdminLike {
+  connect(): Promise<void>;
+  fetchTopicOffsets(topic: string): Promise<Array<{ partition: number; offset: string }>>;
+  disconnect(): Promise<void>;
 }
