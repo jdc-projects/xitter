@@ -62,6 +62,7 @@ Load runs never target dev mode and are excluded from per-PR gates ([03-coverage
 | Runs   | `npm run mutate`; scope with `npx turbo run mutate --filter=<workspace>`    |
 
 - **Incremental mode** with cached reports under `reports/mutation/`.
+- **Quiet console, rich artifacts**: `logLevel: warn` + clear-text reporter limited to the per-file score table — per-mutant diffs and test listings live in the HTML/JSON reports under `reports/mutation/`. Real errors (dry-run failures, config errors) still print at error/warn level and still fail the run.
 - PRs run mutation only on **affected workspaces** (turbo filters); **full run on merge to `dev`**.
 - Score expectations: aim high on domain/service logic; exclude skeleton files and `main` entrypoints via config ([03-coverage-and-gates.md](03-coverage-and-gates.md)).
 

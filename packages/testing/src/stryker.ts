@@ -2,6 +2,17 @@
  * Shared Stryker mutation-testing defaults. Scope runs to the current workspace;
  * incremental mode + cached reports are configured per workspace via this factory.
  *
+ * Log policy: `logLevel: 'warn'` plus a `clearTextReporter` limited to the score
+ * table. Rationale: per-mutant diffs (clear-text) and INFO chatter flooded CI
+ * logs, where GitHub renders every diff block like a job failure while real
+ * errors stayed buried. `logLevel` alone is not enough - the clear-text reporter
+ * writes surviving/NoCoverage diffs straight to stdout, not through the logger -
+ * so `reportMutants`/`reportTests` are disabled too. What remains in the console:
+ * the per-file score table at completion, the progress heartbeat (10s lines in
+ * non-TTY CI), and anything logged at error/warn (dry-run test failures, config
+ * errors). Per-mutant diffs live in the HTML/JSON artifacts under
+ * `reports/mutation/`.
+ *
  * `excludeIntegrationTests`: testcontainers-based suites (*.integration.test.ts)
  * are excluded from the mutation run. They must never execute in the sandbox:
  * every mutant would pay full container startup, and the Kafka fixture's
@@ -28,9 +39,17 @@ export function createStrykerConfig(
           configFile: './vitest.mutation.config.ts',
         }
       : undefined,
-    reporters: ['html', 'clear-text', 'progress'],
+    logLevel: 'warn',
+    reporters: ['clear-text', 'html', 'json', 'progress'],
+    clearTextReporter: {
+      reportMutants: false,
+      reportTests: false,
+    },
     htmlReporter: {
       fileName: `reports/mutation/${projectName}.html`,
+    },
+    jsonReporter: {
+      fileName: `reports/mutation/${projectName}.json`,
     },
     incremental: true,
     incrementalFile: `reports/mutation/${projectName}.incr`,
