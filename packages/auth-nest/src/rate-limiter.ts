@@ -70,15 +70,27 @@ export class TokenBucketRateLimiter {
   ): Promise<ConsumeResult> {
     const connection = await this.connect();
     const key = `ratelimit:${this.options.serviceName}:${parts.route}:${parts.userId}:${parts.ip}`;
-    const reply = await connection.eval(
-      TOKEN_BUCKET_LUA,
-      1,
-      key,
-      capacity,
-      refillPerSecond,
-      Date.now(),
-      1,
-    );
+    let reply: unknown;
+    try {
+      reply = await connection.eval(
+        TOKEN_BUCKET_LUA,
+        1,
+        key,
+        capacity,
+        refillPerSecond,
+        Date.now(),
+        1,
+      );
+    } catch (err) {
+      // The cached connection can die underneath us (Valkey restart, or the
+      // nightly reset's FLUSHALL severing streams - ioredis with
+      // enableOfflineQueue:false then throws on EVERY command forever, and
+      // rate limiting would stay failed-open until a pod restart). Discard
+      // the dead handle so the next consume reconnects, then rethrow: this
+      // request fails open as designed.
+      this.discardConnection();
+      throw err;
+    }
     const value = Number(reply);
     if (value === 1) return { allowed: true };
     return { allowed: false, retryAfterSeconds: Math.max(1, Math.abs(value)) };
@@ -87,14 +99,22 @@ export class TokenBucketRateLimiter {
   private async connect(): Promise<RedisConnectionLike> {
     if (this.connection) return this.connection;
     const { Redis } = await import('ioredis');
-    this.connection = new Redis(this.options.redisUrl ?? 'redis://localhost:6379', {
+    const connection = new Redis(this.options.redisUrl ?? 'redis://localhost:6379', {
       // Fail fast while Valkey is unavailable: rate limiting fails open and
       // must never block requests on connection retries.
       maxRetriesPerRequest: 1,
       enableOfflineQueue: false,
       connectTimeout: 2_000,
     }) as unknown as RedisConnectionLike;
-    return this.connection;
+    this.connection = connection;
+    return connection;
+  }
+
+  /** Drop the cached handle (dead stream) so the next consume reconnects. */
+  private discardConnection(): void {
+    const dead = this.connection;
+    this.connection = undefined;
+    dead?.quit().catch(() => undefined);
   }
 
   // Nest invokes this via OnApplicationShutdown at shutdown - no direct
