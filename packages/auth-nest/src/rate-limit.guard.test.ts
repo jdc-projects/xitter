@@ -111,5 +111,8 @@ function fakeRedis(
     async quit() {
       return 'OK';
     },
+    once() {
+      return undefined;
+    },
   };
 }
