@@ -296,8 +296,22 @@ resource "kubernetes_network_policy" "allow_keycloak_egress" {
         }
       }
 
+      # 80 is the service port; 8080/9000 are the container ports the
+      # service DNATs to. This cluster's Calico evaluates egress policy
+      # AFTER DNAT (same class as the API-server trap in
+      # allow_reset_api_egress), so the rule must match the real
+      # destination ports too - without them every in-cluster Keycloak
+      # call times out.
       ports {
         port     = 80
+        protocol = "TCP"
+      }
+      ports {
+        port     = 8080
+        protocol = "TCP"
+      }
+      ports {
+        port     = 9000
         protocol = "TCP"
       }
     }
