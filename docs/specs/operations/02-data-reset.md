@@ -60,8 +60,8 @@ Order matters: the flush must precede the epoch (it clears stale epoch state whi
 
 ```mermaid
 flowchart TD
-  S(["Reset job starts"]) --> ST["Stabilize API services\n(suspend the 5 HPAs, pin 2 ready replicas)"]
-  ST --> FL["Flush Valkey\n(clears stale epoch state)"]
+  S(["Reset job starts"]) --> FL["Flush Valkey\n(clears stale epoch state)"]
+  FL --> ST["Stabilize API services\n(suspend the 5 HPAs, pin 2 ready replicas)"]
   FL --> EP["Set reset epoch (Valkey INCR)"]
   EP --> P["Wait for every worker to pause itself\n(heartbeat matches the epoch, bounded)"]
   P --> C["Recreate Keycloak realm xitter-demo\n(demo1..demo10)"]

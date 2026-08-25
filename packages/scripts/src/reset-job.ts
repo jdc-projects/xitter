@@ -166,10 +166,7 @@ async function waitForReadyReplicas(
 }
 
 /** The ServiceControls the CronJob injects (see reset-flow.ts, #98). */
-function k8sServiceControls(
-  ctx: K8sContext,
-  log: (message: string) => void,
-): ServiceControls {
+function k8sServiceControls(ctx: K8sContext, log: (message: string) => void): ServiceControls {
   return {
     async stabilize() {
       // Suspend every HPA BEFORE touching replicas: an active HPA fights

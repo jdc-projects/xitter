@@ -64,8 +64,8 @@ Notes:
 
 ### Ordering / dependencies
 
-1. Stabilize the API services (#98): suspend their HPAs, pin the Deployments at 2 ready replicas — the join is spent before the run's own traffic starts so no pod boots mid-run (skipped locally).
-2. Flush Valkey (clears any stale epoch state while workers are still live — harmless).
+1. Flush Valkey (clears any stale epoch state while workers are still live — harmless).
+2. Stabilize the API services (#98): suspend their HPAs, pin the Deployments at 2 ready replicas — the join is spent before the run's own traffic starts so no pod boots mid-run (skipped locally).
 3. Set the reset epoch (an integer in Valkey); workers observe it and pause themselves.
 4. Wait for every worker's pause acknowledgement (heartbeat key matching the epoch).
 5. Recreate Keycloak demo realm (identity must exist before any service call).
