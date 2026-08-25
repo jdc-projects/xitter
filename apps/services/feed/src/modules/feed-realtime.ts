@@ -37,6 +37,12 @@ export class ValkeyFeedRealtime implements FeedRealtime {
       const connection = await this.connect();
       await Promise.all(userIds.map((userId) => connection.publish(feedChannel(userId), '1')));
     } catch (err) {
+      // A dead cached connection (Valkey restart / the reset's FLUSHALL)
+      // must not wedge notifications until pod restart: drop the handle so
+      // the next notify reconnects, then log-and-degrade as usual.
+      const dead = this.connection;
+      this.connection = undefined;
+      dead?.quit().catch(() => undefined);
       logger.warn({ err }, 'feed update notification failed');
     }
   }

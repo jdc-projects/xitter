@@ -55,6 +55,11 @@ export class ValkeyInteractionRealtime implements InteractionRealtime {
       const connection = await this.connect();
       await connection.publish(feedUpdatesChannel(authorId), '1');
     } catch (err) {
+      // Drop a dead cached connection (see feed-realtime's note) so the
+      // next notification reconnects instead of wedging until restart.
+      const dead = this.connection;
+      this.connection = undefined;
+      dead?.quit().catch(() => undefined);
       logger.warn({ err }, 'author interaction notification failed');
     }
   }
