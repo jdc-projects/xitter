@@ -37,16 +37,22 @@ export class AuthModule {
       { provide: AUTH_OPTIONS, useValue: options },
       {
         provide: USER_VERIFIER,
-        useValue: createTokenVerifier({ issuer: options.issuer }),
+        useValue: createTokenVerifier({ issuer: options.issuer, jwksUri: options.jwksUri }),
       },
       {
         provide: SERVICE_VERIFIER,
-        useValue: createTokenVerifier({ issuer: options.issuer, audience: options.audience }),
+        useValue: createTokenVerifier({
+          issuer: options.issuer,
+          audience: options.audience,
+          jwksUri: options.jwksUri,
+        }),
       },
       // Null when no admin realm is configured: admin routes then fail closed.
       {
         provide: ADMIN_VERIFIER,
-        useValue: options.adminIssuer ? createTokenVerifier({ issuer: options.adminIssuer }) : null,
+        useValue: options.adminIssuer
+          ? createTokenVerifier({ issuer: options.adminIssuer, jwksUri: options.adminJwksUri })
+          : null,
       },
       AuthGuard,
       RateLimitGuard,

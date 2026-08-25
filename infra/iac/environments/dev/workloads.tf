@@ -115,6 +115,10 @@ module "api_service" {
   env = concat(local.common_env, [
     { name = "PORT", value = "8080" },
     { name = "KEYCLOAK_BASE_URL", value = local.keycloak_incluster_url },
+    # Keycloak stamps `iss` with the realm's canonical (public) frontend URL
+    # no matter which URL served the grant - validation must match it, while
+    # the base URL above carries the in-cluster transport (grants + JWKS).
+    { name = "KEYCLOAK_ISSUER", value = "${local.keycloak_url}/realms/${local.demo_realm}" },
     { name = "DEMO_REALM", value = local.demo_realm },
     { name = "KAFKA_BROKERS", value = local.kafka_bootstrap },
     { name = "KEYCLOAK_CLIENT_ID", value = "svc-${each.key}" },
@@ -190,6 +194,10 @@ module "worker" {
     # M2M token issuer for internal API callbacks (the realm URLs the
     # services use; without it workers default to localhost).
     { name = "KEYCLOAK_BASE_URL", value = local.keycloak_incluster_url },
+    # Keycloak stamps `iss` with the realm's canonical (public) frontend URL
+    # no matter which URL served the grant - validation must match it, while
+    # the base URL above carries the in-cluster transport (grants + JWKS).
+    { name = "KEYCLOAK_ISSUER", value = "${local.keycloak_url}/realms/${local.demo_realm}" },
     { name = "DEMO_REALM", value = local.demo_realm },
     # KEYCLOAK_CLIENT_ID/SECRET both come from the client Secret (envFrom).
     # Service bases are BARE: each worker's client builds /api/{service}/...
