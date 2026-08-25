@@ -30,14 +30,15 @@ describe('search-index consumption (testcontainers kafka + opensearch)', () => {
   const eventsSeen: string[] = [];
 
   // The search internal API seam, backed by the real OpenSearch via the
-  // shared index definition (what the service's PostsIndex does).
+  // shared index definition (what the service's PostsIndex does) - including
+  // the async-refresh write semantics (#103).
   const search: SearchApi = {
     internalUpsertDocuments: (documents) => {
       const body = documents.flatMap((doc) => [
         { index: { _index: POSTS_INDEX, _id: doc.postId } },
         doc,
       ]);
-      return client.bulk({ body, refresh: 'wait_for' }).then((res) => {
+      return client.bulk({ body, refresh: false }).then((res) => {
         if (res.body.errors) {
           throw new Error(`bulk failed: ${JSON.stringify(res.body.items?.[0])}`);
         }
@@ -45,6 +46,10 @@ describe('search-index consumption (testcontainers kafka + opensearch)', () => {
       });
     },
     internalRefreshAuthors: (authors) => {
+      // Mirrors PostsIndex.refreshAuthorName (#103): update_by_query is
+      // search-based with conflicts: 'proceed', so a rename following an
+      // unrefreshed upsert 409s and silently skips the new doc - the
+      // pre-refresh makes the rename deterministic.
       const body = {
         query: { terms: { authorId: authors.map((a) => a.authorId) } },
         script: {
@@ -52,8 +57,12 @@ describe('search-index consumption (testcontainers kafka + opensearch)', () => {
           params: { names: Object.fromEntries(authors.map((a) => [a.authorId, a.authorName])) },
         },
       };
-      return client
-        .updateByQuery({ index: POSTS_INDEX, body, conflicts: 'proceed', refresh: true })
+      return client.indices
+        .refresh({ index: POSTS_INDEX })
+        .catch(() => undefined)
+        .then(() =>
+          client.updateByQuery({ index: POSTS_INDEX, body, conflicts: 'proceed', refresh: true }),
+        )
         .then(() => ({ updated: 0 }));
     },
     internalPutCheckpoint: (input) => {
@@ -197,7 +206,9 @@ describe('search-index consumption (testcontainers kafka + opensearch)', () => {
       },
     );
 
-    // Tombstones never match queries.
+    // Tombstones never match queries (async-refresh writes: refresh on
+    // purpose before the query, #103).
+    await client.indices.refresh({ index: POSTS_INDEX });
     const query = await client.search({
       index: POSTS_INDEX,
       body: {

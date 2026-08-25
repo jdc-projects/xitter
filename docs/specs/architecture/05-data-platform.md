@@ -53,7 +53,7 @@ Index `posts` (recreated wholesale by the nightly reset). Definition lives in `@
 | `deletedAt`  | date    | Tombstoned docs carry `deletedAt`; queries exclude them (`must_not exists`), the nightly reset reclaims the docs              |
 | `keywords`   | keyword | Exact-token matching (hashtags) alongside analysed `text`                                                                     |
 
-Writes arrive exclusively via the search service's internal bulk index API; `GET /v1/search/posts` is the only reader. Deletions are tombstones keyed-upserted by `postId` (spec 04) — the field stays for auditability of the flow and the delete event's replay converges.
+Writes arrive exclusively via the search service's internal bulk index API; `GET /v1/search/posts` is the only reader. Deletions are tombstones keyed-upserted by `postId` (spec 04) — the field stays for auditability of the flow and the delete event's replay converges. Upserts do NOT block on an OpenSearch refresh (#103): the bulk write is durable on ack, and a document becomes searchable within one refresh interval (default 1s) — `refresh=wait_for` used to pin the worker's drain at ~1 doc/s. Author renames refresh the index first so the search-based `update_by_query` cannot skip a just-written doc on a version conflict.
 
 ## Valkey
 
