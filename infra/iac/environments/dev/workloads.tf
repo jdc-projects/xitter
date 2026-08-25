@@ -118,7 +118,10 @@ module "api_service" {
     # Keycloak stamps `iss` with the realm's canonical (public) frontend URL
     # no matter which URL served the grant - validation must match it, while
     # the base URL above carries the in-cluster transport (grants + JWKS).
-    { name = "KEYCLOAK_ISSUER", value = "${local.keycloak_url}/realms/${local.demo_realm}" },
+    # The realm's canonical issuer is PLAIN http on this Keycloak (the realm's
+    # configured frontend URL; tokens minted in-cluster still carry it). Match
+    # the scheme exactly or every token fails iss validation.
+    { name = "KEYCLOAK_ISSUER", value = "${replace(local.keycloak_url, "https://", "http://")}/realms/${local.demo_realm}" },
     { name = "DEMO_REALM", value = local.demo_realm },
     { name = "KAFKA_BROKERS", value = local.kafka_bootstrap },
     { name = "KEYCLOAK_CLIENT_ID", value = "svc-${each.key}" },
@@ -197,7 +200,10 @@ module "worker" {
     # Keycloak stamps `iss` with the realm's canonical (public) frontend URL
     # no matter which URL served the grant - validation must match it, while
     # the base URL above carries the in-cluster transport (grants + JWKS).
-    { name = "KEYCLOAK_ISSUER", value = "${local.keycloak_url}/realms/${local.demo_realm}" },
+    # The realm's canonical issuer is PLAIN http on this Keycloak (the realm's
+    # configured frontend URL; tokens minted in-cluster still carry it). Match
+    # the scheme exactly or every token fails iss validation.
+    { name = "KEYCLOAK_ISSUER", value = "${replace(local.keycloak_url, "https://", "http://")}/realms/${local.demo_realm}" },
     { name = "DEMO_REALM", value = local.demo_realm },
     # KEYCLOAK_CLIENT_ID/SECRET both come from the client Secret (envFrom).
     # Service bases are BARE: each worker's client builds /api/{service}/...
