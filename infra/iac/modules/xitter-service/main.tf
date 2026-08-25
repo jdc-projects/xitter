@@ -497,13 +497,15 @@ resource "kubernetes_manifest" "knative" {
     "spec.traffic",
   ]
 
-  # Tofu is the source of truth for the worker manifests: any out-of-band
-  # patch (kubectl hotfix, historic tooling) loses field ownership to this
-  # apply silently rather than blocking it. The reset job no longer
-  # touches these manifests (ADR 0010 - workers pause on the epoch flag).
+  # Named manager WITHOUT force (#105): since the #81-era quiesce was
+  # reverted (ADR 0010 - workers pause themselves on the epoch flag), no
+  # out-of-band writer patches these manifests. The leftover live
+  # `xitter-reset` managedFields entry only shares minScale at our exact
+  # value (equal-value sharing is legal SSA), so applies converge with no
+  # force. If an out-of-band edit ever returns, this apply fails loudly on
+  # the ownership conflict instead of silently reverting it.
   field_manager {
-    name            = "tofu"
-    force_conflicts = true
+    name = "tofu"
   }
 }
 

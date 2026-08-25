@@ -490,7 +490,10 @@ resource "kubernetes_job" "ensure_demo_users" {
       }
     }
 
-    backoff_limit              = 0
+    # Idempotent realm-init (#104): retry transient pod failures (a single
+    # DNS EAI_AGAIN was observed failing a live apply) instead of failing
+    # the whole deploy - a re-run upserts users, it never wipes.
+    backoff_limit              = 2
     ttl_seconds_after_finished = 86400
   }
 
