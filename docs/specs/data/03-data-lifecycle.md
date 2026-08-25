@@ -65,23 +65,23 @@ Notes:
 ### Ordering / dependencies
 
 1. Flush Valkey (clears any stale epoch state while workers are still live — harmless).
-2. Stabilize the API services (#98): suspend their HPAs, pin the Deployments at 2 ready replicas — the join is spent before the run's own traffic starts so no pod boots mid-run (skipped locally).
-3. Set the reset epoch (an integer in Valkey); workers observe it and pause themselves.
-4. Wait for every worker's pause acknowledgement (heartbeat key matching the epoch).
-5. Recreate Keycloak demo realm (identity must exist before any service call).
-6. Truncate service DBs (any order among them; no cross-DB constraints).
-7. Wipe RustFS bucket.
-8. Delete OpenSearch index.
-9. Clear the reset epoch — workers seek to the log end (skipping the pre-reset backlog) and resume.
-10. Optional: run deterministic seed ([02-seeding.md](./02-seeding.md)).
-11. Restore the API services (unsuspend HPAs, 1 replica — the dev floor).
-12. Emit reset-complete signal (with reseed status) for observability.
+2. Set the reset epoch (an integer in Valkey); workers observe it and pause themselves.
+3. Wait for every worker's pause acknowledgement (heartbeat key matching the epoch).
+4. Recreate Keycloak demo realm (identity must exist before any service call).
+5. Truncate service DBs (any order among them; no cross-DB constraints).
+6. Wipe RustFS bucket.
+7. Delete OpenSearch index.
+8. Clear the reset epoch — workers seek to the log end (skipping the pre-reset backlog) and resume.
+9. Optional: run deterministic seed ([02-seeding.md](./02-seeding.md)).
+10. Emit reset-complete signal (with reseed status) for observability.
+
+The reset does not touch infrastructure ([ADR 0010](../../decisions/0010-reset-epoch-pause.md)): the dev HPAs are retained and free, and a scale event during the run is expected to be seamless once #101 (second-pod boot readiness) is fixed.
 
 ### Observability of the reset
 
 - The reset job is instrumented like any service: per-step duration, success/failure, counts wiped (`xitter_reset_*` metrics — see [../operations/02-data-reset.md](../operations/02-data-reset.md)).
 - Reset completion (and reseed status) is recorded to Valkey after every run and served by the feed service at `GET /api/feed/internal/reset-status`, surfaced in admin system health and reflected in user-facing copy expectations ([../product/02-features.md](../product/02-features.md)).
-- A failed step halts the run, alerts, and leaves the system in a safe (empty or partially wiped) state rather than silently continuing. Workers are always resumed and the API services' autoscaling always restored, even on failure.
+- A failed step halts the run, alerts, and leaves the system in a safe (empty or partially wiped) state rather than silently continuing. Workers are always resumed, even on failure.
 
 ## Retention
 
