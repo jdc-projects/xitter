@@ -12,6 +12,7 @@ export interface RedisEval {
 export interface RedisConnectionLike {
   eval: RedisEval['eval'];
   quit(): Promise<unknown>;
+  once(event: string, listener: (...args: never[]) => void): unknown;
 }
 
 export interface ConsumeResult {
@@ -106,6 +107,16 @@ export class TokenBucketRateLimiter {
       enableOfflineQueue: false,
       connectTimeout: 2_000,
     }) as unknown as RedisConnectionLike;
+    // Await readiness like connectValkey does: with enableOfflineQueue
+    // false, a command issued during the handshake is rejected instantly
+    // ('Stream isn't writeable') - so a connect() that returns pre-ready
+    // makes every consume throw, the discard-on-error reconnect fires, and
+    // the next consume lands pre-ready AGAIN (wedged forever on fresh
+    // connections - observed as the seed's 503s long after #92).
+    await new Promise<void>((resolve, reject) => {
+      connection.once('ready', () => resolve());
+      connection.once('error', (err: Error) => reject(err));
+    });
     this.connection = connection;
     return connection;
   }
