@@ -1,6 +1,9 @@
 import { Kafka, type Producer } from 'kafkajs';
 import { eventEnvelopeSchema, type EventEnvelope } from './envelope.js';
+import { applyKafkaRequestQueueFix } from './kafka-request-queue-fix.js';
 import { TOPICS, type TopicName } from './topics.js';
+
+void applyKafkaRequestQueueFix();
 
 export interface EventProducerOptions {
   clientId: string;

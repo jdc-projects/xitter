@@ -13,6 +13,9 @@ import {
   connectValkeyEpochStore,
 } from './reset-epoch.js';
 import { TOPICS } from './topics.js';
+import { applyKafkaRequestQueueFix } from './kafka-request-queue-fix.js';
+
+void applyKafkaRequestQueueFix();
 
 export interface EventWorkerOptions extends EventConsumerOptions {
   /** Worker identity for logs, tracing and Sentry (e.g. 'fanout-worker'). */

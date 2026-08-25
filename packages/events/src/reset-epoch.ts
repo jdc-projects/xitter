@@ -21,6 +21,9 @@
  * while paused they keep the worker paused until Valkey returns.
  */
 import { RESET_EPOCH_KEY, resetPausedKey } from '@xitter/config';
+import { applyKafkaRequestQueueFix } from './kafka-request-queue-fix.js';
+
+void applyKafkaRequestQueueFix();
 
 /** Structural slice of Valkey the gate needs (unit-testable). */
 export interface ResetEpochStore {
