@@ -170,6 +170,16 @@ locals {
   # keycloak-config remote state, same source the ingress module uses.
   keycloak_url = data.terraform_remote_state.keycloak.outputs.keycloak_url
 
+  # Runtime (services/workers) reaches Keycloak in-cluster: pods egress via
+  # the home IP, so M2M token grants against the public URL present the
+  # home IP at Cloudflare - and the seed's burst of client-credential grants
+  # trips CrowdSec's out-of-band rules, banning the IP and 403ing the very
+  # next grant (the nightly reset reliably banned itself; live-proven
+  # 2026-08-25). The in-cluster service has no edge in the path. The
+  # public keycloak_url stays for the tofu provider override and the reset
+  # script's admin client (runner-side, already excepted).
+  keycloak_incluster_url = "http://keycloak-keycloakx-http.keycloak:80"
+
   otel_endpoint = "http://otel-collector.otel.svc:4318"
 
   kafka_bootstrap = "kafka.${local.ns}.svc:9092"

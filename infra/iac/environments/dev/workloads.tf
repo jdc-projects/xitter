@@ -114,7 +114,7 @@ module "api_service" {
 
   env = concat(local.common_env, [
     { name = "PORT", value = "8080" },
-    { name = "KEYCLOAK_BASE_URL", value = local.keycloak_url },
+    { name = "KEYCLOAK_BASE_URL", value = local.keycloak_incluster_url },
     { name = "DEMO_REALM", value = local.demo_realm },
     { name = "KAFKA_BROKERS", value = local.kafka_bootstrap },
     { name = "KEYCLOAK_CLIENT_ID", value = "svc-${each.key}" },
@@ -189,7 +189,7 @@ module "worker" {
     { name = "METRICS_PORT", value = tostring(local.worker_metrics_ports[each.key]) },
     # M2M token issuer for internal API callbacks (the realm URLs the
     # services use; without it workers default to localhost).
-    { name = "KEYCLOAK_BASE_URL", value = local.keycloak_url },
+    { name = "KEYCLOAK_BASE_URL", value = local.keycloak_incluster_url },
     { name = "DEMO_REALM", value = local.demo_realm },
     # KEYCLOAK_CLIENT_ID/SECRET both come from the client Secret (envFrom).
     # Service bases are BARE: each worker's client builds /api/{service}/...
