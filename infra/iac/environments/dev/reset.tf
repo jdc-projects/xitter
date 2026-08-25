@@ -194,7 +194,7 @@ resource "kubernetes_cron_job_v1" "reset" {
             # only, via the Role above. Workers still pause themselves on
             # the Valkey epoch (ADR 0010) - this is NOT the #81-era worker
             # quiesce coming back.
-            service_account_name             = kubernetes_service_account_v1.reset.metadata[0].name
+            service_account_name            = kubernetes_service_account_v1.reset.metadata[0].name
             automount_service_account_token = true
             restart_policy                  = "Never"
 

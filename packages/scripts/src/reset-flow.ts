@@ -331,7 +331,9 @@ export async function runResetFlow(options: ResetFlowOptions = {}): Promise<Rese
     if (servicesStabilized) {
       await services
         .restore()
-        .catch((err) => log(`reset: restoring service scaling failed - HPAs may be suspended: ${String(err)}`));
+        .catch((err) =>
+          log(`reset: restoring service scaling failed - HPAs may be suspended: ${String(err)}`),
+        );
     }
   }
 
