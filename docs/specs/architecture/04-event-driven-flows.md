@@ -43,6 +43,10 @@ Every message is JSON with a single envelope; consumers validate it at the bound
 }
 ```
 
+## Client library
+
+All Kafka clients come from `@xitter/events` (`createEventProducer`, `createEventConsumer`, `runEventWorker` — never `new Kafka()` directly). The package also carries a runtime guard (`kafka-request-queue-fix.ts`) for a kafkajs defect (2.2.4 through master, 2026-08): the per-connection request queue arms its pending-request re-check timer at `throttledUntil(-1) - Date.now()` whenever a response completes on an idle queue — the epoch-sized negative `TimeoutNegativeWarning` in every service's boot log, self-re-arming as a ~1ms timer per broker connection for the process lifetime. The guard skips arming when nothing is pending; `kafka-request-queue-fix.test.ts` pins it against the real kafkajs class, so an upstream change fails the test rather than silently regressing. Drop the guard when a fixed kafkajs ships.
+
 ## Event catalogue
 
 | eventType                   | Topic              | Payload fields                                                                                      | Emitted when                                                                         |

@@ -1,6 +1,9 @@
 import { Kafka, type Consumer, type EachMessagePayload } from 'kafkajs';
 import { eventEnvelopeSchema } from './envelope.js';
 import { TOPICS, type TopicName } from './topics.js';
+import { applyKafkaRequestQueueFix } from './kafka-request-queue-fix.js';
+
+void applyKafkaRequestQueueFix();
 
 export interface EventConsumerOptions {
   clientId: string;
