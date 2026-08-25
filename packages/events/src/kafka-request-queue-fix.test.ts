@@ -68,12 +68,13 @@ function makeQueue(): RequestQueueInstance {
 /** Records every (fn, delay) handed to the global setTimeout kafkajs calls. */
 function captureSetTimeouts(): { delays: number[]; restore(): void } {
   const delays: number[] = [];
-  const spy = vi
-    .spyOn(globalThis, 'setTimeout')
-    .mockImplementation(((fn: () => void, ms?: number) => {
-      delays.push(Number(ms));
-      return originalSetTimeout(fn, 0);
-    }) as typeof setTimeout);
+  const spy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((
+    fn: () => void,
+    ms?: number,
+  ) => {
+    delays.push(Number(ms));
+    return originalSetTimeout(fn, 0);
+  }) as typeof setTimeout);
   return { delays, restore: () => spy.mockRestore() };
 }
 const originalSetTimeout = globalThis.setTimeout;

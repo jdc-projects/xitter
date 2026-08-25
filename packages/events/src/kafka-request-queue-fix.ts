@@ -54,7 +54,9 @@ export async function applyKafkaRequestQueueFix(): Promise<void> {
     const original = queueModule.default?.prototype?.scheduleCheckPendingRequests;
     if (typeof original !== 'function') return;
 
-    queueModule.default.prototype.scheduleCheckPendingRequests = function (this: PatchedRequestQueue) {
+    queueModule.default.prototype.scheduleCheckPendingRequests = function (
+      this: PatchedRequestQueue,
+    ) {
       // Already armed, or nothing waiting that a re-check could send: do not
       // arm a timer at all. (Upstream arms one at a negative epoch delay.)
       if (this.throttleCheckTimeoutId || this.pending.length === 0) return;
