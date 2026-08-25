@@ -26,8 +26,20 @@ export const RATE_LIMIT_KEY = 'xitter:rate-limit';
 export interface AuthModuleOptions {
   /** Service name for logging and rate-limit key namespacing. */
   serviceName: string;
-  /** Token issuer, e.g. http://localhost:8090/realms/xitter-demo */
+  /**
+   * Token issuer, e.g. http://localhost:8090/realms/xitter-demo. MUST match
+   * the realm's configured frontend URL (what Keycloak stamps into `iss`),
+   * which can differ from the transport base used for grants/JWKS - see
+   * jwksUri.
+   */
   issuer: string;
+  /**
+   * JWKS endpoint override when the issuer URL is not the best transport
+   * (deployed envs: issuer is the public canonical URL, JWKS is fetched
+   * in-cluster to keep validation off the edge). Defaults to
+   * `<issuer>/protocol/openid-connect/certs`.
+   */
+  jwksUri?: string;
   /** This service's own `svc-*` client id - the required internal audience. */
   audience: string;
   /**
@@ -46,6 +58,8 @@ export interface AuthModuleOptions {
    * `@Internal({ admin: true })` routes; unset disables it (fail closed).
    */
   adminIssuer?: string;
+  /** Admin-realm JWKS override (same reason as jwksUri). */
+  adminJwksUri?: string;
   /**
    * Admin-realm clients allowed on admin internal routes (azp allowlist).
    * Defaults to the admin panel's public PKCE client.

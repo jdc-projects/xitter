@@ -12,11 +12,16 @@ import { PrismaClient } from './generated/prisma/client.js';
   imports: [
     AuthModule.forRoot({
       serviceName: 'media',
-      issuer: realmUrls(env.KEYCLOAK_BASE_URL, env.DEMO_REALM).issuer,
+      // Issuer MUST be the realm's canonical (frontend) URL - what
+      // Keycloak stamps into `iss` regardless of the transport that served
+      // the grant. The transport (KEYCLOAK_BASE_URL) still carries JWKS.
+      issuer: env.KEYCLOAK_ISSUER ?? realmUrls(env.KEYCLOAK_BASE_URL, env.DEMO_REALM).issuer,
+      jwksUri: realmUrls(env.KEYCLOAK_BASE_URL, env.DEMO_REALM).jwks,
       audience: 'svc-media',
       redisUrl: env.VALKEY_URL,
       trustEdgeHeaders: env.AUTH_TRUST_EDGE_HEADERS,
       adminIssuer: realmUrls(env.KEYCLOAK_BASE_URL, env.ADMIN_REALM).issuer,
+      adminJwksUri: realmUrls(env.KEYCLOAK_BASE_URL, env.ADMIN_REALM).jwks,
     }),
     MediaModule,
     HealthModule.forRoot({

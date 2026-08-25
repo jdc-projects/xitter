@@ -10,6 +10,12 @@ export function serviceEnvSchema(service: 'social' | 'posts' | 'media' | 'feed' 
   return z.object({
     PORT: z.coerce.number().int().positive().default(localPort(service)),
     KEYCLOAK_BASE_URL: z.string().url().default(localUrl('keycloak')),
+    // Canonical token issuer. Keycloak stamps `iss` with the realm's
+    // configured frontend URL regardless of which URL served the grant or
+    // JWKS - when transport goes in-cluster (deployed envs), this must stay
+    // the public issuer or every token fails validation (observed: 401s
+    // across all internal routes after routing base URL in-cluster).
+    KEYCLOAK_ISSUER: z.string().url().optional(),
     DEMO_REALM: z.string().min(1).default('xitter-demo'),
     // Admin realm (ADR 0006: primary homelab realm, xitter-local-admin
     // locally): issuer for the admin-role-gated internal admin routes.
