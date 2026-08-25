@@ -38,6 +38,7 @@ describe.skipIf(!hasGeneratedClient)('search integration (testcontainers)', () =
   let pool: Pool;
   let pg: Awaited<ReturnType<typeof startPostgres>>;
   let index: PostsIndex;
+  let osClient: Client;
   let service: SearchService;
   let store: {
     posts: Map<string, Post>;
@@ -73,6 +74,7 @@ describe.skipIf(!hasGeneratedClient)('search integration (testcontainers)', () =
       transactionOptions: { maxWait: 20_000, timeout: 60_000 },
     }) as SearchPrismaClient;
     index = new PostsIndex(new Client({ node: os.url }));
+    osClient = new Client({ node: os.url });
     store = {
       posts: new Map(),
       profiles: new Map(),
@@ -101,6 +103,17 @@ describe.skipIf(!hasGeneratedClient)('search integration (testcontainers)', () =
     await os?.stop().catch(() => undefined);
     await pg?.stop().catch(() => undefined);
   });
+
+  /**
+   * Upsert + explicit refresh for read-after-write assertions: production
+   * upserts no longer block on a refresh (#103 - visibility is asynchronous,
+   * within one refresh interval), so this suite refreshes on purpose when a
+   * query/count follows the write.
+   */
+  const upsert = async (documents: SearchIndexDocument[]): Promise<void> => {
+    await index.upsertDocuments(documents);
+    await osClient.indices.refresh({ index: POSTS_INDEX });
+  };
 
   function doc(
     postId: string,
@@ -157,7 +170,7 @@ describe.skipIf(!hasGeneratedClient)('search integration (testcontainers)', () =
   it('roundtrips documents: analysed text matches, hashtags match exactly', async () => {
     const plain = doc(uid('c001'), AUTHOR, 'The quick brown foxes jumped', at(10));
     const tagged = doc(uid('c002'), AUTHOR, 'lovely morning #coffee', at(11), ['coffee']);
-    await index.upsertDocuments([plain, tagged]);
+    await upsert([plain, tagged]);
     seedPost(plain);
     seedPost(tagged);
 
@@ -177,7 +190,7 @@ describe.skipIf(!hasGeneratedClient)('search integration (testcontainers)', () =
   it('excludes tombstones from queries (deleted posts disappear)', async () => {
     const live = doc(uid('c010'), AUTHOR, 'searchable gemstone post', at(12));
     const dead = doc(uid('c011'), AUTHOR, 'gemstone deleted post', at(13), [], at(13));
-    await index.upsertDocuments([live, dead]);
+    await upsert([live, dead]);
     seedPost(live);
     seedPost(dead);
 
@@ -188,7 +201,7 @@ describe.skipIf(!hasGeneratedClient)('search integration (testcontainers)', () =
   it('excludes blocked authors for the viewer at query level', async () => {
     const mine = doc(uid('c020'), AUTHOR, 'uniquepineapple alpha', at(14));
     const blocked = doc(uid('c021'), BLOCKED_AUTHOR, 'uniquepineapple beta', at(15));
-    await index.upsertDocuments([mine, blocked]);
+    await upsert([mine, blocked]);
     seedPost(mine);
     seedPost(blocked);
 
@@ -204,7 +217,7 @@ describe.skipIf(!hasGeneratedClient)('search integration (testcontainers)', () =
   it('pages newest-first with a stable keyset cursor walk', async () => {
     for (let h = 20; h < 24; h++) {
       const d = doc(uid(`i03${h - 20}`), AUTHOR, `paginated kumquat ${h}`, at(h));
-      await index.upsertDocuments([d]);
+      await upsert([d]);
       seedPost(d);
     }
 
@@ -225,7 +238,7 @@ describe.skipIf(!hasGeneratedClient)('search integration (testcontainers)', () =
     const fresh = doc(uid('c040'), AUTHOR, 'vanilla durian fresh', at(30));
     const older1 = doc(uid('c041'), AUTHOR, 'vanilla durian old1', at(28));
     const older2 = doc(uid('c042'), AUTHOR, 'vanilla durian old2', at(29));
-    await index.upsertDocuments([fresh, older1, older2]);
+    await upsert([fresh, older1, older2]);
     seedPost(older1);
     seedPost(older2);
     // fresh deliberately NOT in the posts store = deleted between index+read
@@ -237,8 +250,8 @@ describe.skipIf(!hasGeneratedClient)('search integration (testcontainers)', () =
 
   it('replays are idempotent by postId (no duplicate documents)', async () => {
     const d = doc(uid('c050'), AUTHOR, 'idempotent lychee', at(40));
-    await index.upsertDocuments([d]);
-    await index.upsertDocuments([d]); // redelivery
+    await upsert([d]);
+    await upsert([d]); // redelivery
     seedPost(d);
 
     const page = await service.searchPosts(VIEWER, { q: 'lychee', limit: 10 });
@@ -292,6 +305,7 @@ describe.skipIf(!hasGeneratedClient)('search integration (testcontainers)', () =
     // Mapping survives - writes resume without recreation.
     const again = doc(uid('c060'), AUTHOR, 'post-clear write', at(50));
     await index.upsertDocuments([again]);
+    await osClient.indices.refresh({ index: POSTS_INDEX });
     const count = await client.count({ index: POSTS_INDEX });
     expect(count.body.count).toBe(1);
   });

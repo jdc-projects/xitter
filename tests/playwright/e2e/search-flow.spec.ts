@@ -20,15 +20,18 @@ async function login(page: Page, username: string) {
  * Poll the search API until the snippet is indexed, then assert on ONE
  * settled page render. The old reload-poll navigated the full page per
  * iteration: on 2-core CI runners each SSR navigation costs seconds, so a
- * 30s budget allowed only a handful of polls and slow (but healthy)
+ * short budget allowed only a handful of polls and slow (but healthy)
  * indexing blew the budget - the failure mode was the empty-state page,
  * not an index problem. An API poll costs milliseconds per iteration.
- * The default ceiling is generous because the suite's own seeding bursts
- * (pagination seeds, ~50 posts) can bury the search-index worker's ~1
- * doc/s drain for tens of seconds; the poll breaks the moment the
- * snippet lands.
+ *
+ * Budget maths after #103 (per-doc indexing no longer blocks on
+ * refresh=wait_for): a post is searchable within one OpenSearch refresh
+ * interval (<=1s) plus ~30ms of worker handling - measured 50/50 posts
+ * visible p50 0.9s / max 1.9s after a full-burst create, and the suite's
+ * ~50-post seeding bursts drain in ~2s. 30s is ~15x that, purely for CI
+ * runner variance (2-core) and stack cold-start jitter.
  */
-async function searchUntilFound(page: Page, q: string, snippet: string, timeoutMs = 90_000) {
+async function searchUntilFound(page: Page, q: string, snippet: string, timeoutMs = 30_000) {
   const token = await accessToken(page);
   const searchApi = `/api/search/v1/posts?q=${encodeURIComponent(q)}`;
   const deadline = Date.now() + timeoutMs;
@@ -75,14 +78,13 @@ async function accessToken(page: Page): Promise<string> {
 }
 
 test('search finds a composed post and deletes remove it from results', async ({ page }) => {
-  // Indexing converges in tens of seconds on a loaded stack: the worker
-  // drains at roughly one doc/second, the suite's ~50-post seeding bursts
-  // queue behind it, and this test has TWO convergence windows
-  // (compose→index up to 120s, delete→tombstone up to 60s) plus a settled
-  // render assertion. The budget must exceed their SUM (a 150s budget
-  // timed out mid-tombstone-poll on cold CI runners despite both windows
-  // being individually healthy).
-  test.setTimeout(240_000);
+  // Indexing converges in ~2s now (#103: the worker's per-doc bulk no
+  // longer blocks on OpenSearch refresh=wait_for, which used to pin the
+  // drain at ~1 doc/s and queue this suite's ~50-post seeding bursts for
+  // tens of seconds). Each convergence window (compose→index, delete→
+  // tombstone) keeps a 30s ceiling - ~15x the measured worst case - for
+  // CI runner variance and stack cold-start jitter.
+  test.setTimeout(90_000);
   await login(page, 'demo2');
   const needle = `t8 searchable quokka ${crypto.randomUUID()}`;
 
@@ -92,7 +94,7 @@ test('search finds a composed post and deletes remove it from results', async ({
   await page.getByTestId('composer-textarea').fill(needle);
   await page.getByTestId('composer-submit').click();
 
-  await searchUntilFound(page, 'quokka', needle, 120_000);
+  await searchUntilFound(page, 'quokka', needle, 30_000);
   const item = page.locator('[data-testid^="post-item-"]', { hasText: needle }).first();
   await expect(item).toBeVisible();
   const postId = (await item.getAttribute('data-testid'))!.replace('post-item-', '');
@@ -107,12 +109,11 @@ test('search finds a composed post and deletes remove it from results', async ({
   // on one settled page render. The API is user-gated: poll with the
   // session's bearer so res.ok() reflects the index, not a 401. (Public
   // search path is /v1/posts under the service prefix - api-contracts'
-  // canonical route.) Same backlog story as searchUntilFound above:
-  // tombstones trail the delete by however long the worker needs to
-  // drain the suite's burst.
+  // canonical route.) Same convergence maths as searchUntilFound above
+  // (#103): a tombstone is queryable within ~1s of the delete event.
   const token = await accessToken(page);
   const searchApi = `/api/search/v1/posts?q=${encodeURIComponent('quokka')}`;
-  const deadline = Date.now() + 90_000;
+  const deadline = Date.now() + 30_000;
   for (;;) {
     const res = await page.request.get(searchApi, {
       headers: { authorization: `Bearer ${token}` },

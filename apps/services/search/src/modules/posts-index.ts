@@ -67,6 +67,14 @@ export class PostsIndex implements OnModuleInit {
    * Bulk upsert keyed by postId (idempotent replays converge, spec 04);
    * tombstones (deletedAt set) are upserted like any doc and filtered at
    * query time - the nightly reset reclaims them.
+   *
+   * No `refresh=wait_for` (#103): it blocked EVERY upsert until the next
+   * automatic refresh (default interval 1s), so the search-index worker -
+   * one serial upsert per Kafka message - drained at ~1 doc/s and a 50-post
+   * burst took ~50s to become searchable. Write-then-refresh-async keeps the
+   * at-least-once contract (the await still covers the write; a doc is
+   * searchable within one refresh interval, <=1s by default) and moves the
+   * worker to HTTP-bound throughput instead of refresh-bound.
    */
   async upsertDocuments(documents: SearchIndexDocument[]): Promise<number> {
     if (documents.length === 0) return 0;
@@ -83,7 +91,7 @@ export class PostsIndex implements OnModuleInit {
         deletedAt: doc.deletedAt,
       },
     ]);
-    const result = await this.client.bulk({ body, refresh: 'wait_for' });
+    const result = await this.client.bulk({ body, refresh: false });
     if (result.body.errors) {
       const reason = JSON.stringify(result.body.items?.[0]?.index?.error ?? 'unknown bulk error');
       throw new Error(`search index bulk upsert failed: ${reason}`);
@@ -94,8 +102,22 @@ export class PostsIndex implements OnModuleInit {
   /**
    * Refresh the denormalised authorName on an author's documents
    * (social.profile.updated keeps the index self-contained).
+   *
+   * update_by_query is search-based and runs with conflicts: 'proceed'
+   * (concurrent writes must not abort a rename). Since upserts stopped
+   * blocking on refresh (#103), a post written milliseconds before its
+   * author's rename is not yet in a refreshed segment: the rename's search
+   * snapshot returns the stale version, the update 409s and - skipped -
+   * the new post keeps the old name until the NEXT rename. Refreshing
+   * first closes the race; renames are rare (human-driven), so the extra
+   * refresh is noise next to correctness.
    */
   async refreshAuthorName(authorId: string, authorName: string): Promise<number> {
+    await this.client.indices.refresh({ index: POSTS_INDEX }).catch((err: unknown) => {
+      // Absent index (reset wiped it): nothing to rename either way - the
+      // updateByQuery below makes the same call and returns 0.
+      if (!isIndexMissing(err)) throw err;
+    });
     const result = await this.client
       .updateByQuery({
         index: POSTS_INDEX,

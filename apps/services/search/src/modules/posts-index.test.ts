@@ -77,11 +77,18 @@ describe('PostsIndex after a reset deletes the index', () => {
       }),
     );
 
-  const index = (client: { updateByQuery: unknown; deleteByQuery: unknown }): PostsIndex =>
-    new PostsIndex(client as unknown as Client);
+  const index = (client: {
+    updateByQuery: unknown;
+    deleteByQuery: unknown;
+    indices?: { refresh: unknown };
+  }): PostsIndex => new PostsIndex(client as unknown as Client);
 
   it('refreshAuthorName is a no-op, not a 500 (profile events precede the first write)', async () => {
-    const posts = index({ updateByQuery: missingIndex, deleteByQuery: missingIndex });
+    const posts = index({
+      updateByQuery: missingIndex,
+      deleteByQuery: missingIndex,
+      indices: { refresh: missingIndex },
+    });
     await expect(posts.refreshAuthorName('u1', 'renamed')).resolves.toBe(0);
   });
 
