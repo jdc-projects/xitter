@@ -35,7 +35,8 @@ One code path everywhere: `packages/scripts` (`reset-flow.ts`) holds the flow; t
 | Concern               | CronJob (cluster)                                                                                                                | Local                                                                                                                                            |
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Store wipes           | `POST /internal/reseed`, bucket wipe, index delete, Valkey flush                                                                 | `npm run reset`: dependency volumes are destroyed (a superset); `npm run reset:live` performs the same store-level steps against a running stack |
-| Worker pause + resume | The reset writes an epoch flag to Valkey; workers pause themselves on it and heartbeat their acknowledgement (`packages/events`) | Identical (same Valkey, same worker code) - nothing is scaled or killed, locally or in-cluster                                                   |
+| Worker pause + resume | The reset writes an epoch flag to Valkey; workers pause themselves on it and heartbeat their acknowledgement (`packages/events`) | Identical (same Valkey, same worker code) - no worker is ever scaled or killed, locally or in-cluster                                            |
+| API-service stability | `stabilize-services` / `restore-services` (#98): suspend the five API-service HPAs and pin their Deployments at 2 ready replicas for the wipe+seed window (the seed's burst used to trip the HPAs mid-run; the joining pod served 503s), then unsuspend and return to the 1-replica dev floor — minimal RBAC (get/patch on the five HPAs + `deployments/scale`, reset.tf) | Skipped with a warning (no HPAs locally; the steps report a visible skip)                                                                         |
 | Kafka backlog skip    | Clearing the epoch makes each worker seek its assigned partitions to the log end before resuming                                 | Identical                                                                                                                                        |
 | Realm                 | `resetDemoRealm` + `initDemoRealm` with the Tofu-managed client secrets injected                                                 | Same functions with local secrets                                                                                                                |
 | Seed                  | `runSeed` (same corpus, faker 42)                                                                                                | Same function (`npm run seed`, `reset:reseed`)                                                                                                   |
@@ -55,11 +56,12 @@ One code path everywhere: `packages/scripts` (`reset-flow.ts`) holds the flow; t
 
 ## Execution order
 
-Order matters: the flush must precede the epoch (it clears stale epoch state while workers are still live), every worker must have acknowledged the epoch before any store is wiped, and the epoch must clear before the seed so workers can consume seed events. This ordering is authoritative; [../data/03-data-lifecycle.md](../data/03-data-lifecycle.md) repeats it for the data view.
+Order matters: the flush must precede the epoch (it clears stale epoch state while workers are still live), the API services must be stabilized before the epoch is set (the HPA suspension and the second replica's join are spent up front, so no pod boots mid-run, #98), every worker must have acknowledged the epoch before any store is wiped, the epoch must clear before the seed so workers can consume seed events, and the services restore only after the last data-bearing step. This ordering is authoritative; [../data/03-data-lifecycle.md](../data/03-data-lifecycle.md) repeats it for the data view.
 
 ```mermaid
 flowchart TD
-  S(["Reset job starts"]) --> FL["Flush Valkey\n(clears stale epoch state)"]
+  S(["Reset job starts"]) --> ST["Stabilize API services\n(suspend the 5 HPAs, pin 2 ready replicas)"]
+  ST --> FL["Flush Valkey\n(clears stale epoch state)"]
   FL --> EP["Set reset epoch (Valkey INCR)"]
   EP --> P["Wait for every worker to pause itself\n(heartbeat matches the epoch, bounded)"]
   P --> C["Recreate Keycloak realm xitter-demo\n(demo1..demo10)"]
@@ -69,12 +71,15 @@ flowchart TD
   O --> K["Clear the reset epoch\n(workers seek to log end + resume)"]
   K --> R{Reseed flag?}
   R -->|true| D["Deterministic reseed (faker seed 42)"]
-  R -->|false| L["Leave empty"]
-  D --> V(["Verify + report"])
-  L --> V
+  R -->|false| L["Leave empty (verified)"]
+  D --> RS["Restore API services\n(unsuspend HPAs, 1 replica - the dev floor)"]
+  L --> RS
+  RS --> V(["Report"])
 ```
 
-The implementation is `runResetFlow` in `packages/scripts/src/reset-flow.ts`; its step order is unit-tested against this diagram. A failed step halts the run after clearing the epoch (so workers never stay paused on a dead run), and the Kubernetes `backoffLimit` retries the whole idempotent flow — the leading flush makes a retry safe against stale epoch state.
+The implementation is `runResetFlow` in `packages/scripts/src/reset-flow.ts`; its step order is unit-tested against this diagram. A failed step halts the run after clearing the epoch **and restoring the API services** (so workers never stay paused and HPAs never stay suspended on a dead run — both are attempted best-effort in the failure path), and the Kubernetes `backoffLimit` retries the whole idempotent flow — the leading flush makes a retry safe against stale epoch state, and stabilize/restore replay idempotently on top of whatever partial state a failed attempt left.
+
+The stabilization is **not** the pre-#81 worker quiesce ([ADR 0010](../../decisions/0010-reset-epoch-pause.md) still holds: workers pause themselves, nothing touches Knative or worker scaling). It exists because the seed's bursty load trips the five API-service HPAs mid-run; the pod that joins (prisma-migrate init container + Nest boot) is not ready when the seed's round-robin lands on it — the root cause behind the recurring "seed 503" nightly failures (#98). Locally the two steps run but report a visible skip (no Kubernetes API, no HPAs).
 
 ## Reseed
 

@@ -5,16 +5,25 @@
  * (`npm run reset:live [--seed]`). Ordering is AUTHORITATIVE from
  * docs/specs/operations/02-data-reset.md (ADR 0010):
  *
- *   flush Valkey -> set the reset epoch -> wait for every worker to pause
- *   itself (heartbeat ack) -> recreate Keycloak demo realm -> truncate
- *   service DBs (+ CMS content) -> wipe RustFS bucket -> delete OpenSearch
- *   index -> clear the reset epoch (workers seek to the log end and
- *   resume) -> optional deterministic seed -> verify + report.
+ *   flush Valkey -> stabilize the API services (#98) -> set the reset
+ *   epoch -> wait for every worker to pause itself (heartbeat ack) ->
+ *   recreate Keycloak demo realm -> truncate service DBs (+ CMS content)
+ *   -> wipe RustFS bucket -> delete OpenSearch index -> clear the reset
+ *   epoch (workers seek to the log end and resume) -> optional
+ *   deterministic seed -> restore the API services (#98) -> verify+report.
  *
  * Workers pause THEMSELVES on the epoch flag (packages/events
- * createResetEpochGate): nothing is scaled, no Kubernetes API is touched,
- * and the retained Kafka log is skipped by the workers' own
- * seek-to-the-end on resume instead of a consumer-group reset.
+ * createResetEpochGate): no worker is ever scaled, killed or patched, and
+ * the retained Kafka log is skipped by the workers' own seek-to-the-end on
+ * resume instead of a consumer-group reset.
+ *
+ * The API-service HPAs DO get frozen around the run (#98): the seed's
+ * bursty load used to trip them mid-run, and the pod that joined
+ * (prisma-migrate init + Nest boot) served 503s to the seed through the
+ * round-robin. In-cluster the CronJob injects a Kubernetes-backed
+ * ServiceControls (reset-job.ts); everywhere else it degrades to an
+ * inert no-op with a warning - the same local-mode degradation style the
+ * flow already uses elsewhere.
  *
  * Every step is idempotent: a retry (k8s backoffLimit) replays safely from
  * the top (the flush clears any stale epoch first, workers just keep
@@ -37,7 +46,19 @@ import { createJwtCache, realmUrls } from '@xitter/auth';
 import { requestJson } from './lib/api.js';
 import { keycloakBase, serviceBase, type ApiTarget } from './lib/targets.js';
 
-const SERVICES: ApiTarget[] = ['social', 'posts', 'media', 'feed', 'search'];
+/**
+ * The five API services: one list shared by the store wipes and the HPA
+ * stabilization (#98) so the two can never drift apart.
+ */
+export const API_SERVICES = [
+  'social',
+  'posts',
+  'media',
+  'feed',
+  'search',
+] as const satisfies readonly ApiTarget[];
+
+const SERVICES: ApiTarget[] = [...API_SERVICES];
 
 // ---------------------------------------------------------------------------
 // Contracts
@@ -78,6 +99,28 @@ export interface StoreControls {
   countFeedItems(username: string): Promise<number>;
 }
 
+/**
+ * Freezes API-service autoscaling around the wipe+seed window (#98): the
+ * seed's bursty load trips the HPAs mid-run, and the joining pod
+ * (prisma-migrate init + Nest boot) answers the seed's round-robin with
+ * 503s. The CronJob injects the Kubernetes-backed implementation
+ * (reset-job.ts); everywhere else this degrades to an inert no-op.
+ */
+export interface ServiceControls {
+  /**
+   * Suspend the API-service HPAs and pin their Deployments at 2 ready
+   * replicas - the join is spent up front, so no pod ever boots mid-seed.
+   * Returns the stabilized service names; empty means skipped (e.g. a
+   * local run with no Kubernetes API).
+   */
+  stabilize(): Promise<string[]>;
+  /**
+   * Un-suspend the HPAs and return the Deployments to the dev floor
+   * (1 replica). Returns the restored names; empty means skipped.
+   */
+  restore(): Promise<string[]>;
+}
+
 export interface ResetStepReport {
   name: string;
   ok: boolean;
@@ -105,6 +148,8 @@ export interface ResetFlowOptions {
   log?: (message: string) => void;
   realm?: RealmControl;
   stores?: StoreControls;
+  /** HPA stabilization (#98); defaults to an inert no-op outside k8s. */
+  services?: ServiceControls;
   /** Overridable seed step (tests inject; default = packages/scripts seed). */
   seedFn?: (users: Array<{ username: string; userId: string }>) => Promise<{ fingerprint: string }>;
   /** Pushgateway URL; unset = emit metrics to the log only. */
@@ -127,9 +172,14 @@ export async function runResetFlow(options: ResetFlowOptions = {}): Promise<Rese
   const now = options.now ?? Date.now;
   const realm = options.realm ?? defaultRealmControl();
   const stores = options.stores ?? (await defaultStores());
+  const services = options.services ?? inertServiceControls(log);
   const startedAt = new Date(now()).toISOString();
   const steps: ResetStepReport[] = [];
   let epochActive = false;
+  // Set the moment stabilization STARTS (not when it succeeds): a failed
+  // patch mid-list may leave some HPAs suspended, so the finally must
+  // always attempt the restore. Cleared only by a successful restore step.
+  let servicesStabilized = false;
   let fingerprint: string | null = null;
 
   const step = async <T>(name: string, action: () => Promise<T>): Promise<T> => {
@@ -160,6 +210,18 @@ export async function runResetFlow(options: ResetFlowOptions = {}): Promise<Rese
     // heartbeat state from any earlier (failed) run while workers are
     // still live and consuming - harmless by design.
     await step('flush-valkey', () => stores.flushValkey());
+
+    // #98: freeze the API services' autoscaling BEFORE anything epoch- or
+    // data-shaped. The seed's burst trips the HPAs mid-run; the pod that
+    // joins (prisma-migrate init + Nest boot) is not ready when the seed's
+    // round-robin lands on it. Suspending the HPAs and pinning 2 ready
+    // replicas spends the join HERE, before the run's own traffic starts -
+    // after this, no pod ever boots mid-run. Skipped (warned) locally.
+    servicesStabilized = true;
+    const stabilized = await step('stabilize-services', () => services.stabilize());
+    steps.at(-1)!.detail = stabilized.length
+      ? `HPAs suspended, 2 ready replicas: ${stabilized.join(', ')}`
+      : 'skipped (no Kubernetes API)';
 
     const epoch = await step('set-reset-epoch', () => stores.setResetEpoch());
     steps.at(-1)!.detail = `epoch ${epoch}`;
@@ -232,6 +294,19 @@ export async function runResetFlow(options: ResetFlowOptions = {}): Promise<Rese
       });
     }
 
+    // Last data-bearing step done: hand autoscaling back. A failure here
+    // fails the run on purpose - suspended HPAs + pinned replicas left
+    // behind are a real operational fault (no autoscaling until healed),
+    // and the k8s retry replays the idempotent stabilize -> restore.
+    const restored = await step('restore-services', async () => {
+      const done = await services.restore();
+      servicesStabilized = false;
+      return done;
+    });
+    steps.at(-1)!.detail = restored.length
+      ? `HPAs resumed, 1 replica: ${restored.join(', ')}`
+      : 'skipped (no Kubernetes API)';
+
     success = true;
     return await finish();
   } catch (err) {
@@ -248,6 +323,15 @@ export async function runResetFlow(options: ResetFlowOptions = {}): Promise<Rese
       await stores
         .clearResetEpoch()
         .catch((err) => log(`reset: clearing reset epoch failed: ${String(err)}`));
+    }
+    // Never leave the HPAs suspended either (#98): a suspended HPA stops
+    // autoscaling until something clears it. Best-effort like the epoch
+    // clear - the failed run already alerted, and the backoffLimit retry
+    // replays stabilize -> restore idempotently.
+    if (servicesStabilized) {
+      await services
+        .restore()
+        .catch((err) => log(`reset: restoring service scaling failed - HPAs may be suspended: ${String(err)}`));
     }
   }
 
@@ -372,6 +456,24 @@ export function defaultRealmControl(): RealmControl {
         baseUrl: keycloakAdminBase(),
         machineSecrets: machineSecrets(),
       });
+    },
+  };
+}
+
+/**
+ * The out-of-cluster default (#98): HPA stabilization is a cluster-only
+ * concern - locally there are no HPAs, so the steps no-op with a warning
+ * instead of failing the run (the same degradation style the flow uses
+ * for its other in-cluster-only mechanics).
+ */
+export function inertServiceControls(log: (message: string) => void): ServiceControls {
+  return {
+    async stabilize() {
+      log('reset: no Kubernetes API (local run) - skipping HPA stabilization (#98)');
+      return [];
+    },
+    async restore() {
+      return [];
     },
   };
 }

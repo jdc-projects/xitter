@@ -1,15 +1,35 @@
 # Nightly data reset (spec: docs/specs/operations/02-data-reset.md, ADR 0010).
 #
 # A CronJob runs the shared reset implementation (packages/scripts, image
-# xitter-reset) with the svc-reset client: flush Valkey -> set the reset
-# epoch -> wait for the workers to pause THEMSELVES on it (they watch the
-# epoch flag - packages/events createResetEpochGate) -> recreate the demo
-# realm -> per-service /internal/reseed + CMS content reset -> RustFS
-# bucket wipe -> OpenSearch index delete -> clear the epoch (workers seek
-# to the log end and resume) -> optional deterministic seed.
+# xitter-reset) with the svc-reset client: flush Valkey -> stabilize the
+# API services (#98) -> set the reset epoch -> wait for the workers to
+# pause THEMSELVES on it (they watch the epoch flag - packages/events
+# createResetEpochGate) -> recreate the demo realm -> per-service
+# /internal/reseed + CMS content reset -> RustFS bucket wipe -> OpenSearch
+# index delete -> clear the epoch (workers seek to the log end and
+# resume) -> optional deterministic seed -> restore the API services
+# (#98).
 #
-# No Kubernetes API access: nothing is scaled or patched, so the job runs
-# without a ServiceAccount token and without API-server egress.
+# #98 brought MINIMAL Kubernetes API access back, deliberately narrower
+# than the #81-era quiesce the epoch flow replaced: the WORKERS still
+# pause themselves (ADR 0010 stands untouched - nothing here touches
+# Knative services or minScale). The nightly seed's bursty load tripped
+# the five API-service HPAs mid-run, and the pod that joined
+# (prisma-migrate init + Nest boot) answered the seed's round-robin with
+# 503s - the root cause behind every "deploy raced the reset" nightly
+# failure (runs 11-18). The flow now runs stabilize-services (suspend the
+# HPAs, pin the Deployments at 2 ready replicas so the join is spent
+# before the run's traffic starts) ahead of the data steps and
+# restore-services (unsuspend, back to the 1-replica dev floor) after the
+# seed, both with fail-loud readiness waits.
+#
+# Scope of the access: a dedicated SA + Role granting get/patch on the
+# five HPAs and on deployments/scale (plus read-only get on the
+# deployments themselves for the readiness wait), every rule pinned by
+# resourceNames to exactly the five API services - and the API-server
+# egress netpol (netpol.tf). The 00:30 window (#82) keeps deploys away
+# from the short drift window where the live HPAs/replicas disagree with
+# this config; restore-services converges them back before it closes.
 #
 # Success/failure is observable two ways: kube-state-metrics job series
 # (T11's XitterResetJobStale/Failed alerts match job_name =~ "xitter-reset.*")
@@ -41,6 +61,81 @@ locals {
   # Matches T11's alert/dashboard job_name regex (xitter-reset.*); the jobs
   # the CronJob spawns are xitter-reset-<timestamp>.
   reset_name = "xitter-reset"
+
+  # The five API services (workloads.tf, module "api_service"). Both the
+  # Deployments and the HPAs are named after the service, so the reset
+  # Role's resourceNames cover exactly what stabilize/restore touches.
+  api_services = ["social", "posts", "media", "feed", "search"]
+}
+
+# HPA stabilization only (#98): the Role can suspend/restore the five
+# API-service HPAs and move their replica counts - nothing else. No Knative
+# access, no pod listings, no secrets; resourceNames keep even a
+# compromised job inside the five workloads whose fate the reset already
+# owns.
+resource "kubernetes_service_account_v1" "reset" {
+  metadata {
+    name      = local.reset_name
+    namespace = local.ns
+    labels    = module.namespace.labels
+  }
+
+  # Required: stabilize/restore patches the HPAs and deployment scales.
+  automount_service_account_token = true
+}
+
+resource "kubernetes_role_v1" "reset" {
+  metadata {
+    name      = "${local.reset_name}-scaling"
+    namespace = local.ns
+    labels    = module.namespace.labels
+  }
+
+  rule {
+    api_groups     = ["autoscaling"]
+    resources      = ["horizontalpodautoscalers"]
+    verbs          = ["get", "patch"]
+    resource_names = local.api_services
+  }
+
+  rule {
+    # Replica moves go through the scale subresource: the job can change
+    # replica counts but never a pod template or anything else a
+    # Deployment owns.
+    api_groups     = ["apps"]
+    resources      = ["deployments/scale"]
+    verbs          = ["get", "patch"]
+    resource_names = local.api_services
+  }
+
+  rule {
+    # Read-only deployment status (readyReplicas) for the fail-loud
+    # readiness waits that bracket the reset window.
+    api_groups     = ["apps"]
+    resources      = ["deployments"]
+    verbs          = ["get"]
+    resource_names = local.api_services
+  }
+}
+
+resource "kubernetes_role_binding_v1" "reset" {
+  metadata {
+    name      = "${local.reset_name}-scaling"
+    namespace = local.ns
+    labels    = module.namespace.labels
+  }
+
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "Role"
+    name      = kubernetes_role_v1.reset.metadata[0].name
+  }
+
+  subject {
+    kind      = "ServiceAccount"
+    name      = kubernetes_service_account_v1.reset.metadata[0].name
+    namespace = local.ns
+  }
 }
 
 # Job-only config: Keycloak admin credentials (realm recreate) and the
@@ -94,9 +189,13 @@ resource "kubernetes_cron_job_v1" "reset" {
           }
 
           spec {
-            # The reset job never talks to the Kubernetes API (workers pause
-            # themselves on the Valkey epoch, ADR 0010) - no token mounted.
-            automount_service_account_token = false
+            # HPA stabilization (#98) is the ONE Kubernetes API use:
+            # suspend/restore the five API-service HPAs + replica pinning
+            # only, via the Role above. Workers still pause themselves on
+            # the Valkey epoch (ADR 0010) - this is NOT the #81-era worker
+            # quiesce coming back.
+            service_account_name             = kubernetes_service_account_v1.reset.metadata[0].name
+            automount_service_account_token = true
             restart_policy                  = "Never"
 
             container {
