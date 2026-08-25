@@ -166,7 +166,7 @@ async function waitForReadyReplicas(
 }
 
 /** The ServiceControls the CronJob injects (see reset-flow.ts, #98). */
-export function k8sServiceControls(
+function k8sServiceControls(
   ctx: K8sContext,
   log: (message: string) => void,
 ): ServiceControls {
