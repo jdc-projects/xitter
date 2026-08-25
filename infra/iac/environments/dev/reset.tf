@@ -166,7 +166,7 @@ resource "kubernetes_cron_job_v1" "reset" {
               # Realm contract (keycloak.ts must recreate exactly this).
               env {
                 name  = "XITTER_SEED_KEYCLOAK_URL"
-                value = local.keycloak_url
+                value = local.keycloak_incluster_url
               }
               # Edge origin: the web client's redirect URIs/origins must
               # converge on tofu's (keycloak.tf), never the local default -
@@ -321,7 +321,7 @@ resource "kubernetes_job" "ensure_demo_users" {
           # realm step sees, so both paths run the same initDemoRealm.
           env {
             name  = "XITTER_SEED_KEYCLOAK_URL"
-            value = local.keycloak_url
+            value = local.keycloak_incluster_url
           }
           # Edge origin: the web-client upsert must converge on tofu's
           # redirect URIs (keycloak.tf), not the local localhost default.
