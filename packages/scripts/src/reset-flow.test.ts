@@ -4,28 +4,25 @@ import {
   ResetFlowError,
   type RealmControl,
   type ResetStatus,
-  type ServiceControls,
   type StoreControls,
 } from './reset-flow.js';
 
 /**
  * Flow contracts (spec ops 02, ADR 0010): exact step ordering (flush ->
- * HPA stabilization -> epoch -> worker-pause barrier -> data steps ->
- * clear epoch -> seed -> restore), the epoch always cleared on failure,
- * the HPA suspension always restored on failure, status record after the
- * run, and failure that halts at the broken step. Store mechanics are
- * faked; the default implementations are exercised by the live e2e cycle.
+ * epoch -> worker-pause barrier -> data steps -> clear epoch -> seed),
+ * the epoch always cleared on failure, status record after the run, and
+ * failure that halts at the broken step. Store mechanics are faked; the
+ * default implementations are exercised by the live e2e cycle.
  */
 
 interface Harness {
   realm: RealmControl & { events: string[] };
   stores: StoreControls & { events: string[] };
-  services: ServiceControls & { events: string[] };
   statusWrites: ResetStatus[];
 }
 
 function harness(overrides: Partial<Harness> = {}): Harness {
-  const events = { realm: [] as string[], stores: [] as string[], services: [] as string[] };
+  const events = { realm: [] as string[], stores: [] as string[] };
   const statusWrites: ResetStatus[] = [];
   const h: Harness = {
     realm: {
@@ -36,17 +33,6 @@ function harness(overrides: Partial<Harness> = {}): Harness {
       async init() {
         events.realm.push('realm-init');
         return [{ username: 'demo1', userId: 'u1' }];
-      },
-    },
-    services: {
-      events: events.services,
-      async stabilize() {
-        events.services.push('stabilize');
-        return ['social', 'posts', 'media', 'feed', 'search'];
-      },
-      async restore() {
-        events.services.push('restore');
-        return ['social', 'posts', 'media', 'feed', 'search'];
       },
     },
     stores: {
@@ -155,28 +141,15 @@ describe('runResetFlow', () => {
           return h.realm.init();
         },
       },
-      services: {
-        stabilize: async () => {
-          order.push('stabilize');
-          return h.services.stabilize();
-        },
-        restore: async () => {
-          order.push('restore');
-          return h.services.restore();
-        },
-      },
       stores: proxyStores(h.stores, order),
       log: () => undefined,
     });
 
     // The flush precedes everything (clears stale epoch state while the
-    // workers are still live); stabilization precedes the epoch so no pod
-    // can join mid-run (#98); the epoch barrier precedes every wipe; the
-    // epoch clears before the seed so workers can consume seed events; the
-    // services restore only after the last data-bearing step.
+    // workers are still live); the epoch barrier precedes every wipe; the
+    // epoch clears before the seed so workers can consume seed events.
     expect(order).toEqual([
       'flush',
-      'stabilize',
       'set-epoch',
       'workers-paused',
       'realm-reset',
@@ -187,7 +160,6 @@ describe('runResetFlow', () => {
       'index',
       'clear-epoch',
       'verify-empty',
-      'restore',
       'status',
     ]);
     expect(report.success).toBe(true);
@@ -195,7 +167,6 @@ describe('runResetFlow', () => {
     expect(report.fingerprint).toBeNull();
     expect(report.steps.map((s) => s.name)).toEqual([
       'flush-valkey',
-      'stabilize-services',
       'set-reset-epoch',
       'wait-workers-paused',
       'recreate-keycloak-realm',
@@ -205,7 +176,6 @@ describe('runResetFlow', () => {
       'delete-search-index',
       'clear-reset-epoch',
       'verify-empty',
-      'restore-services',
     ]);
   });
 
@@ -216,16 +186,6 @@ describe('runResetFlow', () => {
     const report = await runResetFlow({
       seed: true,
       realm: h.realm,
-      services: {
-        stabilize: async () => {
-          order.push('stabilize');
-          return h.services.stabilize();
-        },
-        restore: async () => {
-          order.push('restore');
-          return h.services.restore();
-        },
-      },
       stores: proxyStores(h.stores, order),
       log: () => undefined,
       seedFn: async (users) => {
@@ -237,8 +197,7 @@ describe('runResetFlow', () => {
 
     expect(seeded).toEqual(['demo1']);
     expect(order.indexOf('seed')).toBeGreaterThan(order.indexOf('clear-epoch'));
-    expect(order.indexOf('seed')).toBeLessThan(order.indexOf('restore'));
-    expect(order.indexOf('restore')).toBeLessThan(order.indexOf('status'));
+    expect(order.indexOf('seed')).toBeLessThan(order.indexOf('status'));
     expect(report.reseeded).toBe(true);
     expect(report.fingerprint).toBe('abc123');
   });
@@ -309,14 +268,12 @@ describe('runResetFlow', () => {
     };
 
     await expect(
-      runResetFlow({ realm: h.realm, services: h.services, stores: failing, log: () => undefined }),
+      runResetFlow({ realm: h.realm, stores: failing, log: () => undefined }),
     ).rejects.toBeInstanceOf(ResetFlowError);
 
     // Epoch was set before the failure and MUST be cleared after it (an
-    // uncleared epoch is an event blackhole), no step after the failure
-    // ran (realm steps land in the realm's own log), and the HPA
-    // suspension MUST be restored by the finally even though the
-    // restore step itself never ran (#98).
+    // uncleared epoch is an event blackhole), and no step after the
+    // failure ran (realm steps land in the realm's own log).
     expect(h.stores.events).toEqual([
       'flush',
       'set-epoch',
@@ -327,50 +284,9 @@ describe('runResetFlow', () => {
       'status',
       'clear-epoch',
     ]);
-    expect(h.services.events).toEqual(['stabilize', 'restore']);
     expect(h.realm.events).toEqual(['realm-reset', 'realm-init']);
     expect(h.statusWrites[0]!.success).toBe(false);
     expect(h.statusWrites[0]!.steps.find((s) => s.name === 'wipe-media-bucket')?.ok).toBe(false);
-  });
-
-  it('attempts the restore even when stabilization itself fails mid-way (#98)', async () => {
-    const h = harness();
-    const partial: ServiceControls = {
-      ...h.services,
-      async stabilize() {
-        h.services.events.push('stabilize');
-        throw new Error('k8s posts -> 403');
-      },
-    };
-
-    await expect(
-      runResetFlow({ realm: h.realm, services: partial, stores: h.stores, log: () => undefined }),
-    ).rejects.toBeInstanceOf(ResetFlowError);
-
-    // A patch list that dies half-way may leave HPAs suspended: the
-    // finally must still attempt the restore, and no data step ran.
-    expect(h.services.events).toEqual(['stabilize', 'restore']);
-    expect(h.stores.events).toEqual(['flush', 'status']);
-    expect(h.statusWrites[0]!.steps.find((s) => s.name === 'stabilize-services')?.ok).toBe(false);
-  });
-
-  it('skips stabilization with a warning when no service control is injected (local)', async () => {
-    const h = harness();
-    const logs: string[] = [];
-    const report = await runResetFlow({
-      realm: h.realm,
-      stores: h.stores,
-      log: (message) => logs.push(message),
-    });
-
-    // The default control is inert outside k8s: both steps run, succeed,
-    // and report a visible skip - never a silent one.
-    expect(report.success).toBe(true);
-    expect(logs.join('\n')).toContain('skipping HPA stabilization');
-    const stabilize = report.steps.find((s) => s.name === 'stabilize-services');
-    const restore = report.steps.find((s) => s.name === 'restore-services');
-    expect(stabilize?.detail).toBe('skipped (no Kubernetes API)');
-    expect(restore?.detail).toBe('skipped (no Kubernetes API)');
   });
 
   it('still clears the epoch when clearing it is what failed mid-flow', async () => {

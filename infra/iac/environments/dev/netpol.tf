@@ -397,54 +397,9 @@ resource "kubernetes_network_policy" "allow_identity_tls_egress" {
   }
 }
 
-# Control-plane node LAN. kube-proxy DNATs the kubernetes.default service
-# here before egress policy is evaluated (see allow_reset_api_egress), so
-# API access must be allowed by the nodes' real addresses, not the service
-# CIDR. Verified: the API endpoint is 192.168.100.190:6443.
-variable "control_plane_cidr" {
-  description = "CIDR covering the cluster's control-plane nodes (the API server endpoint after kube-proxy DNAT)."
-  type        = string
-  default     = "192.168.100.0/24"
-}
-
-# Kubernetes API access for the reset job (HPA stabilization, #98:
-# suspend + replica-pin the five API services around the wipe+seed
-# window). The service CIDR rules above do NOT cover this: kube-proxy
-# DNATs kubernetes.default.svc (10.43.0.1:443) to the API server's real
-# endpoint on the control-plane node LAN (192.168.100.x:6443) BEFORE
-# Calico evaluates egress policy, so the packet's destination matches no
-# ipBlock - live-observed as a 10s connect timeout (ConnectTimeoutError)
-# despite a correct-looking service-CIDR allow.
-resource "kubernetes_network_policy" "allow_reset_api_egress" {
-  metadata {
-    name      = "xitter-allow-reset-api-egress"
-    namespace = local.ns
-  }
-
-  spec {
-    policy_types = ["Egress"]
-
-    pod_selector {
-      match_labels = {
-        "app.kubernetes.io/name"     = local.reset_name
-        "app.kubernetes.io/instance" = var.environment
-      }
-    }
-
-    egress {
-      to {
-        ip_block {
-          cidr = var.control_plane_cidr
-        }
-      }
-
-      ports {
-        port     = 6443
-        protocol = "TCP"
-      }
-    }
-  }
-}
+# Do NOT re-add reset-job Kubernetes API egress (deleted twice: #81's quiesce,
+# #99's HPA freeze) - any future k8s access must justify against ADR 0010's
+# pure-API reset design first.
 
 # Same-namespace service-to-service: workers → internal APIs, web → SSR
 # service calls, service → service. Scoped to the five API service pods as

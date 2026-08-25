@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ResetReport, ServiceControls } from './reset-flow.js';
+import type { ResetReport } from './reset-flow.js';
 import { parseResetJobArgs, runResetJob, type ResetJobDeps } from './reset-job.js';
 
 /**
@@ -7,19 +7,8 @@ import { parseResetJobArgs, runResetJob, type ResetJobDeps } from './reset-job.j
  * different blast radii: the nightly full reset (wipes every store) and the
  * deploy-path ensure-users job (idempotent realm upsert). These contracts
  * pin the split: exact flag parsing (a typo must never fall through to the
- * full reset), per-mode delegation, and that the Kubernetes-backed HPA
- * stabilization (#98) is wired into the reset mode ONLY - all without a
- * cluster.
+ * full reset) and per-mode delegation, all without a cluster.
  */
-
-const fakeServices: ServiceControls = {
-  async stabilize() {
-    return ['social', 'posts', 'media', 'feed', 'search'];
-  },
-  async restore() {
-    return ['social', 'posts', 'media', 'feed', 'search'];
-  },
-};
 
 function fakeReport(): ResetReport {
   return {
@@ -38,29 +27,21 @@ function fakeReport(): ResetReport {
 interface Harness extends ResetJobDeps {
   calls: string[];
   seedFlagSeen: boolean[];
-  servicesSeen: ServiceControls[];
 }
 
 function harness(overrides: Partial<ResetJobDeps> = {}): Harness {
   const calls: string[] = [];
   const seedFlagSeen: boolean[] = [];
-  const servicesSeen: ServiceControls[] = [];
   const h: Harness = {
     calls,
     seedFlagSeen,
-    servicesSeen,
     async ensureUsers() {
       calls.push('ensure-users');
       return [{ username: 'demo1' }, { username: 'demo2' }];
     },
-    async serviceControls() {
-      calls.push('service-controls');
-      return fakeServices;
-    },
     async resetFlow(options) {
       calls.push('reset-flow');
       seedFlagSeen.push(options.seed);
-      servicesSeen.push(options.services);
       return fakeReport();
     },
   };
@@ -100,26 +81,13 @@ describe('runResetJob', () => {
     expect(summary).toContain('demo1..demo2');
   });
 
-  it('reset mode resolves the service controls, injects them into the flow and forwards the seed flag', async () => {
+  it('reset mode runs the flow directly (workers pause themselves) and forwards the seed flag', async () => {
     const h = harness();
     const summary = await runResetJob({ mode: 'reset', seed: true }, h);
 
-    expect(h.calls).toEqual(['service-controls', 'reset-flow']);
+    expect(h.calls).toEqual(['reset-flow']);
     expect(h.seedFlagSeen).toEqual([true]);
-    expect(h.servicesSeen).toEqual([fakeServices]);
     expect(summary).toMatch(/^reset-job: success in \d+ms/);
-  });
-
-  it('propagates service-control failures as the job failure (fail loud, no silent skip)', async () => {
-    const h = harness({
-      async serviceControls() {
-        h.calls.push('service-controls');
-        throw new Error('k8s horizontalpodautoscalers -> 403');
-      },
-    });
-    await expect(runResetJob({ mode: 'reset', seed: false }, h)).rejects.toThrow(/403/);
-    // The failure is the job's own: the reset flow never started.
-    expect(h.calls).toEqual(['service-controls']);
   });
 
   it('propagates reset-flow failures as the job failure', async () => {
