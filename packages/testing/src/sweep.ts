@@ -68,9 +68,7 @@ export function createdMs(created: number | string): number | null {
 }
 
 /** True only for resources labelled by this repo's test fixtures. */
-export function hasTestResourceLabel(
-  labels: Record<string, string> | null | undefined,
-): boolean {
+export function hasTestResourceLabel(labels: Record<string, string> | null | undefined): boolean {
   return Object.keys(labels ?? {}).some((key) => key.startsWith(TEST_RESOURCE_LABEL_PREFIX));
 }
 
@@ -93,7 +91,8 @@ export function selectOrphanResources<T extends DockerResource & { State?: strin
   return resources.filter((resource) => {
     const createdAt = createdMs(resource.Created);
     if (createdAt === null || !hasTestResourceLabel(resource.Labels)) return false;
-    const gate = resource.State === 'running' || resource.State === undefined ? runningMinAgeMs : minAgeMs;
+    const gate =
+      resource.State === 'running' || resource.State === undefined ? runningMinAgeMs : minAgeMs;
     return createdAt <= nowMs - gate;
   });
 }
@@ -114,7 +113,11 @@ function activityMarkerDir(): string {
 }
 
 /** Fresh marker = a suite demonstrably owns live test containers right now. */
-export function isMarkerFresh(mtimeMs: number, nowMs: number, staleMs = ACTIVITY_STALE_MS): boolean {
+export function isMarkerFresh(
+  mtimeMs: number,
+  nowMs: number,
+  staleMs = ACTIVITY_STALE_MS,
+): boolean {
   return nowMs - mtimeMs <= staleMs;
 }
 
@@ -207,6 +210,8 @@ export interface SweepOptions {
    * volumes are only swept by the unrestricted form.
    */
   labels?: readonly string[];
+  /** Docker API transport - injectable so tests run the sweep without docker. */
+  transport?: DockerTransport;
 }
 
 export interface SweepResult {
@@ -215,12 +220,38 @@ export interface SweepResult {
   volumes: number;
 }
 
+/** One docker API call against the daemon socket. */
+export type DockerTransport = (method: 'GET' | 'DELETE', path: string) => Promise<unknown>;
+
+/** Age gates a sweep applies (see SweepOptions for the semantics). */
+export interface Gates {
+  minAgeMs: number;
+  runningMinAgeMs: number;
+}
+
+export function resolveGates(options: SweepOptions): Gates {
+  const minAgeMs = options.minAgeMs ?? DEFAULT_ORPHAN_AGE_MS;
+  return { minAgeMs, runningMinAgeMs: options.runningMinAgeMs ?? minAgeMs };
+}
+
+/**
+ * deps:down policy (#47): the environment is being torn down, so stopped
+ * leftovers go after a short grace - but RUNNING containers keep the
+ * conservative gate unless a fresh activity marker proves no suite is live.
+ */
+export function environmentTeardownSweepOptions(suiteActive: boolean): SweepOptions {
+  return suiteActive
+    ? { minAgeMs: DEFAULT_ORPHAN_AGE_MS }
+    : { minAgeMs: ENV_TEARDOWN_GRACE_MS, runningMinAgeMs: DEFAULT_ORPHAN_AGE_MS };
+}
+
 function dockerSocketPath(): string {
   return process.env.DOCKER_HOST?.replace(/^unix:\/\//, '') ?? '/var/run/docker.sock';
 }
 
-async function dockerRequest(method: 'GET', path: string): Promise<unknown>;
-async function dockerRequest(method: 'DELETE', path: string): Promise<void>;
+/** The default transport: raw HTTP over the docker/podman daemon socket. */
+const socketTransport: DockerTransport = (method, path) => dockerRequest(method, path);
+
 async function dockerRequest(method: 'GET' | 'DELETE', path: string): Promise<unknown> {
   const http = await import('node:http');
   return new Promise((resolve, reject) => {
@@ -250,17 +281,80 @@ async function dockerRequest(method: 'GET' | 'DELETE', path: string): Promise<un
   });
 }
 
-async function removeResources(ids: readonly string[], kind: 'containers' | 'networks' | 'volumes'): Promise<number> {
+async function removeResources(
+  transport: DockerTransport,
+  ids: readonly string[],
+  kind: 'containers' | 'networks' | 'volumes',
+): Promise<number> {
   await Promise.all(
     ids.map(async (id) => {
       const path =
         kind === 'volumes'
           ? `/volumes/${encodeURIComponent(id)}?force=true`
           : `/${kind}/${encodeURIComponent(id)}?force=true`;
-      await dockerRequest('DELETE', path);
+      await transport('DELETE', path);
     }),
   );
   return ids.length;
+}
+
+function logRemoval(kind: string, orphans: readonly unknown[], gates: Gates): void {
+  if (orphans.length === 0) return;
+  process.stderr.write(
+    `[test-sweep] removing ${orphans.length} orphaned test ${kind} (stopped gate ${Math.round(gates.minAgeMs / 1000)}s, running gate ${Math.round(gates.runningMinAgeMs / 1000)}s)\n`,
+  );
+}
+
+async function sweepOrphanedContainers(
+  transport: DockerTransport,
+  gates: Gates,
+  now: number,
+  labelFilter: string,
+): Promise<number> {
+  const listed = (await transport(
+    'GET',
+    `/containers/json?all=1${labelFilter}`,
+  )) as DockerResource[];
+  const orphans = selectOrphanResources(listed, now, gates.minAgeMs, gates.runningMinAgeMs);
+  logRemoval('container(s)', orphans, gates);
+  return removeResources(
+    transport,
+    orphans.map((c) => c.Id),
+    'containers',
+  );
+}
+
+async function sweepOrphanedNetworks(
+  transport: DockerTransport,
+  gates: Gates,
+  now: number,
+): Promise<number> {
+  const listed = (await transport('GET', '/networks')) as DockerResource[];
+  const orphans = selectOrphanResources(listed, now, gates.minAgeMs, gates.runningMinAgeMs);
+  logRemoval('network(s)', orphans, gates);
+  return removeResources(
+    transport,
+    orphans.map((n) => n.Id),
+    'networks',
+  );
+}
+
+async function sweepOrphanedVolumes(
+  transport: DockerTransport,
+  gates: Gates,
+  now: number,
+): Promise<number> {
+  const listed = (await transport('GET', '/volumes')) as {
+    Volumes?: (Omit<DockerResource, 'Id'> & { Name: string })[] | null;
+  };
+  const volumes = (listed?.Volumes ?? []).map((volume) => ({ ...volume, Id: volume.Name }));
+  const orphans = selectOrphanResources(volumes, now, gates.minAgeMs, gates.runningMinAgeMs);
+  logRemoval('volume(s)', orphans, gates);
+  return removeResources(
+    transport,
+    orphans.map((v) => v.Id),
+    'volumes',
+  );
 }
 
 /**
@@ -270,52 +364,23 @@ async function removeResources(ids: readonly string[], kind: 'containers' | 'net
  * decide how loudly to fail; never touches unlabelled resources.
  */
 export async function sweepOrphanedTestResources(options: SweepOptions = {}): Promise<SweepResult> {
-  const minAgeMs = options.minAgeMs ?? DEFAULT_ORPHAN_AGE_MS;
-  const runningMinAgeMs = options.runningMinAgeMs ?? minAgeMs;
+  const transport = options.transport ?? socketTransport;
+  const gates = resolveGates(options);
   const now = Date.now();
   const labelFilter = options.labels
     ? `&filters=${encodeURIComponent(JSON.stringify({ label: [...options.labels] }))}`
     : '';
 
-  const listed = (await dockerRequest(
-    'GET',
-    `/containers/json?all=1${labelFilter}`,
-  )) as DockerResource[];
-  const containers = selectOrphanResources(listed, now, minAgeMs, runningMinAgeMs);
-  if (containers.length > 0) {
-    process.stderr.write(
-      `[test-sweep] removing ${containers.length} orphaned test container(s) older than ${Math.round(minAgeMs / 1000)}s (running gate ${Math.round(runningMinAgeMs / 1000)}s)\n`,
-    );
-  }
-  const result: SweepResult = {
-    containers: await removeResources(containers.map((c) => c.Id), 'containers'),
-    networks: 0,
-    volumes: 0,
-  };
+  const containers = await sweepOrphanedContainers(transport, gates, now, labelFilter);
+  if (options.labels) return { containers, networks: 0, volumes: 0 };
 
-  if (options.labels) return result;
-
-  // Unrestricted sweep: also catch labelled networks/volumes (containers/json
-  // shape differs from /networks and /volumes, hence the per-endpoint mapping).
-  // Networks and volumes carry no state - the conservative running gate applies.
-  const networks = (await dockerRequest('GET', '/networks')) as DockerResource[];
-  const orphanNetworks = selectOrphanResources(networks, now, minAgeMs, runningMinAgeMs);
-  if (orphanNetworks.length > 0) {
-    process.stderr.write(`[test-sweep] removing ${orphanNetworks.length} orphaned test network(s)\n`);
-  }
-  result.networks = await removeResources(orphanNetworks.map((n) => n.Id), 'networks');
-
-  const volumeList = (await dockerRequest('GET', '/volumes')) as {
-    Volumes?: (Omit<DockerResource, 'Id'> & { Name: string })[] | null;
-  };
-  const volumes = (volumeList?.Volumes ?? []).map((volume) => ({ ...volume, Id: volume.Name }));
-  const orphanVolumes = selectOrphanResources(volumes, now, minAgeMs, runningMinAgeMs);
-  if (orphanVolumes.length > 0) {
-    process.stderr.write(`[test-sweep] removing ${orphanVolumes.length} orphaned test volume(s)\n`);
-  }
-  result.volumes = await removeResources(orphanVolumes.map((v) => v.Id), 'volumes');
-
-  return result;
+  // Unrestricted sweep: also catch labelled networks/volumes. They carry no
+  // state field, so the conservative running gate applies (see Gates).
+  const [networks, volumes] = await Promise.all([
+    sweepOrphanedNetworks(transport, gates, now),
+    sweepOrphanedVolumes(transport, gates, now),
+  ]);
+  return { containers, networks, volumes };
 }
 
 /**

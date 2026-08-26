@@ -3,10 +3,10 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { findRepoRoot, loadRepoEnv, localPort, type PortName } from '@xitter/config';
 import {
-  DEFAULT_ORPHAN_AGE_MS,
-  ENV_TEARDOWN_GRACE_MS,
   anySuiteActive,
+  environmentTeardownSweepOptions,
   sweepOrphanedTestResources,
+  type SweepResult,
 } from '@xitter/testing/sweep';
 import { run, capture } from './exec.js';
 
@@ -100,32 +100,27 @@ export async function down(volumes = false): Promise<void> {
 /**
  * #47: interrupted test runs leak labelled testcontainers until some later
  * run sweeps them. deps:down is the natural "clean the environment" moment,
- * so sweep here too. Normally nothing of ours is running: stopped leftovers
- * go with a 60s grace. RUNNING containers keep the conservative 30-minute
- * gate - an interrupted run's orphans are usually still running, and so are
- * a live suite's (possibly from a checkout without activity markers), so
- * liveness cannot separate them and only age can. When a fresh activity
- * marker says a suite on this code is live, every gate rises to 30 minutes.
- * Label-scoped throughout: compose resources and anything unlabelled are
- * never touched.
+ * so sweep here too (policy + rationale in @xitter/testing sweep.ts:
+ * environmentTeardownSweepOptions). Label-scoped throughout - compose
+ * resources and anything unlabelled are never touched.
  */
 async function sweepOrphanedTestContainers(): Promise<void> {
-  const suiteActive = anySuiteActive();
-  const options = suiteActive
-    ? { minAgeMs: DEFAULT_ORPHAN_AGE_MS }
-    : { minAgeMs: ENV_TEARDOWN_GRACE_MS, runningMinAgeMs: DEFAULT_ORPHAN_AGE_MS };
   try {
-    const swept = await sweepOrphanedTestResources(options);
-    const total = swept.containers + swept.networks + swept.volumes;
-    if (total > 0) {
-      console.log(
-        `deps:down removed ${total} orphaned test resource(s) (${suiteActive ? 'conservative' : 'env-teardown'} age gate)`,
-      );
-    }
+    const swept = await sweepOrphanedTestResources(
+      environmentTeardownSweepOptions(anySuiteActive()),
+    );
+    logSweptResources(swept);
   } catch (err) {
     console.warn(
       `deps:down: test orphan sweep skipped (${err instanceof Error ? err.message : err})`,
     );
+  }
+}
+
+function logSweptResources(swept: SweepResult): void {
+  const total = swept.containers + swept.networks + swept.volumes;
+  if (total > 0) {
+    console.log(`deps:down removed ${total} orphaned test resource(s)`);
   }
 }
 

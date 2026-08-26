@@ -1,4 +1,12 @@
-import { mkdtempSync, mkdirSync, rmSync, statSync, utimesSync, writeFileSync, existsSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+  existsSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -10,8 +18,11 @@ import {
   createdMs,
   endSuiteActivity,
   ensureSuiteActivity,
+  environmentTeardownSweepOptions,
   hasTestResourceLabel,
   selectOrphanResources,
+  sweepOrphanedTestResources,
+  type DockerTransport,
 } from './sweep.js';
 
 /**
@@ -62,17 +73,15 @@ describe('createdMs', () => {
 describe('selectOrphanResources', () => {
   it('selects labelled resources past the age gate', () => {
     const old = Date.parse('2026-08-26T10:00:00Z') / 1000;
-    const resources = [
-      { Id: 'a', Created: old, Labels: { 'xitter.test.postgres': 'true' } },
-    ];
-    expect(selectOrphanResources(resources, NOW, DEFAULT_ORPHAN_AGE_MS).map((r) => r.Id)).toEqual(['a']);
+    const resources = [{ Id: 'a', Created: old, Labels: { 'xitter.test.postgres': 'true' } }];
+    expect(selectOrphanResources(resources, NOW, DEFAULT_ORPHAN_AGE_MS).map((r) => r.Id)).toEqual([
+      'a',
+    ]);
   });
 
   it("keeps a live suite's younger containers", () => {
     const young = (NOW - 5 * 60_000) / 1000;
-    const resources = [
-      { Id: 'live', Created: young, Labels: { 'xitter.test.kafka': 'true' } },
-    ];
+    const resources = [{ Id: 'live', Created: young, Labels: { 'xitter.test.kafka': 'true' } }];
     expect(selectOrphanResources(resources, NOW, DEFAULT_ORPHAN_AGE_MS)).toEqual([]);
   });
 
@@ -87,15 +96,19 @@ describe('selectOrphanResources', () => {
 
   it('selects exactly-at-threshold resources (boundary is inclusive)', () => {
     const exactly = (NOW - ENV_TEARDOWN_GRACE_MS) / 1000;
-    const resources = [
-      { Id: 'edge', Created: exactly, Labels: { 'xitter.test.rustfs': 'true' } },
-    ];
-    expect(selectOrphanResources(resources, NOW, ENV_TEARDOWN_GRACE_MS).map((r) => r.Id)).toEqual(['edge']);
+    const resources = [{ Id: 'edge', Created: exactly, Labels: { 'xitter.test.rustfs': 'true' } }];
+    expect(selectOrphanResources(resources, NOW, ENV_TEARDOWN_GRACE_MS).map((r) => r.Id)).toEqual([
+      'edge',
+    ]);
   });
 
   it('skips resources with an unparseable creation time', () => {
     const resources = [
-      { Id: 'weird', Created: 'garbage' as unknown as number, Labels: { 'xitter.test.postgres': 'true' } },
+      {
+        Id: 'weird',
+        Created: 'garbage' as unknown as number,
+        Labels: { 'xitter.test.postgres': 'true' },
+      },
     ];
     expect(selectOrphanResources(resources, NOW, ENV_TEARDOWN_GRACE_MS)).toEqual([]);
   });
@@ -106,18 +119,145 @@ describe('selectOrphanResources', () => {
     // live suite's, so only age past the conservative gate separates them.
     const age = 10 * 60_000;
     const resources = [
-      { Id: 'running', Created: (NOW - age) / 1000, State: 'running', Labels: { 'xitter.test.postgres': 'true' } },
-      { Id: 'exited', Created: (NOW - age) / 1000, State: 'exited', Labels: { 'xitter.test.postgres': 'true' } },
+      {
+        Id: 'running',
+        Created: (NOW - age) / 1000,
+        State: 'running',
+        Labels: { 'xitter.test.postgres': 'true' },
+      },
+      {
+        Id: 'exited',
+        Created: (NOW - age) / 1000,
+        State: 'exited',
+        Labels: { 'xitter.test.postgres': 'true' },
+      },
     ];
-    const swept = selectOrphanResources(resources, NOW, ENV_TEARDOWN_GRACE_MS, DEFAULT_ORPHAN_AGE_MS);
+    const swept = selectOrphanResources(
+      resources,
+      NOW,
+      ENV_TEARDOWN_GRACE_MS,
+      DEFAULT_ORPHAN_AGE_MS,
+    );
     expect(swept.map((r) => r.Id)).toEqual(['exited']);
   });
 
   it('state-less resources (networks/volumes) use the conservative gate', () => {
     const age = 5 * 60_000;
-    const resources = [{ Id: 'vol', Created: (NOW - age) / 1000, Labels: { 'xitter.test.kafka': 'true' } }];
-    const swept = selectOrphanResources(resources, NOW, ENV_TEARDOWN_GRACE_MS, DEFAULT_ORPHAN_AGE_MS);
+    const resources = [
+      { Id: 'vol', Created: (NOW - age) / 1000, Labels: { 'xitter.test.kafka': 'true' } },
+    ];
+    const swept = selectOrphanResources(
+      resources,
+      NOW,
+      ENV_TEARDOWN_GRACE_MS,
+      DEFAULT_ORPHAN_AGE_MS,
+    );
     expect(swept).toEqual([]);
+  });
+});
+
+describe('environmentTeardownSweepOptions (deps:down policy)', () => {
+  it('idle environment: short grace for stopped, conservative gate for running', () => {
+    expect(environmentTeardownSweepOptions(false)).toEqual({
+      minAgeMs: ENV_TEARDOWN_GRACE_MS,
+      runningMinAgeMs: DEFAULT_ORPHAN_AGE_MS,
+    });
+  });
+
+  it('live suite: every gate conservative', () => {
+    expect(environmentTeardownSweepOptions(true)).toEqual({
+      minAgeMs: DEFAULT_ORPHAN_AGE_MS,
+    });
+  });
+});
+
+describe('sweepOrphanedTestResources (fake docker transport)', () => {
+  interface Call {
+    method: string;
+    path: string;
+  }
+
+  function fakeTransport(listings: Record<string, unknown>): {
+    transport: DockerTransport;
+    calls: Call[];
+  } {
+    const calls: Call[] = [];
+    const transport = (method: 'GET' | 'DELETE', path: string): Promise<unknown> => {
+      calls.push({ method, path });
+      if (method === 'DELETE') return Promise.resolve(undefined);
+      const route = path.split('?')[0] ?? path;
+      const body = listings[route];
+      if (body === undefined) return Promise.reject(new Error(`unexpected ${route}`));
+      return Promise.resolve(body);
+    };
+    return { transport, calls };
+  }
+
+  it('happy path: removes only labelled, gate-passing resources of every kind', async () => {
+    const now = Date.now();
+    const fiveMin = (now - 5 * 60_000) / 1000;
+    const thirtyFiveMin = (now - 35 * 60_000) / 1000;
+    const { transport, calls } = fakeTransport({
+      // deps:down gates: 60s grace for stopped, 30min for running/state-less.
+      '/containers/json': [
+        {
+          Id: 'orphan',
+          Created: fiveMin,
+          State: 'exited',
+          Labels: { 'xitter.test.postgres': 'true' },
+        },
+        {
+          Id: 'running-live',
+          Created: fiveMin,
+          State: 'running',
+          Labels: { 'xitter.test.kafka': 'true' },
+        },
+        {
+          Id: 'foreign',
+          Created: thirtyFiveMin,
+          State: 'exited',
+          Labels: { 'com.docker.compose.project': 'x' },
+        },
+      ],
+      '/networks': [
+        {
+          Id: 'net',
+          Created: new Date(now - 35 * 60_000).toISOString(),
+          Labels: { 'xitter.test.kafka': 'true' },
+        },
+        { Id: 'docker-bridge', Created: new Date(now - 35 * 60_000).toISOString(), Labels: {} },
+      ],
+      '/volumes': {
+        Volumes: [
+          {
+            Name: 'vol',
+            Created: new Date(now - 35 * 60_000).toISOString(),
+            Labels: { 'xitter.test.rustfs': 'true' },
+          },
+        ],
+      },
+    });
+
+    const swept = await sweepOrphanedTestResources({
+      transport,
+      ...environmentTeardownSweepOptions(false),
+    });
+
+    expect(swept).toEqual({ containers: 1, networks: 1, volumes: 1 });
+    expect(calls.filter((c) => c.method === 'DELETE').map((c) => c.path)).toEqual([
+      '/containers/orphan?force=true',
+      '/networks/net?force=true',
+      '/volumes/vol?force=true',
+    ]);
+  });
+
+  it('label-restricted sweeps skip networks/volumes and filter docker-side', async () => {
+    const { transport, calls } = fakeTransport({ '/containers/json': [] });
+    const swept = await sweepOrphanedTestResources({ transport, labels: ['xitter.test.postgres'] });
+    expect(swept).toEqual({ containers: 0, networks: 0, volumes: 0 });
+    expect(calls.map((c) => c.path)).toEqual([
+      `/containers/json?all=1&filters=${encodeURIComponent(JSON.stringify({ label: ['xitter.test.postgres'] }))}`,
+    ]);
   });
 });
 
