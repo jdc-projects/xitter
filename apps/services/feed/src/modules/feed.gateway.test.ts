@@ -82,7 +82,14 @@ async function startGateway(overrides: Partial<FeedGatewayOptions> = {}): Promis
 
 async function stopGateway(state: { server: Server; gateway: FeedGateway }): Promise<void> {
   await state.gateway.close();
-  await new Promise<void>((resolve) => state.server.close(() => resolve()));
+  // Bounded: a leftover open connection would otherwise hang the suite on
+  // server.close() waiting for it to drain.
+  await Promise.race([
+    new Promise<void>((resolve) => state.server.close(() => resolve())),
+    sleep(2_000).then(() => {
+      throw new Error('server.close() stalled - a connection survived gateway.close()');
+    }),
+  ]);
 }
 
 function connect(
@@ -167,10 +174,12 @@ function fakeSubscriber(): RedisSubscriber & {
       patterns.push(pattern);
     },
     on: (
-      _event: 'pmessage',
+      event: 'pmessage',
       listener: (pattern: string, channel: string, message: string) => void,
     ) => {
-      listeners.push(listener);
+      // ioredis delivers only to listeners registered under the exact event
+      // name - the double honours that contract instead of matching any name.
+      if (event === 'pmessage') listeners.push(listener);
       return subscriber;
     },
     quit: async () => {
@@ -333,10 +342,11 @@ describe('FeedGateway (ws auth + notification relay)', () => {
     ws.close();
   });
 
-  it('destroys upgrades to other paths (the API server keeps routing them)', async () => {
+  it('destroys upgrades to other paths even with a valid token (the API server keeps routing them)', async () => {
     const other = url.replace(FEED_WS_PATH, '/api/feed/v1/other');
-    const { ws, opened } = await connect(other);
-    expect(opened).toBe(false);
+    const { ws, opened, error } = await connect(`${other}?token=good-token`);
+    expect(opened).toBe(false); // never handed to the ws server
+    expect(error).not.toContain('401'); // rejected for the path, not the token
     ws.terminate();
   });
 });
@@ -377,6 +387,21 @@ describe('FeedGateway handshake: token sources and the azp allowlist', () => {
     expect(opened).toBe(false);
     expect(error).toContain('401');
     ws.terminate();
+  });
+
+  it('requires the exact Bearer scheme - a longer prefix is not sliced into a token', async () => {
+    // "BearerXgood-token".slice(7) would be a valid token; the scheme match
+    // must be the whole "Bearer " prefix, not a 7-character grab.
+    const { ws, opened, error } = await connect(url, { authorization: 'BearerXgood-token' });
+    expect(opened).toBe(false);
+    expect(error).toContain('401');
+    ws.terminate();
+  });
+
+  it('tolerates extra whitespace after the Bearer scheme', async () => {
+    const { ws, opened } = await connect(url, { authorization: 'Bearer  good-token' });
+    expect(opened).toBe(true);
+    ws.close();
   });
 
   it('the token query param wins over a contradicting header', async () => {
@@ -620,7 +645,14 @@ describe('FeedGateway socket registry and liveness (leak-safety)', () => {
       const closedA = new Promise<void>((resolve) => a.ws.once('close', resolve));
       const closedB = new Promise<void>((resolve) => b.ws.once('close', resolve));
       await own.gateway.close();
-      await Promise.all([closedA, closedB]); // every socket terminated
+      // Bounded close: a socket that survives close() fails fast instead of
+      // hanging the suite (leak-safety is the assertion, not a side effect).
+      await Promise.race([
+        Promise.all([closedA, closedB]),
+        sleep(2_000).then(() => {
+          throw new Error('close() left a socket open');
+        }),
+      ]);
 
       expect(subscriber.quits).toBe(1); // the subscriber was released too
       const settledA = pings.a;
