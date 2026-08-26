@@ -2,11 +2,7 @@ import type { EachMessagePayload } from 'kafkajs';
 import type { Profile, SearchIndexDocument } from '@xitter/api-contracts';
 import { eventSchemas, EVENT_TYPES, type DomainEvent } from '@xitter/events';
 import { createLogger } from '@xitter/observability';
-import {
-  documentFromPostCreated,
-  tombstoneFromPostDeleted,
-  UNKNOWN_AUTHOR,
-} from './documents.js';
+import { documentFromPostCreated, tombstoneFromPostDeleted, UNKNOWN_AUTHOR } from './documents.js';
 
 const logger = createLogger({ service: 'search-index-worker' });
 

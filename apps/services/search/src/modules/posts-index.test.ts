@@ -111,8 +111,8 @@ describe('PostsIndex.upsertDocuments ensure-once (#109)', () => {
   });
 
   function clientWith(overrides: {
-    bulk: unknown;
-    create?: unknown;
+    bulk: () => Promise<unknown>;
+    create?: () => Promise<unknown>;
   }): { client: Client; create: ReturnType<typeof vi.fn>; bulk: ReturnType<typeof vi.fn> } {
     const create = vi.fn(overrides.create ?? (() => Promise.resolve({ body: {} })));
     const bulk = vi.fn(overrides.bulk);

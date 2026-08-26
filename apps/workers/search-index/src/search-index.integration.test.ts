@@ -130,7 +130,8 @@ describe('search-index consumption (testcontainers kafka + opensearch)', () => {
       fromBeginning: true,
     });
     await consumer.runBatch((events, context) => {
-      for (const { envelope } of events) eventsSeen.push((envelope as { eventType: string }).eventType);
+      for (const { envelope } of events)
+        eventsSeen.push((envelope as { eventType: string }).eventType);
       return handleBatch(events, context, {
         search,
         social,
@@ -308,7 +309,9 @@ describe('search-index consumption (testcontainers kafka + opensearch)', () => {
     const lastBulkAt = Math.max(...burstBulks.map((entry) => entry.at));
     const coveringCheckpoint = journal
       .filter(
-        (entry): entry is { kind: 'checkpoint'; at: number; offset: number } =>
+        (
+          entry,
+        ): entry is { kind: 'checkpoint'; at: number; topicPartition: string; offset: number } =>
           entry.kind === 'checkpoint' && entry.topicPartition.startsWith('xitter.posts.v1'),
       )
       .some((entry) => entry.at > lastBulkAt);
@@ -331,9 +334,13 @@ describe('search-index consumption (testcontainers kafka + opensearch)', () => {
 
     // Exactly one injected failure, and its whole doc set re-landed in a
     // later successful bulk (whole-batch redelivery, nothing dropped).
-    const failed = journal.filter((entry) => entry.kind === 'bulk-failed');
+    const failed = journal.filter(
+      (entry): entry is { kind: 'bulk-failed'; at: number; docs: string[] } =>
+        entry.kind === 'bulk-failed',
+    );
     expect(failed).toHaveLength(1);
-    const [failure] = failed as Array<{ kind: 'bulk-failed'; at: number; docs: string[] }>;
+    const failure = failed[0];
+    if (!failure) throw new Error('expected one injected bulk failure');
     const recovered = journal.some(
       (entry) =>
         entry.kind === 'bulk-ok' &&
@@ -347,16 +354,14 @@ describe('search-index consumption (testcontainers kafka + opensearch)', () => {
     const between = journal.filter(
       (entry) => entry.kind === 'checkpoint' && entry.at > failure.at,
     ) as Array<{ kind: 'checkpoint'; at: number; offset: number }>;
-    const recoveryAt = (
-      journal.find(
-        (entry) =>
-          entry.kind === 'bulk-ok' &&
-          failure.docs.every((doc) => entry.docs.includes(doc)),
-      ) as { at: number }
-    ).at;
-    expect(between.some((entry) => entry.at < recoveryAt)).toBe(false);
+    const recovery = journal.find(
+      (entry): entry is { kind: 'bulk-ok'; at: number; docs: string[] } =>
+        entry.kind === 'bulk-ok' && failure.docs.every((doc) => entry.docs.includes(doc)),
+    );
+    if (!recovery) throw new Error('expected a recovering bulk after the failure');
+    expect(between.some((entry) => entry.at < recovery.at)).toBe(false);
     // ...and once the batch did land, its checkpoint followed.
-    expect(between.some((entry) => entry.at > recoveryAt)).toBe(true);
+    expect(between.some((entry) => entry.at > recovery.at)).toBe(true);
   }, 120_000);
 
   it('resumes from checkpoints after consumer-group loss (no data skipped)', async () => {

@@ -1,9 +1,4 @@
-import {
-  Kafka,
-  type Consumer,
-  type EachMessagePayload,
-  type KafkaMessage,
-} from 'kafkajs';
+import { Kafka, type Consumer, type EachMessagePayload, type KafkaMessage } from 'kafkajs';
 import { eventEnvelopeSchema } from './envelope.js';
 import { TOPICS, type TopicName } from './topics.js';
 import { applyKafkaRequestQueueFix } from './kafka-request-queue-fix.js';
@@ -177,7 +172,13 @@ export function createEventConsumer(options: EventConsumerOptions): EventConsume
             if (envelope === null) continue;
             events.push({
               envelope,
-              raw: { topic, partition, message, heartbeat: payload.heartbeat, pause: payload.pause },
+              raw: {
+                topic,
+                partition,
+                message,
+                heartbeat: payload.heartbeat,
+                pause: payload.pause,
+              },
             });
           }
           if (events.length === 0) return; // all poison: offsets commit, nothing to do
@@ -199,19 +200,12 @@ export function createEventConsumer(options: EventConsumerOptions): EventConsume
  * message (logged + skipped): a throw would crash the consumer and
  * hot-loop the partition.
  */
-function parseEnvelope(
-  topic: string,
-  partition: number,
-  message: KafkaMessage,
-): unknown | null {
+function parseEnvelope(topic: string, partition: number, message: KafkaMessage): unknown | null {
   const value = message.value?.toString('utf8') ?? '{}';
   try {
     return eventEnvelopeSchema.parse(JSON.parse(value));
   } catch (err) {
-    console.error(
-      `skipping malformed event on ${topic}[${partition}]@${message.offset}`,
-      err,
-    );
+    console.error(`skipping malformed event on ${topic}[${partition}]@${message.offset}`, err);
     return null;
   }
 }

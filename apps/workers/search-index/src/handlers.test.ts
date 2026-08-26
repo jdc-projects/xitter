@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, type Mock } from 'vitest';
 import type { EachMessagePayload } from 'kafkajs';
 import type { Profile, SearchIndexDocument } from '@xitter/api-contracts';
 import { EVENT_TYPES } from '@xitter/events';
@@ -37,17 +37,30 @@ const profile = (id: string, displayName: string): Profile => ({
 });
 
 function deps(): HandlerDeps & {
-  upsert: ReturnType<typeof vi.fn>;
-  refresh: ReturnType<typeof vi.fn>;
-  checkpoint: ReturnType<typeof vi.fn>;
-  profiles: ReturnType<typeof vi.fn>;
+  upsert: Mock<(documents: SearchIndexDocument[]) => Promise<{ indexed: number }>>;
+  refresh: Mock<
+    (authors: { authorId: string; authorName: string }[]) => Promise<{ updated: number }>
+  >;
+  checkpoint: Mock<
+    (input: {
+      consumerKey: string;
+      topicPartition: string;
+      offset: number;
+      eventId: string;
+      eventAt: string;
+    }) => Promise<void>
+  >;
+  profiles: Mock<(userIds: string[]) => Promise<{ items: Profile[] }>>;
 } {
-  const upsert = vi.fn((_documents: SearchIndexDocument[]) => Promise.resolve({ indexed: 1 }));
-  const refresh = vi.fn((_authors: { authorId: string; authorName: string }[]) =>
-    Promise.resolve({ updated: 0 }),
+  const upsert = vi.fn((_documents: SearchIndexDocument[]): Promise<{ indexed: number }> =>
+    Promise.resolve({ indexed: 1 }),
   );
-  const checkpoint = vi.fn(() => Promise.resolve());
-  const profiles = vi.fn((userIds: string[]) =>
+  const refresh = vi.fn(
+    (_authors: { authorId: string; authorName: string }[]): Promise<{ updated: number }> =>
+      Promise.resolve({ updated: 0 }),
+  );
+  const checkpoint = vi.fn((): Promise<void> => Promise.resolve());
+  const profiles = vi.fn((userIds: string[]): Promise<{ items: Profile[] }> =>
     Promise.resolve({ items: userIds.map((id) => profile(id, `Name ${id.slice(-4)}`)) }),
   );
   const search = {
@@ -170,19 +183,17 @@ describe('search-index handleBatch (accumulate -> flush -> checkpoint)', () => {
   it('runs renames after the upserts, deduped last-wins', async () => {
     const d = deps();
     const order: string[] = [];
-    d.upsert.mockImplementation(() => {
+    const recordUpsert = async (): Promise<{ indexed: number }> => {
       order.push('upsert');
-      return Promise.resolve({ indexed: 1 });
-    });
-    d.refresh.mockImplementation(() => {
+      return { indexed: 1 };
+    };
+    const recordRefresh = async (): Promise<{ updated: number }> => {
       order.push('refresh');
-      return Promise.resolve({ updated: 0 });
-    });
-    const events = [
-      created(uid('e005')),
-      renamed('First Rename', 5),
-      renamed('Final Name', 6),
-    ];
+      return { updated: 0 };
+    };
+    d.upsert.mockImplementation(recordUpsert);
+    d.refresh.mockImplementation(recordRefresh);
+    const events = [created(uid('e005')), renamed('First Rename', 5), renamed('Final Name', 6)];
     events[0]!.raw = rawFor('xitter.posts.v1', 0, 4);
     await handleBatch(events, { topic: 'xitter.posts.v1', partition: 0 }, d);
 
@@ -289,10 +300,11 @@ describe('search-index handleBatch (accumulate -> flush -> checkpoint)', () => {
   it('splits oversized batches into contract-sized chunks, sequentially', async () => {
     const d = deps();
     const seen: number[] = [];
-    d.upsert.mockImplementation((docs: SearchIndexDocument[]) => {
+    const recordSizes = async (docs: SearchIndexDocument[]): Promise<{ indexed: number }> => {
       seen.push(docs.length);
-      return Promise.resolve({ indexed: docs.length });
-    });
+      return { indexed: docs.length };
+    };
+    d.upsert.mockImplementation(recordSizes);
     const events = Array.from({ length: 1001 }, (_, i) => {
       const event = created(uid(String(i).padStart(3, '0')));
       event.raw = rawFor('xitter.posts.v1', 0, i);

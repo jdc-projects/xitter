@@ -208,10 +208,10 @@ Documents are keyed by `postId` (idempotent replays converge); deletes are tombs
 
 Group ids live in `CONSUMER_GROUPS` (`packages/events/src/topics.ts`); the nightly reset recreates them (see [05-data-platform.md](05-data-platform.md)).
 
-| Group                         | Worker        | Topics                                | Notes                                                                                                                                                     |
-| ----------------------------- | ------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `xitter-fanout-worker`        | fanout        | `xitter.posts.v1`, `xitter.social.v1` | Feed materialisation + backfill/removal                                                                                                                   |
-| `xitter-media-process-worker` | media-process | `xitter.media.v1`                     | Only `media.media.uploaded` is actionable                                                                                                                 |
+| Group                         | Worker        | Topics                                | Notes                                                                                                                                                                         |
+| ----------------------------- | ------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `xitter-fanout-worker`        | fanout        | `xitter.posts.v1`, `xitter.social.v1` | Feed materialisation + backfill/removal                                                                                                                                       |
+| `xitter-media-process-worker` | media-process | `xitter.media.v1`                     | Only `media.media.uploaded` is actionable                                                                                                                                     |
 | `xitter-search-index-worker`  | search-index  | `xitter.posts.v1`, `xitter.social.v1` | `posts.post.*` index/tombstone documents; `social.profile.updated` refreshes denormalised author names; batches events per fetch (one bulk upsert + one checkpoint per batch) |
 
 Groups (and topic data) are deleted and recreated by the nightly reset — see [05-data-platform.md](05-data-platform.md).

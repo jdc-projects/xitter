@@ -255,7 +255,10 @@ export function buildSearchBody(options: SearchOptions): Record<string, unknown>
 }
 
 /** Surface the first bulk item error as a throw (the await must not lie). */
-function checkBulk(result: { body: { errors?: boolean; items?: Array<{ index?: { error?: unknown } }> } }, expected: number): number {
+function checkBulk(
+  result: { body: { errors?: boolean; items?: Array<{ index?: { error?: unknown } }> } },
+  expected: number,
+): number {
   if (result.body.errors) {
     const reason = JSON.stringify(result.body.items?.[0]?.index?.error ?? 'unknown bulk error');
     throw new Error(`search index bulk upsert failed: ${reason}`);
