@@ -389,9 +389,10 @@ describe('getMedia (upload polling)', () => {
   it('404s for an asset id that never existed', async () => {
     const { service } = makeDeps();
 
-    await expect(
-      service.getMedia('00000000-0000-4000-8000-0000000000dd'),
-    ).rejects.toMatchObject({ status: 404, response: { error: { code: 'NOT_FOUND' } } });
+    await expect(service.getMedia('00000000-0000-4000-8000-0000000000dd')).rejects.toMatchObject({
+      status: 404,
+      response: { error: { code: 'NOT_FOUND' } },
+    });
   });
 
   it('tracks the visible lifecycle: pending → uploaded (still pending) → ready', async () => {
@@ -458,9 +459,9 @@ describe('getInternal (worker state reads)', () => {
   it('404s for an unknown asset id', async () => {
     const { service } = makeDeps();
 
-    await expect(
-      service.getInternal('00000000-0000-4000-8000-0000000000dd'),
-    ).rejects.toMatchObject({ status: 404, response: { error: { code: 'NOT_FOUND' } } });
+    await expect(service.getInternal('00000000-0000-4000-8000-0000000000dd')).rejects.toMatchObject(
+      { status: 404, response: { error: { code: 'NOT_FOUND' } } },
+    );
   });
 
   it('exposes the storage coordinates and attempt count the public view omits', async () => {

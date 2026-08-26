@@ -2,11 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createPostRequestSchema, POST_MEDIA_MAX, POST_TEXT_MAX } from '@xitter/api-contracts';
 import type { MediaAsset } from '@xitter/api-contracts';
 import { PostsService } from './posts.service.js';
-import {
-  MediaServiceChecker,
-  NullMediaChecker,
-  type MediaChecker,
-} from './media-checker.js';
+import { MediaServiceChecker, NullMediaChecker, type MediaChecker } from './media-checker.js';
 import { NullInteractionRealtime } from './interaction-realtime.js';
 import type { PostsEvents } from './posts-events.js';
 import type { PostsRepository, PostRow } from './posts.repository.js';
