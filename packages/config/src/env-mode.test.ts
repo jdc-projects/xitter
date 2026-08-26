@@ -13,9 +13,12 @@ describe('isDeployedEnv', () => {
     expect(isDeployedEnv(env)).toBe(true);
   });
 
-  it.each([undefined, 'local', 'ci', 't9'])('treats %s as ephemeral (local defaults apply)', (env) => {
-    expect(isDeployedEnv(env)).toBe(false);
-  });
+  it.each([undefined, 'local', 'ci', 't9'])(
+    'treats %s as ephemeral (local defaults apply)',
+    (env) => {
+      expect(isDeployedEnv(env)).toBe(false);
+    },
+  );
 
   it('reads XITTER_ENV from the process by default', () => {
     process.env.XITTER_ENV = 'dev';

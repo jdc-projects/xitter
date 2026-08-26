@@ -40,14 +40,14 @@ Deploy triggers: merge to `dev` deploys the mutable `dev` image tag (Deploy dev 
 
 ## Config management
 
-| Concern               | Mechanism                                                                                                             |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Runtime config        | Environment variables only, named `XITTER_*` (e.g. `XITTER_ENV`, `XITTER_PORT_OFFSET`, DB/Kafka/OpenSearch endpoints) |
-| Local defaults        | `.env` / `.env.example` contain **non-secret defaults only**                                                          |
+| Concern               | Mechanism                                                                                                                                                                                                                                                               |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runtime config        | Environment variables only, named `XITTER_*` (e.g. `XITTER_ENV`, `XITTER_PORT_OFFSET`, DB/Kafka/OpenSearch endpoints)                                                                                                                                                   |
+| Local defaults        | `.env` / `.env.example` contain **non-secret defaults only**                                                                                                                                                                                                            |
 | Cross-service URLs    | `XITTER_{SOCIAL,POSTS,MEDIA,FEED,SEARCH}_URL` and the workers' `*_INTERNAL_URL`: localhost default locally, **required at boot (env-schema parse) in dev/prod** — an unset var would silently target the pod itself (#113; `crossServiceUrlSchema` in `@xitter/config`) |
-| Secrets               | Tofu-managed Kubernetes secrets per env; never committed                                                              |
-| Infrastructure vars   | Per-env `terraform.tfvars` / Tofu vars under `infra/iac/environments/{dev,prod}`                                      |
-| Parallel local copies | `XITTER_ENV` scopes the compose project name; `XITTER_PORT_OFFSET` shifts all local ports so multiple stacks coexist  |
+| Secrets               | Tofu-managed Kubernetes secrets per env; never committed                                                                                                                                                                                                                |
+| Infrastructure vars   | Per-env `terraform.tfvars` / Tofu vars under `infra/iac/environments/{dev,prod}`                                                                                                                                                                                        |
+| Parallel local copies | `XITTER_ENV` scopes the compose project name; `XITTER_PORT_OFFSET` shifts all local ports so multiple stacks coexist                                                                                                                                                    |
 
 Local port map (base, before offset): web 3456, cms 3457, admin 3458, services 8101-8105, postgres 5532, kafka 9092, opensearch 9200, rustfs 9000, valkey 6379, keycloak 8090, edge 8080. The local edge (`infra/proxy/traefik`) mirrors cluster path routing so a service exercised at `localhost:8080` behaves like its deployed counterpart.
 
