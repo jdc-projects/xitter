@@ -6,6 +6,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./sweep": {
+      "types": "./dist/sweep.d.ts",
+      "default": "./dist/sweep.js"
     }
   },
   "files": [

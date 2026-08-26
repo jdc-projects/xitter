@@ -2,6 +2,12 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { findRepoRoot, loadRepoEnv, localPort, type PortName } from '@xitter/config';
+import {
+  DEFAULT_ORPHAN_AGE_MS,
+  ENV_TEARDOWN_GRACE_MS,
+  anySuiteActive,
+  sweepOrphanedTestResources,
+} from '@xitter/testing/sweep';
 import { run, capture } from './exec.js';
 
 const COMPOSE_FILE = join(findRepoRoot(), 'infra', 'docker', 'compose.yaml');
@@ -88,6 +94,34 @@ export async function up(detach = true): Promise<void> {
 export async function down(volumes = false): Promise<void> {
   loadRepoEnv();
   await run('docker', [...composeArgs(), 'down', ...(volumes ? ['--volumes'] : [])]);
+  await sweepOrphanedTestContainers();
+}
+
+/**
+ * #47: interrupted test runs leak labelled testcontainers until some later
+ * run sweeps them. deps:down is the natural "clean the environment" moment,
+ * so sweep here too. Normally nothing of ours is running and a 60s grace
+ * suffices; when a live suite is detected (fresh activity marker from
+ * @xitter/testing) fall back to the conservative 30-minute gate rather than
+ * skipping - cleanup still happens, just never mid-suite. Label-scoped:
+ * compose resources and anything unlabelled are never touched.
+ */
+async function sweepOrphanedTestContainers(): Promise<void> {
+  const suiteActive = anySuiteActive();
+  const minAgeMs = suiteActive ? DEFAULT_ORPHAN_AGE_MS : ENV_TEARDOWN_GRACE_MS;
+  try {
+    const swept = await sweepOrphanedTestResources({ minAgeMs });
+    const total = swept.containers + swept.networks + swept.volumes;
+    if (total > 0) {
+      console.log(
+        `deps:down removed ${total} orphaned test resource(s) (${suiteActive ? 'conservative' : 'env-teardown'} age gate)`,
+      );
+    }
+  } catch (err) {
+    console.warn(
+      `deps:down: test orphan sweep skipped (${err instanceof Error ? err.message : err})`,
+    );
+  }
 }
 
 export async function status(): Promise<void> {
