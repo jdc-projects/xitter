@@ -4,6 +4,7 @@ import { createLogger, createMetricsServer, initSentry, initTracing } from '@xit
 import type { ResetWorkerName } from '@xitter/config';
 import {
   createEventConsumer,
+  type BatchedEvent,
   type EventConsumerOptions,
   type EventConsumerRunOptions,
 } from './consumer.js';
@@ -17,13 +18,11 @@ import { applyKafkaRequestQueueFix } from './kafka-request-queue-fix.js';
 
 void applyKafkaRequestQueueFix();
 
-export interface EventWorkerOptions extends EventConsumerOptions {
+export interface EventWorkerBaseOptions extends EventConsumerOptions {
   /** Worker identity for logs, tracing and Sentry (e.g. 'fanout-worker'). */
   service: string;
   /** Local Prometheus scrape port. */
   metricsPort: number;
-  /** Event handler; must be idempotent (at-least-once delivery). */
-  handle(envelope: unknown, raw?: EachMessagePayload): Promise<void>;
   /**
    * Checkpoint resume positions (`topic:partition` -> next offset), applied
    * on partition assignment - see EventConsumerRunOptions.resumeFrom.
@@ -47,6 +46,30 @@ export interface EventWorkerOptions extends EventConsumerOptions {
    */
   resetPause?: { worker: ResetWorkerName; valkeyUrl: string; brokers: string[] };
 }
+
+/** Message-at-a-time handler; must be idempotent (at-least-once delivery). */
+interface MessageHandlerOptions {
+  handle(envelope: unknown, raw?: EachMessagePayload): Promise<void>;
+  handleBatch?: never;
+}
+
+/**
+ * Batch handler: one kafkajs fetch batch = one call per topic-partition,
+ * events in offset order. Offsets only advance when the handler resolves,
+ * so throughput-critical workers can amortise per-message costs (one bulk
+ * write + one checkpoint per batch); a mid-batch failure redelivers the
+ * whole batch, so batch handlers must be idempotent across the batch.
+ */
+interface BatchHandlerOptions {
+  handleBatch: (
+    events: BatchedEvent[],
+    context: { topic: string; partition: number },
+  ) => Promise<void>;
+  handle?: never;
+}
+
+export type EventWorkerOptions = EventWorkerBaseOptions &
+  (MessageHandlerOptions | BatchHandlerOptions);
 
 /**
  * Shared worker bootstrap: consumer wiring, metrics server, consumer-lag
@@ -95,21 +118,31 @@ export async function runEventWorker(options: EventWorkerOptions): Promise<void>
   // healthy); first tick lands after the group has joined in practice, and
   // a too-early tick just retries on the next one.
   gate?.start();
-  await consumer
-    .run(async (envelope, raw) => {
-      if (!gate) {
-        await options.handle(envelope, raw);
-        return;
-      }
-      await gate.track(() => options.handle(envelope, raw));
-    }, runOptions)
-    .catch((err: unknown) => {
-      // Consumer crash (handler failure exhausted all retries): without this
-      // the rejection surfaced only as a silent process exit, leaving the
-      // worker's derived store stalled with nothing in the logs.
-      logger.error({ err }, `${options.service}: consumer crashed - worker exiting`);
-      throw err;
-    });
+  const crashLogged = (err: unknown) => {
+    // Consumer crash (handler failure exhausted all retries): without this
+    // the rejection surfaced only as a silent process exit, leaving the
+    // worker's derived store stalled with nothing in the logs.
+    logger.error({ err }, `${options.service}: consumer crashed - worker exiting`);
+    throw err;
+  };
+  if (options.handleBatch) {
+    const handleBatch = options.handleBatch;
+    const runBatch = gate
+      ? (events: BatchedEvent[], context: { topic: string; partition: number }) =>
+          gate.track(() => handleBatch(events, context))
+      : handleBatch;
+    await consumer.runBatch(runBatch, runOptions).catch(crashLogged);
+  } else {
+    await consumer
+      .run(async (envelope, raw) => {
+        if (!gate) {
+          await options.handle(envelope, raw);
+          return;
+        }
+        await gate.track(() => options.handle(envelope, raw));
+      }, runOptions)
+      .catch(crashLogged);
+  }
 
   process.once('SIGTERM', () => {
     void (async () => {
