@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Text } from '@mantine/core';
+import { Button, Stack, Text } from '@mantine/core';
 import { useEffect } from 'react';
 import { loadCaptchaWidget } from './load-widget';
 
@@ -29,15 +29,18 @@ export function LoginForm({ next, captcha }: { next: string; captcha: CaptchaCon
     <form action="/api/auth/start" method="post">
       <input type="hidden" name="next" value={next} />
       {captcha ? (
-        <cap-widget
-          data-cap-api-endpoint={captcha.apiEndpoint}
-          data-cap-hidden-field-name="capToken"
-        />
-      ) : (
-        <Text size="xs" c="dimmed">
-          Bot protection is disabled in this environment.
-        </Text>
-      )}
+        <Stack gap={6}>
+          <cap-widget
+            data-cap-api-endpoint={captcha.apiEndpoint}
+            data-cap-hidden-field-name="capToken"
+          />
+          {/* Cap.js is a proof-of-work challenge, not a captcha - the copy
+              stays honest about what the visitor actually experiences. */}
+          <Text size="xs" c="dimmed">
+            A quick verification runs in your browser before sign-in - there is nothing to solve.
+          </Text>
+        </Stack>
+      ) : null}
       <Button type="submit" fullWidth mt="md" data-testid="login-submit">
         Log in
       </Button>

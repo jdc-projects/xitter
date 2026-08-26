@@ -219,4 +219,12 @@ describe('sanitizeNextPath', () => {
     expect(sanitizeNextPath(undefined)).toBe('/feed');
     expect(sanitizeNextPath('')).toBe('/feed');
   });
+
+  it('never returns the login page itself (redirect-loop guard, #40)', () => {
+    expect(sanitizeNextPath('/login')).toBe('/feed');
+    expect(sanitizeNextPath('/login?error=challenge')).toBe('/feed');
+    expect(sanitizeNextPath('/login/deeper')).toBe('/feed');
+    // Similar-looking paths are untouched - only the login route loops.
+    expect(sanitizeNextPath('/loginish')).toBe('/loginish');
+  });
 });

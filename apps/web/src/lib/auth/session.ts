@@ -114,6 +114,23 @@ export async function getSession(): Promise<Session | null> {
 }
 
 /**
+ * Username for session-aware public chrome (#38): null when signed out (or
+ * the store is unreachable) - public pages never need the full session.
+ */
+export async function getSessionUsername(): Promise<string | null> {
+  return (await getSession())?.username ?? null;
+}
+
+/**
+ * Login-page guard (#40): a live session skips the form and goes straight
+ * to the sanitized destination - submitting it would only start a second
+ * OIDC authorization. Switching accounts goes through logout first.
+ */
+export async function redirectIfAuthenticated(next: string): Promise<void> {
+  if (await getSession()) redirect(next);
+}
+
+/**
  * Server-component gate: unauthenticated visitors are redirected to
  * `/login?next=...` before any user content is fetched (ADR 0002).
  */
@@ -123,8 +140,21 @@ export async function requireSession(next = '/feed'): Promise<Session> {
   return session;
 }
 
-/** Only site-relative paths - blocks open redirects via `next`. */
+/**
+ * Only site-relative paths - blocks open redirects via `next` - and never
+ * the login page itself: a signed-in visitor redirected back to /login
+ * would bounce forever instead of reaching their destination.
+ */
 export function sanitizeNextPath(value: string | undefined | null, fallback = '/feed'): string {
-  if (value && value.startsWith('/') && !value.startsWith('//')) return value;
+  if (
+    value &&
+    value.startsWith('/') &&
+    !value.startsWith('//') &&
+    value !== '/login' &&
+    !value.startsWith('/login/') &&
+    !value.startsWith('/login?')
+  ) {
+    return value;
+  }
   return fallback;
 }

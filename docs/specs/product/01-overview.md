@@ -36,7 +36,7 @@ xitter is a public, disposable Twitter/X-style microblog: post short text with o
 ```mermaid
 flowchart LR
     A[Visit landing page] --> B["Read About page (what/why, reset schedule, demo credentials, FAQ)"]
-    B --> C["Login as demo account (Cap.js captcha)"]
+    B --> C["Login as demo account (Cap.js challenge)"]
     C --> D["Feed: followed + own posts"]
     D --> E["Post text + optional images"]
     E --> F["Interact: reply / like / bookmark / repost"]

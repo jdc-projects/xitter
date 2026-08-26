@@ -1,7 +1,7 @@
 import { Container, Paper, Stack, Text, Title } from '@mantine/core';
 import { ResetNotice } from '@xitter/ui';
 import { LoginForm } from './login-form';
-import { sanitizeNextPath } from '@/lib/auth/session';
+import { redirectIfAuthenticated, sanitizeNextPath } from '@/lib/auth/session';
 import { webEnv } from '@/lib/server-env';
 
 export const metadata = { title: 'Log in' };
@@ -10,7 +10,7 @@ export const metadata = { title: 'Log in' };
 export const dynamic = 'force-dynamic';
 
 const ERROR_MESSAGES: Record<string, string> = {
-  captcha: 'Captcha verification failed - please try again.',
+  challenge: 'Verification failed - please try again.',
   oidc: 'The login attempt was cancelled or rejected.',
   state: 'The login attempt expired or was replayed - please try again.',
   callback: 'Login could not be completed - please try again.',
@@ -23,6 +23,11 @@ export default async function LoginPage({
 }) {
   const { next, error } = await searchParams;
   const nextPath = sanitizeNextPath(next);
+
+  // Already signed in (#40): the form would only start a second OIDC
+  // authorization - send the visitor to where they were heading instead.
+  await redirectIfAuthenticated(nextPath);
+
   const cap = webEnv().cap;
 
   return (

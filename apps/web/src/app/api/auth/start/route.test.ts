@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 describe('POST /api/auth/start', () => {
-  it('blocks the OIDC redirect when captcha verification fails', async () => {
+  it('blocks the OIDC redirect when challenge verification fails', async () => {
     setCapEnv('true');
     vi.stubGlobal(
       'fetch',
@@ -35,17 +35,17 @@ describe('POST /api/auth/start', () => {
 
     const response = await POST(startRequest({ next: '/feed', capToken: 'bad-token' }));
     expect(response.status).toBe(303);
-    expect(response.headers.get('location')).toContain('/login?error=captcha');
+    expect(response.headers.get('location')).toContain('/login?error=challenge');
   });
 
-  it('blocks the redirect when captcha is enabled but the token is missing', async () => {
+  it('blocks the redirect when the challenge is enabled but the token is missing', async () => {
     setCapEnv('true');
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
     const response = await POST(startRequest({ next: '/feed' }));
     expect(response.status).toBe(303);
-    expect(response.headers.get('location')).toContain('/login?error=captcha');
+    expect(response.headers.get('location')).toContain('/login?error=challenge');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

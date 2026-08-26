@@ -8,8 +8,8 @@ import { webEnv } from '@/lib/server-env';
 export const runtime = 'nodejs';
 
 /**
- * Login entry point: form POST -> (captcha verified server-side) -> 303 to
- * Keycloak's authorization endpoint with PKCE + state + nonce. The PKCE
+ * Login entry point: form POST -> (Cap challenge verified server-side) -> 303
+ * to Keycloak's authorization endpoint with PKCE + state + nonce. The PKCE
  * verifier lives in Valkey keyed by the random state (single-use).
  */
 export async function POST(request: Request) {
@@ -20,7 +20,7 @@ export async function POST(request: Request) {
 
   if (webEnv().cap.enabled && !(await verifyCaptcha(capToken))) {
     return NextResponse.redirect(
-      new URL(`/login?error=captcha&next=${encodeURIComponent(nextPath)}`, base),
+      new URL(`/login?error=challenge&next=${encodeURIComponent(nextPath)}`, base),
       303,
     );
   }
