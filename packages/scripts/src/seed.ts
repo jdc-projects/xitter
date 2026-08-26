@@ -23,7 +23,13 @@ import {
   type SeedCorpus,
 } from './corpus.js';
 import { demoPng } from './lib/images.js';
-import { requestJson, SEED_RETRY } from './lib/api.js';
+import {
+  isAmbiguousFailure,
+  requestJson,
+  SEED_RETRY_CREATE,
+  SEED_RETRY_IDEMPOTENT,
+  type RetryPolicy,
+} from './lib/api.js';
 import { PasswordGrant, serviceBase, type ApiTarget } from './lib/targets.js';
 
 const POSTS_PAGE_LIMIT = 50;
@@ -68,7 +74,12 @@ interface SeedContext {
   grants: PasswordGrant;
   convergenceTimeoutMs: number;
   log: (message: string) => void;
-  call(target: ApiTarget, init: RequestArgs, token?: string): Promise<unknown>;
+  call(
+    target: ApiTarget,
+    init: RequestArgs,
+    token?: string,
+    policy?: RetryPolicy,
+  ): Promise<unknown>;
 }
 
 type RequestArgs = Parameters<typeof requestJson>[2] & { path: string };
@@ -91,10 +102,13 @@ export async function runSeed(options: SeedOptions = {}): Promise<SeedReport> {
     grants: new PasswordGrant({ fetchImpl: doFetch }),
     convergenceTimeoutMs: options.convergenceTimeoutMs ?? 90_000,
     log: options.log ?? console.log,
-    // SEED_RETRY (#82): rides out deploy pod-churn (5xx/ECONNREFUSED);
-    // scoped here so the reset steps' one-shot wipes never silently retry.
-    call: (target, init, token) =>
-      requestJson(serviceBase(target), init.path, init, token, doFetch, SEED_RETRY),
+    // Retry policies (#82, split #85): rides out deploy pod-churn
+    // (5xx/ECONNREFUSED) on every call, but split by idempotency - the
+    // default (SEED_RETRY_IDEMPOTENT) covers keyed upserts and reads;
+    // plain creates opt into SEED_RETRY_CREATE per call site. Scoped here
+    // so the reset steps' one-shot wipes never silently retry.
+    call: (target, init, token, policy = SEED_RETRY_IDEMPOTENT) =>
+      requestJson(serviceBase(target), init.path, init, token, doFetch, policy),
   };
 
   // --- Probe: fresh / seeded / partial -------------------------------------
@@ -207,19 +221,88 @@ async function seedPosts(
       throw new Error(`reply target missing for ${author.username}/post-${post.ordinal}`);
     }
     const mediaIds = mediaBySlot.has(slotKey(post)) ? [mediaBySlot.get(slotKey(post))!] : [];
-    const createdPost = (await ctx.call(
-      'posts',
-      {
-        method: 'POST',
-        path: '/api/posts/v1/posts',
-        body: { text: post.text, mediaIds, replyToId },
-      },
+    // The guard above threw when a reply's parent was missing, so the null
+    // fallback here is unreachable for replies by construction.
+    const createdPost = await createPost(
+      ctx,
+      author,
+      { text: post.text, mediaIds, replyToId: replyToId ?? null },
       token,
-    )) as { id: string };
+    );
     idBySlot.set(slotKey(post), createdPost.id);
   }
   ctx.log(`seed: ${idBySlot.size} posts created (incl. replies)`);
   return { idBySlot, count: idBySlot.size };
+}
+
+/**
+ * Post create with ambiguity reconciliation (#85). POST /posts mints a
+ * fresh uuid, so a blind retry after an in-flight failure (ETIMEDOUT after
+ * the server committed) would double-create - per-user counts then fail
+ * verifySeeded and the night is wasted. Only provably-unprocessed causes
+ * retry inside the call (SEED_RETRY_CREATE); an ambiguous failure instead
+ * probes the author timeline for an exact-text twin. Found = the create
+ * landed (adopt its id); absent = it never did, so one deliberate
+ * re-create is safe. No loop: a second ambiguous failure fails the run.
+ */
+async function createPost(
+  ctx: SeedContext,
+  author: CorpusUser,
+  body: { text: string; mediaIds: string[]; replyToId: string | null },
+  token: string,
+): Promise<{ id: string }> {
+  const create = () =>
+    ctx.call(
+      'posts',
+      { method: 'POST', path: '/api/posts/v1/posts', body },
+      token,
+      SEED_RETRY_CREATE,
+    ) as Promise<{ id: string }>;
+  try {
+    return await create();
+  } catch (err) {
+    if (!isAmbiguousFailure(err)) throw err;
+    const twinId = await findTwinPost(ctx, author, body.text, token);
+    if (twinId) {
+      ctx.log(`seed: ambiguous post-create failure reconciled (adopted existing post for text)`);
+      return { id: twinId };
+    }
+    return await create();
+  }
+}
+
+/**
+ * Exact-text twin on the author's timeline - the primary store, so the
+ * read is strongly consistent (unlike the worker-derived feed/search).
+ * Corpus texts are unique per author (pinned in corpus.test.ts), so a
+ * twin identifies THE post; several would mean pre-existing duplication
+ * and fail loudly rather than guess.
+ */
+async function findTwinPost(
+  ctx: SeedContext,
+  author: CorpusUser,
+  text: string,
+  token: string,
+): Promise<string | null> {
+  const userId = ctx.ids.get(author.username)!;
+  const page = (await ctx.call(
+    'posts',
+    {
+      method: 'GET',
+      path: `/api/posts/v1/users/${userId}/posts?limit=${POSTS_PAGE_LIMIT}`,
+    },
+    token,
+  )) as { items?: Array<{ id: string; text: string; deletedAt?: string | null }> };
+  // Tombstones never count (a deleted twin cannot carry replies/media).
+  const twins = (page.items ?? []).filter(
+    (item) => (item.deletedAt ?? null) === null && item.text === text,
+  );
+  if (twins.length > 1) {
+    throw new Error(
+      `ambiguous reconciliation: ${twins.length} exact-text posts for ${author.username}`,
+    );
+  }
+  return twins[0]?.id ?? null;
 }
 
 /** Phase 5: likes / reposts / bookmarks against the created posts. */
@@ -271,7 +354,9 @@ async function seedCorpusContent(ctx: SeedContext): Promise<SeedReport['created'
   // admin-realm CMS client (reset.tf's T9 note), so applying content there
   // token-fetches a realm that does not exist and fails the seed after all
   // corpus work already landed. Environments that wire the client apply
-  // content; dev skips visibly.
+  // content; dev skips visibly. The phase's own calls retry transient
+  // failures inside content.ts (#85) - slug-keyed upserts, so the full
+  // policy with create-path reconciliation.
   if (envString('XITTER_RESET_SKIP_CMS', '') === '1') {
     ctx.log('seed: cms content skipped (XITTER_RESET_SKIP_CMS)');
   } else {
@@ -351,21 +436,44 @@ async function probeUser(ctx: SeedContext, index: number, user: CorpusUser): Pro
 // Media (the real pipeline)
 // ---------------------------------------------------------------------------
 
+/**
+ * Media upload slot under the narrow policy (#85). Unlike post create
+ * there is NO cheap reconciliation here: the media API exposes no
+ * user-scoped enumeration (only the admin-internal list), so a probe
+ * cannot discover whether an ambiguously-failed slot landed, and no way
+ * to re-mint a presigned URL for an existing slot either. Adding either
+ * would be product API surface for a seed-only concern - deliberately
+ * out of scope. So ambiguous causes fail the run instead of retried
+ * creates; the cost is bounded (an orphan slot lingers `pending` until
+ * the next nightly wipe) and verifySeeded is unaffected either way.
+ */
+async function ensureUploadSlot(
+  ctx: SeedContext,
+  body: { mimeType: string; bytes: number },
+  token: string,
+): Promise<{ mediaId: string; uploadUrl: string }> {
+  return (await ctx.call(
+    'media',
+    { method: 'POST', path: '/api/media/v1/uploads', body },
+    token,
+    SEED_RETRY_CREATE,
+  )) as { mediaId: string; uploadUrl: string };
+}
+
 async function uploadDemoImage(post: CorpusPost, ctx: SeedContext): Promise<string> {
   const author = ctx.corpus.users[post.authorIndex]!;
   const token = await ctx.grants.token(author.username);
   const bytes = demoPng(SEED_IMAGE_SEED + post.authorIndex);
-  const slot = (await ctx.call(
-    'media',
-    {
-      method: 'POST',
-      path: '/api/media/v1/uploads',
-      body: { mimeType: 'image/png', bytes: bytes.byteLength },
-    },
+  const slot = await ensureUploadSlot(
+    ctx,
+    { mimeType: 'image/png', bytes: bytes.byteLength },
     token,
-  )) as { mediaId: string; uploadUrl: string };
+  );
 
   // The presigned URL signs the content type - the PUT must repeat it.
+  // The PUT is inherently idempotent (same key, same bytes) and the seed
+  // runs right after the reset's bucket wipe, so the object store holds
+  // nothing this run did not write - a re-PUT can never corrupt state.
   const put = await ctx.doFetch(slot.uploadUrl, {
     method: 'PUT',
     headers: { 'content-type': 'image/png' },
@@ -373,6 +481,9 @@ async function uploadDemoImage(post: CorpusPost, ctx: SeedContext): Promise<stri
   });
   if (!put.ok) throw new Error(`media PUT failed: ${put.status} ${await put.text()}`);
 
+  // Media's own contract: `complete` re-HEADs the exact key and a repeat
+  // call never re-emits - a server-side idempotent repeat, so the full
+  // policy rides out pod-churn here.
   await ctx.call(
     'media',
     { method: 'POST', path: `/api/media/v1/media/${slot.mediaId}/complete` },

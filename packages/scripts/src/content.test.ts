@@ -26,9 +26,14 @@ interface FakeDoc {
 
 /**
  * Fake Payload + token endpoint. `docs` is returned for collection lists;
- * POST/PATCH are recorded so tests can assert upsert behaviour.
+ * POST/PATCH are recorded so tests can assert upsert behaviour. `inject`
+ * overrides the outcome of matching collection calls (an HTTP status) so
+ * the retry contracts (#85) can be pinned against the real apply path.
  */
-function fakeCms(docs: Record<'landing-content' | 'faq', FakeDoc[]>) {
+function fakeCms(
+  docs: Record<'landing-content' | 'faq', FakeDoc[]>,
+  inject: (method: string, url: string) => number | undefined = () => undefined,
+) {
   const calls: Call[] = [];
   const fetchImpl = vi.fn(
     async (input: string | URL | Request, init: RequestInit = {}): Promise<Response> => {
@@ -45,21 +50,25 @@ function fakeCms(docs: Record<'landing-content' | 'faq', FakeDoc[]>) {
       if (target.includes('/protocol/openid-connect/token')) {
         return new Response(JSON.stringify({ access_token: 'seed-tok', expires_in: 300 }));
       }
-      const list = target.match(/\/cms\/api\/(landing-content|faq)(\?|$)/);
-      if (list && list[1]) {
-        const all = docs[list[1] as 'landing-content'] ?? [];
-        // Honour the published-only filter the way Payload does, so tests
-        // can prove draft rows never ride an export.
-        const wantsPublished = decodeURIComponent(target).includes(
-          'where[_status][equals]=published',
-        );
-        const filtered = wantsPublished
-          ? all.filter((doc) => (doc as { _status?: string })._status !== 'draft')
-          : all;
-        return new Response(JSON.stringify({ docs: filtered }));
-      }
-      // POST/PATCH against collection paths: accept.
-      if (method === 'POST' || method === 'PATCH') {
+      const collection = target.match(/\/cms\/api\/(landing-content|faq)(\/\d+)?(\?|$)/);
+      if (collection && collection[1]) {
+        const injected = inject(method, target);
+        if (typeof injected === 'number') {
+          return new Response('unavailable', { status: injected });
+        }
+        if (method === 'GET') {
+          const all = docs[collection[1] as 'landing-content'] ?? [];
+          // Honour the published-only filter the way Payload does, so tests
+          // can prove draft rows never ride an export.
+          const wantsPublished = decodeURIComponent(target).includes(
+            'where[_status][equals]=published',
+          );
+          const filtered = wantsPublished
+            ? all.filter((doc) => (doc as { _status?: string })._status !== 'draft')
+            : all;
+          return new Response(JSON.stringify({ docs: filtered }));
+        }
+        // POST/PATCH against collection paths: accept.
         return new Response(JSON.stringify({ doc: {} }), { status: 201 });
       }
       return new Response('not found', { status: 404 });
@@ -177,5 +186,110 @@ describe('content promotion', () => {
 
   it('content dir sits under packages/scripts/data/content (runbook 03)', () => {
     expect(CONTENT_DIR).toContain(join('packages', 'scripts', 'data', 'content'));
+  });
+});
+
+/**
+ * CMS apply retry matrix (#85): the phase rides out deploy churn like the
+ * seed's service calls, but keyed by the same idempotency split - slug-
+ * keyed reads/patches retry anything transient, while a doc create that
+ * fails ambiguously reconciles by re-listing the slug instead of blindly
+ * re-POSTing into the unique index.
+ */
+describe('content apply retries (#85)', () => {
+  const postsTo = (calls: Call[], collection: string): number =>
+    calls.filter((c) => c.method === 'POST' && c.url.includes(`/cms/api/${collection}`)).length;
+
+  it('retries a 503 on the listing - reads are idempotent', async () => {
+    const files = await readContentFiles();
+    let lists = 0;
+    const { fetchImpl } = fakeCms({ 'landing-content': [], faq: [] }, (method, url) => {
+      if (method === 'GET' && url.includes('/cms/api/landing-content')) {
+        lists += 1;
+        return lists === 1 ? 503 : undefined;
+      }
+      return undefined;
+    });
+
+    const result = await applyCmsContent({ fetchImpl });
+
+    expect(result.created).toBe(files.landingContent.length + files.faq.length);
+    expect(lists).toBe(2); // one retry, then through
+  });
+
+  it('retries a 503 on a PATCH - slug-keyed upserts converge on repeat', async () => {
+    const files = await readContentFiles();
+    let patches = 0;
+    const existing = {
+      'landing-content': files.landingContent.map((entry, i) => ({ id: i + 1, slug: entry.slug })),
+      faq: files.faq.map((entry, i) => ({ id: i + 100, slug: entry.slug })),
+    };
+    const { fetchImpl } = fakeCms(existing, (method, _url) => {
+      if (method === 'PATCH') {
+        patches += 1;
+        return patches === 1 ? 503 : undefined;
+      }
+      return undefined;
+    });
+
+    const result = await applyCmsContent({ fetchImpl });
+
+    expect(result.updated).toBe(files.landingContent.length + files.faq.length);
+    expect(result.created).toBe(0);
+    expect(patches).toBe(result.updated + 1); // exactly one retried patch
+  });
+
+  it('reconciles an ambiguous create failure when the doc landed anyway', async () => {
+    const files = await readContentFiles();
+    const docs: Record<'landing-content' | 'faq', FakeDoc[]> = { 'landing-content': [], faq: [] };
+    let creates = 0;
+    const { fetchImpl, calls } = fakeCms(docs, (method, url) => {
+      if (method === 'POST' && url.includes('/cms/api/landing-content')) {
+        creates += 1;
+        if (creates === 1) {
+          // Payload committed, then the response was lost (504-class).
+          docs['landing-content'].push({ id: 900, slug: files.landingContent[0]!.slug });
+          return 504;
+        }
+      }
+      return undefined;
+    });
+
+    const result = await applyCmsContent({ fetchImpl });
+
+    // The committed doc was adopted via the slug re-list, never re-POSTed
+    // (attempted once, like every other file entry - no extra create).
+    expect(postsTo(calls, 'landing-content')).toBe(files.landingContent.length);
+    expect(result.created).toBe(files.landingContent.length + files.faq.length - 1);
+    expect(result.updated).toBe(1);
+  });
+
+  it('creates once more when an ambiguous create provably never landed', async () => {
+    const files = await readContentFiles();
+    let creates = 0;
+    const { fetchImpl, calls } = fakeCms({ 'landing-content': [], faq: [] }, (method, url) => {
+      if (method === 'POST' && url.includes('/cms/api/landing-content')) {
+        creates += 1;
+        return creates === 1 ? 504 : undefined; // no commit this time
+      }
+      return undefined;
+    });
+
+    const result = await applyCmsContent({ fetchImpl });
+
+    // One deliberate re-create after the probe found nothing - and no more.
+    expect(postsTo(calls, 'landing-content')).toBe(files.landingContent.length + 1);
+    expect(result.created).toBe(files.landingContent.length + files.faq.length);
+    expect(result.updated).toBe(0);
+  });
+
+  it('never retries a 4xx on the create path - it is a real answer', async () => {
+    const { fetchImpl, calls } = fakeCms({ 'landing-content': [], faq: [] }, (method, url) => {
+      if (method === 'POST' && url.includes('/cms/api/landing-content')) return 422;
+      return undefined;
+    });
+
+    await expect(applyCmsContent({ fetchImpl })).rejects.toThrow(/422/);
+    expect(postsTo(calls, 'landing-content')).toBe(1);
   });
 });

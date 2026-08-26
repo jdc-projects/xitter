@@ -89,6 +89,16 @@ describe('buildCorpus', () => {
     }
   });
 
+  it("keeps each author's post texts unique", () => {
+    // The seed's ambiguity reconciliation (#85) identifies a possibly-created
+    // post by exact text on the author timeline - that is only a unique key
+    // if faker never hands one author the same sentence twice.
+    for (const [index, user] of corpus.users.entries()) {
+      const texts = corpus.posts.filter((p) => p.authorIndex === index).map((p) => p.text);
+      expect(new Set(texts).size, `${user.username} texts`).toBe(texts.length);
+    }
+  });
+
   it('points replies at posts that exist (and threads concentrate)', () => {
     const created = new Set<string>();
     // Creation order: standalone first, then replies - a reply's parent must

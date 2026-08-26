@@ -30,61 +30,109 @@ export interface JsonRequest {
   body?: unknown;
 }
 
+/**
+ * What a transient failure PROVES about the server (#85) - the split the
+ * retry policies are named after:
+ *
+ * - `never-connected`: the request provably never reached application code.
+ *   Retrying can never duplicate anything, whatever the call is.
+ * - `any-transient`: additionally admits in-flight failures (ECONNRESET/
+ *   ETIMEDOUT after delivery, 502/504 from a gateway whose upstream died
+ *   mid-request) where the server MAY have committed before the failure
+ *   surfaced. Only safe when a repeat provably converges (keyed upserts,
+ *   reads) - a plain create retried on these causes can double-create.
+ */
+export type RetryCause = 'never-connected' | 'any-transient';
+
 /** Opt-in bounded retry policy for transient (ride-out-able) failures. */
 export interface RetryPolicy {
   /** Additional attempts after the initial request. */
   retries: number;
   /** Fixed pause between attempts (ms). */
   backoffMs: number;
+  /** Which transient causes this policy may retry - see RetryCause. */
+  causes: RetryCause;
 }
 
 /**
- * Seed call policy (#82): a deploy landing near the nightly window rolls
- * service pods, and the seed can catch one mid-roll as a 502/503/504 or an
- * ECONNREFUSED. A short bounded retry rides out the churn instead of
- * wasting the whole run on the first hiccup.
- *
- * Idempotency is PARTIAL: profiles/follows/interactions are keyed upserts,
- * but post and media-upload creates are plain POSTs - a retried ambiguous
- * failure (502/ECONNRESET after the server committed) can double-create.
- * Accepted risk, loudly detected: a duplicate post fails verifySeeded's
- * per-user count check (XitterResetJobFailed fires) and the next night's
- * wipe clears it; an orphaned media slot lingers as pending until wiped.
- * Seed context only by design - the reset steps' wipes keep their own
- * (pre-existing, bespoke) retry semantics.
+ * Full policy (#82, split #85) for calls that are idempotent at the
+ * service: keyed upserts (ensure-profile, follow, interact, media
+ * complete), reads, and the CMS slug-keyed upserts. A deploy landing near
+ * the nightly window rolls pods and the seed catches one mid-roll as a
+ * 502/503/504 or a connection-level failure; a bounded retry rides out
+ * the churn, and a repeat after an ambiguous failure re-applies the same
+ * state and converges.
  */
-export const SEED_RETRY: RetryPolicy = { retries: 3, backoffMs: 2_000 };
-
-/** Gateway statuses meaning "the upstream was momentarily unreachable". */
-const RETRYABLE_STATUSES = new Set([502, 503, 504]);
-
-/** Connection-level failure codes; undici nests them on the cause chain. */
-const RETRYABLE_CODES = new Set([
-  'ECONNREFUSED',
-  'ECONNRESET',
-  'ECONNABORTED',
-  'ETIMEDOUT',
-  'EHOSTUNREACH',
-  'ENETUNREACH',
-  'ENOTFOUND',
-  'EAI_AGAIN',
-]);
+export const SEED_RETRY_IDEMPOTENT: RetryPolicy = {
+  retries: 3,
+  backoffMs: 2_000,
+  causes: 'any-transient',
+};
 
 /**
- * Transient failure: a gateway 5xx (502/503/504) or a connection that never
- * landed (fetch rejects with a TypeError carrying an OS error code on its
- * cause chain). A 4xx is a real answer from a live service - never retried.
+ * Narrow policy (#85) for plain creates whose identity is server-minted
+ * (post create, media upload slot, CMS doc create). An ambiguous failure
+ * may already have committed, so only provably-unprocessed causes retry
+ * (connect-phase errors, gateway 503); ambiguous ones reject straight
+ * through to the caller, which reconciles (probe-then-decide) instead of
+ * blind re-POSTing.
  */
-function isTransient(err: unknown): boolean {
-  if (isRequestError(err)) return RETRYABLE_STATUSES.has(err.status);
-  if (!(err instanceof Error)) return false;
+export const SEED_RETRY_CREATE: RetryPolicy = {
+  retries: 3,
+  backoffMs: 2_000,
+  causes: 'never-connected',
+};
+
+/** A 503 is the gateway saying "no upstream" (activator/backend-down). */
+const UNPROCESSED_STATUSES = new Set([503]);
+/** 502/504: the upstream died or blew the deadline mid-request - it may have committed first. */
+const AMBIGUOUS_STATUSES = new Set([502, 504]);
+
+/** Connect-phase codes: no request bytes were ever delivered. */
+const NEVER_CONNECTED_CODES = new Set([
+  'ECONNREFUSED',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+]);
+
+/** In-flight codes: bytes were delivered; the app may have committed. */
+const AMBIGUOUS_CODES = new Set(['ECONNRESET', 'ECONNABORTED', 'ETIMEDOUT']);
+
+/** OS error code from a fetch failure; undici nests it on the cause chain. */
+function errCode(err: unknown): string | undefined {
+  if (!(err instanceof Error)) return undefined;
   let cause: unknown = err;
   for (let depth = 0; depth < 4 && cause instanceof Error; depth += 1) {
     const code = (cause as { code?: unknown }).code;
-    if (typeof code === 'string' && RETRYABLE_CODES.has(code)) return true;
+    if (typeof code === 'string') return code;
     cause = cause.cause;
   }
-  return false;
+  return undefined;
+}
+
+/** The request provably never reached application code. */
+function neverConnected(err: unknown): boolean {
+  if (isRequestError(err)) return UNPROCESSED_STATUSES.has(err.status);
+  return NEVER_CONNECTED_CODES.has(errCode(err) ?? '');
+}
+
+/**
+ * The request died in flight: the server may have committed before the
+ * failure surfaced. Exposed for the create-path reconciliation wrappers
+ * (seed.ts's timeline probe, content.ts's slug re-list) - they probe
+ * exactly these causes and propagate everything else untouched.
+ */
+export function isAmbiguousFailure(err: unknown): boolean {
+  if (isRequestError(err)) return AMBIGUOUS_STATUSES.has(err.status);
+  return AMBIGUOUS_CODES.has(errCode(err) ?? '');
+}
+
+/** A 4xx is a real answer from a live service - never retried by any policy. */
+function retryable(err: unknown, policy: RetryPolicy): boolean {
+  if (neverConnected(err)) return true;
+  return policy.causes === 'any-transient' && isAmbiguousFailure(err);
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -104,7 +152,7 @@ export async function requestJson(
     try {
       return await attemptJson(baseUrl, path, init, token, fetchImpl);
     } catch (err) {
-      if (attempt >= retry.retries || !isTransient(err)) throw err;
+      if (attempt >= retry.retries || !retryable(err, retry)) throw err;
       await sleep(retry.backoffMs);
     }
   }
