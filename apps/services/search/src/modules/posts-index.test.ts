@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { Client } from '@opensearch-project/opensearch';
+import type { SearchIndexDocument } from '@xitter/api-contracts';
 import { PostsIndex, buildSearchBody } from './posts-index.js';
 
 /** Minimal valid options for pure query-building assertions. */
@@ -9,6 +10,14 @@ const opts = (overrides: Partial<Parameters<typeof buildSearchBody>[0]> = {}) =>
   excludeAuthorIds: [],
   ...overrides,
 });
+
+// The real client rejects (async); a sync throw would bypass the .catch.
+const missingIndex = () =>
+  Promise.reject(
+    Object.assign(new Error('index_not_found_exception'), {
+      body: { error: { type: 'index_not_found_exception' }, status: 404 },
+    }),
+  );
 
 describe('buildSearchBody', () => {
   it('matches analysed text OR the exact keyword, newest first', () => {
@@ -69,14 +78,6 @@ describe('buildSearchBody', () => {
 });
 
 describe('PostsIndex after a reset deletes the index', () => {
-  // The real client rejects (async); a sync throw would bypass the .catch.
-  const missingIndex = () =>
-    Promise.reject(
-      Object.assign(new Error('index_not_found_exception'), {
-        body: { error: { type: 'index_not_found_exception' }, status: 404 },
-      }),
-    );
-
   const index = (client: {
     updateByQuery: unknown;
     deleteByQuery: unknown;
@@ -95,5 +96,78 @@ describe('PostsIndex after a reset deletes the index', () => {
   it('clear reports zero deleted', async () => {
     const posts = index({ updateByQuery: missingIndex, deleteByQuery: missingIndex });
     await expect(posts.clear()).resolves.toBe(0);
+  });
+});
+
+describe('PostsIndex.upsertDocuments ensure-once (#109)', () => {
+  const doc = (postId: string): SearchIndexDocument => ({
+    postId,
+    authorId: '00000000-0000-4000-8000-00000000a001',
+    authorName: 'Demo Author',
+    text: 'hello',
+    keywords: [],
+    createdAt: '2026-08-19T09:00:00.000Z',
+    deletedAt: null,
+  });
+
+  function clientWith(overrides: {
+    bulk: unknown;
+    create?: unknown;
+  }): { client: Client; create: ReturnType<typeof vi.fn>; bulk: ReturnType<typeof vi.fn> } {
+    const create = vi.fn(overrides.create ?? (() => Promise.resolve({ body: {} })));
+    const bulk = vi.fn(overrides.bulk);
+    const client = {
+      bulk,
+      indices: { create },
+    } as unknown as Client;
+    return { client, create, bulk };
+  }
+
+  it('does NOT create the index on writes (boot owns the ensure)', async () => {
+    const { client, create } = clientWith({
+      bulk: () => Promise.resolve({ body: { errors: false } }),
+    });
+    const posts = new PostsIndex(client);
+    await posts.upsertDocuments([doc('p1'), doc('p2')]);
+    await posts.upsertDocuments([doc('p3')]);
+
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('re-ensures once and retries the bulk when the index vanished mid-write', async () => {
+    let calls = 0;
+    const { client, create } = clientWith({
+      bulk: () => {
+        calls += 1;
+        return calls === 1 ? missingIndex() : Promise.resolve({ body: { errors: false } });
+      },
+    });
+    const posts = new PostsIndex(client);
+
+    await expect(posts.upsertDocuments([doc('p1')])).resolves.toBe(1);
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(calls).toBe(2); // failed attempt + retry
+  });
+
+  it('surfaces non-missing-index bulk errors (no retry)', async () => {
+    const { client, create } = clientWith({
+      bulk: () => Promise.reject(new Error('cluster gone')),
+    });
+    const posts = new PostsIndex(client);
+
+    await expect(posts.upsertDocuments([doc('p1')])).rejects.toThrow('cluster gone');
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('surfaces bulk item errors after the retry', async () => {
+    const { client } = clientWith({
+      bulk: () =>
+        Promise.resolve({
+          body: { errors: true, items: [{ index: { error: { type: 'mapper_parsing' } } }] },
+        }),
+    });
+    const posts = new PostsIndex(client);
+
+    await expect(posts.upsertDocuments([doc('p1')])).rejects.toThrow('mapper_parsing');
   });
 });

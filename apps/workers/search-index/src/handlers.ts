@@ -125,7 +125,6 @@ export function collectBatch(events: BatchEvent[]): PendingBatch {
       if (event.eventType === EVENT_TYPES.postCreated) {
         const doc = documentFromPostCreated(event, UNKNOWN_AUTHOR); // name filled at flush
         lastByPost.set(doc.postId, doc);
-        if (!batch.authorIds.includes(event.authorId)) batch.authorIds.push(event.authorId);
       } else if (event.eventType === EVENT_TYPES.postDeleted) {
         lastByPost.set(event.postId, tombstoneFromPostDeleted(event));
       } else if (event.eventType === EVENT_TYPES.profileUpdated) {
@@ -137,6 +136,16 @@ export function collectBatch(events: BatchEvent[]): PendingBatch {
     if (raw) batch.last = { eventId, eventAt: occurredAt, offset: Number(raw.message.offset) };
   }
   batch.documents = [...lastByPost.values()];
+  // Only surviving LIVE docs need a name (tombstones carry the placeholder
+  // and are never rendered), so a create-then-delete collapse performs no
+  // lookup for the deleted post's author.
+  const seen = new Set<string>();
+  batch.authorIds = [];
+  for (const doc of batch.documents) {
+    if (doc.deletedAt !== null || seen.has(doc.authorId)) continue;
+    seen.add(doc.authorId);
+    batch.authorIds.push(doc.authorId);
+  }
   return batch;
 }
 
