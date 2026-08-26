@@ -5,37 +5,15 @@
  */
 import { realmUrls } from '@xitter/auth';
 import { MediaClient } from '@xitter/api-client';
-import {
-  kafkaBrokers,
-  localPort,
-  localUrl,
-  loadRepoEnv,
-  parseEnv,
-  valkeyUrl,
-} from '@xitter/config';
+import { loadRepoEnv, parseEnv } from '@xitter/config';
 import { CONSUMER_GROUPS, runEventWorker } from '@xitter/events';
-import { z } from 'zod';
 import { handleEvent } from './handlers.js';
+import { envSchema } from './env.js';
 import { RustFsWorkerStorage } from './storage.js';
 
 loadRepoEnv();
 
-const env = parseEnv(
-  z.object({
-    KAFKA_BROKERS: z.string().min(1).default(kafkaBrokers()),
-    MEDIA_INTERNAL_URL: z.string().url().default(localUrl('media')),
-    METRICS_PORT: z.coerce.number().int().positive().default(localPort('mediaProcessMetrics')),
-    KEYCLOAK_BASE_URL: z.string().url().default(localUrl('keycloak')),
-    DEMO_REALM: z.string().min(1).default('xitter-demo'),
-    KEYCLOAK_CLIENT_ID: z.string().min(1).default('svc-worker-media-process'),
-    KEYCLOAK_CLIENT_SECRET: z.string().min(1).default('svc-worker-media-process-local-secret'),
-    XITTER_MEDIA_S3_ENDPOINT: z.string().url().default(localUrl('rustfs')),
-    XITTER_MEDIA_S3_BUCKET: z.string().min(1).default('xitter-media'),
-    XITTER_MEDIA_S3_ACCESS_KEY: z.string().min(1).default('xitter-local'),
-    XITTER_MEDIA_S3_SECRET_KEY: z.string().min(1).default('xitter-local-secret'),
-    VALKEY_URL: z.string().url().default(valkeyUrl()),
-  }),
-);
+const env = parseEnv(envSchema);
 
 const media = new MediaClient({
   baseUrl: env.MEDIA_INTERNAL_URL,

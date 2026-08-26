@@ -4,34 +4,14 @@
  * back through the services' internal APIs.
  */
 import { FeedClient, internalCredentials, PostsClient, SocialClient } from '@xitter/api-client';
-import {
-  kafkaBrokers,
-  localPort,
-  localUrl,
-  loadRepoEnv,
-  parseEnv,
-  valkeyUrl,
-} from '@xitter/config';
+import { loadRepoEnv, parseEnv } from '@xitter/config';
 import { CONSUMER_GROUPS, runEventWorker } from '@xitter/events';
-import { z } from 'zod';
 import { handleEvent } from './handlers.js';
+import { envSchema } from './env.js';
 
 loadRepoEnv();
 
-const env = parseEnv(
-  z.object({
-    KAFKA_BROKERS: z.string().min(1).default(kafkaBrokers()),
-    FEED_INTERNAL_URL: z.string().url().default(localUrl('feed')),
-    SOCIAL_INTERNAL_URL: z.string().url().default(localUrl('social')),
-    POSTS_INTERNAL_URL: z.string().url().default(localUrl('posts')),
-    METRICS_PORT: z.coerce.number().int().positive().default(localPort('fanoutMetrics')),
-    KEYCLOAK_BASE_URL: z.string().url().default(localUrl('keycloak')),
-    DEMO_REALM: z.string().min(1).default('xitter-demo'),
-    KEYCLOAK_CLIENT_ID: z.string().min(1).default('svc-worker-fanout'),
-    KEYCLOAK_CLIENT_SECRET: z.string().min(1).default('svc-worker-fanout-local-secret'),
-    VALKEY_URL: z.string().url().default(valkeyUrl()),
-  }),
-);
+const env = parseEnv(envSchema);
 
 // Internal clients build /api/{service}/internal/... from the bare base URL
 // (mirrors media-process); M2M tokens carry the scoped audiences

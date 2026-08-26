@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { localUrl, parseEnv, serviceEnvSchema } from '@xitter/config';
+import { crossServiceUrlSchema, parseEnv, serviceEnvSchema } from '@xitter/config';
 
 // Posts extends the shared service env with the social + media M2M wiring:
 // the service calls social's internal relationship endpoint before accepting
@@ -12,7 +12,9 @@ export const env = parseEnv(
   serviceEnvSchema('posts').extend({
     KEYCLOAK_CLIENT_ID: z.string().min(1).default('svc-posts'),
     KEYCLOAK_CLIENT_SECRET: z.string().min(1).default('svc-posts-local-secret'),
-    XITTER_SOCIAL_URL: z.string().url().default(localUrl('social')),
-    XITTER_MEDIA_URL: z.string().url().default(localUrl('media')),
+    // Cross-service URLs: localhost locally, REQUIRED when deployed (#113) -
+    // the missing XITTER_MEDIA_URL here was #112's days-long 503 hunt.
+    XITTER_SOCIAL_URL: crossServiceUrlSchema('XITTER_SOCIAL_URL', 'social'),
+    XITTER_MEDIA_URL: crossServiceUrlSchema('XITTER_MEDIA_URL', 'media'),
   }),
 );
