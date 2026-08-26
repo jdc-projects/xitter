@@ -13,7 +13,7 @@
  * interact are idempotent by design); a re-run over a seeded environment
  * is verified and skipped. Spec: docs/specs/data/02-seeding.md.
  */
-import { envInt, loadRepoEnv } from '@xitter/config';
+import { envInt, envString, loadRepoEnv } from '@xitter/config';
 import { applyCmsContent } from './content.js';
 import {
   buildCorpus,
@@ -267,8 +267,17 @@ async function seedCorpusContent(ctx: SeedContext): Promise<SeedReport['created'
   created.bookmarks = interactions.bookmarks;
 
   // --- 6. Promoted CMS content -----------------------------------------------
-  const cms = await applyCmsContent({ fetchImpl: ctx.doFetch });
-  ctx.log(`seed: cms content ${cms.created} created, ${cms.updated} updated`);
+  // Same skip flag as the reset's own CMS step: dev does not wire the
+  // admin-realm CMS client (reset.tf's T9 note), so applying content there
+  // token-fetches a realm that does not exist and fails the seed after all
+  // corpus work already landed. Environments that wire the client apply
+  // content; dev skips visibly.
+  if (envString('XITTER_RESET_SKIP_CMS', '') === '1') {
+    ctx.log('seed: cms content skipped (XITTER_RESET_SKIP_CMS)');
+  } else {
+    const cms = await applyCmsContent({ fetchImpl: ctx.doFetch });
+    ctx.log(`seed: cms content ${cms.created} created, ${cms.updated} updated`);
+  }
   return created;
 }
 
