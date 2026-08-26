@@ -15,7 +15,7 @@ import { internalCredentials, SearchClient, SocialClient } from '@xitter/api-cli
 import { loadRepoEnv, parseEnv } from '@xitter/config';
 import { CONSUMER_GROUPS, runEventWorker } from '@xitter/events';
 import { createLogger } from '@xitter/observability';
-import { handleEvent } from './handlers.js';
+import { handleBatch } from './handlers.js';
 import { envSchema } from './env.js';
 
 const logger = createLogger({ service: 'search-index-worker' });
@@ -84,8 +84,12 @@ await runEventWorker({
     brokers: env.KAFKA_BROKERS.split(','),
   },
   resumeFrom,
-  handle: (envelope, raw) =>
-    handleEvent(envelope, raw, {
+  // One fetch batch = one batched author lookup + one bulk upsert + one
+  // checkpoint write (per contract-sized chunk) instead of one HTTP round
+  // trip per event; offsets commit per batch, and the checkpoint is only
+  // written after the flush lands (#109).
+  handleBatch: (events, context) =>
+    handleBatch(events, context, {
       search,
       social,
       consumerKey: CONSUMER_GROUPS.searchIndexWorker,

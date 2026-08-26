@@ -4,6 +4,7 @@ import { createLogger, createMetricsServer, initSentry, initTracing } from '@xit
 import type { ResetWorkerName } from '@xitter/config';
 import {
   createEventConsumer,
+  type BatchedEvent,
   type EventConsumerOptions,
   type EventConsumerRunOptions,
 } from './consumer.js';
@@ -17,13 +18,11 @@ import { applyKafkaRequestQueueFix } from './kafka-request-queue-fix.js';
 
 void applyKafkaRequestQueueFix();
 
-export interface EventWorkerOptions extends EventConsumerOptions {
+export interface EventWorkerBaseOptions extends EventConsumerOptions {
   /** Worker identity for logs, tracing and Sentry (e.g. 'fanout-worker'). */
   service: string;
   /** Local Prometheus scrape port. */
   metricsPort: number;
-  /** Event handler; must be idempotent (at-least-once delivery). */
-  handle(envelope: unknown, raw?: EachMessagePayload): Promise<void>;
   /**
    * Checkpoint resume positions (`topic:partition` -> next offset), applied
    * on partition assignment - see EventConsumerRunOptions.resumeFrom.
@@ -47,6 +46,30 @@ export interface EventWorkerOptions extends EventConsumerOptions {
    */
   resetPause?: { worker: ResetWorkerName; valkeyUrl: string; brokers: string[] };
 }
+
+/** Message-at-a-time handler; must be idempotent (at-least-once delivery). */
+interface MessageHandlerOptions {
+  handle(envelope: unknown, raw?: EachMessagePayload): Promise<void>;
+  handleBatch?: never;
+}
+
+/**
+ * Batch handler: one kafkajs fetch batch = one call per topic-partition,
+ * events in offset order. Offsets only advance when the handler resolves,
+ * so throughput-critical workers can amortise per-message costs (one bulk
+ * write + one checkpoint per batch); a mid-batch failure redelivers the
+ * whole batch, so batch handlers must be idempotent across the batch.
+ */
+interface BatchHandlerOptions {
+  handleBatch: (
+    events: BatchedEvent[],
+    context: { topic: string; partition: number },
+  ) => Promise<void>;
+  handle?: never;
+}
+
+export type EventWorkerOptions = EventWorkerBaseOptions &
+  (MessageHandlerOptions | BatchHandlerOptions);
 
 /**
  * Shared worker bootstrap: consumer wiring, metrics server, consumer-lag
@@ -95,21 +118,13 @@ export async function runEventWorker(options: EventWorkerOptions): Promise<void>
   // healthy); first tick lands after the group has joined in practice, and
   // a too-early tick just retries on the next one.
   gate?.start();
-  await consumer
-    .run(async (envelope, raw) => {
-      if (!gate) {
-        await options.handle(envelope, raw);
-        return;
-      }
-      await gate.track(() => options.handle(envelope, raw));
-    }, runOptions)
-    .catch((err: unknown) => {
-      // Consumer crash (handler failure exhausted all retries): without this
-      // the rejection surfaced only as a silent process exit, leaving the
-      // worker's derived store stalled with nothing in the logs.
-      logger.error({ err }, `${options.service}: consumer crashed - worker exiting`);
-      throw err;
-    });
+  await consume(consumer, options, gate, runOptions).catch((err: unknown) => {
+    // Consumer crash (handler failure exhausted all retries): without this
+    // the rejection surfaced only as a silent process exit, leaving the
+    // worker's derived store stalled with nothing in the logs.
+    logger.error({ err }, `${options.service}: consumer crashed - worker exiting`);
+    throw err;
+  });
 
   process.once('SIGTERM', () => {
     void (async () => {
@@ -123,6 +138,37 @@ export async function runEventWorker(options: EventWorkerOptions): Promise<void>
   });
 
   logger.info(`${options.service} running`);
+}
+
+/**
+ * The consumption half of runEventWorker, extracted so the bootstrap stays
+ * linear: dispatches to the batched or per-event handler and wraps both in
+ * the reset-epoch gate when present (ADR 0010 - a paused worker must not
+ * consume, so the gate wraps whole batches just as it wrapped single
+ * events).
+ */
+async function consume(
+  consumer: ReturnType<typeof createEventConsumer>,
+  options: EventWorkerOptions,
+  gate: Awaited<ReturnType<typeof createWorkerResetGate>> | null,
+  runOptions: EventConsumerRunOptions,
+): Promise<void> {
+  if (options.handleBatch) {
+    const handleBatch = options.handleBatch;
+    const runBatch = gate
+      ? (events: BatchedEvent[], context: { topic: string; partition: number }) =>
+          gate.track(() => handleBatch(events, context))
+      : handleBatch;
+    await consumer.runBatch(runBatch, runOptions);
+    return;
+  }
+  await consumer.run(async (envelope, raw) => {
+    if (!gate) {
+      await options.handle(envelope, raw);
+      return;
+    }
+    await gate.track(() => options.handle(envelope, raw));
+  }, runOptions);
 }
 
 export interface ConsumerLagTracker {
@@ -204,27 +250,40 @@ export function startConsumerLagTracker(
   const prefix = options.topicPrefix ? `${options.topicPrefix}.` : '';
   const topics = options.topics.map((topic) => `${prefix}${TOPICS[topic]}`);
 
+  // Per-topic collection kept separate from the loop so poll() stays linear
+  // in the complexity audit (7 -> 2); a failure in one topic never blocks
+  // the others' readings.
+  const recordPartitionLag = (
+    topic: string,
+    committedByPartition: Map<number, number>,
+    partition: number,
+    high: string,
+  ): void => {
+    const position = committedByPartition.get(partition) ?? -1;
+    // No commit yet (-1) reads as "nothing consumed": lag = full log.
+    gauge.set(
+      { topic, partition: String(partition) },
+      Math.max(0, Number(high) - Math.max(0, position)),
+    );
+  };
+
+  const collectTopicLag = async (topic: string): Promise<void> => {
+    const [end, committed] = await Promise.all([
+      admin.fetchTopicOffsets(topic),
+      admin.fetchOffsets({ groupId: options.groupId, topics: [topic] }),
+    ]);
+    const committedByPartition = new Map(
+      (committed[0]?.partitions ?? []).map(({ partition, offset }) => [partition, Number(offset)]),
+    );
+    for (const { partition, high } of end) {
+      recordPartitionLag(topic, committedByPartition, partition, high);
+    }
+  };
+
   const poll = async (): Promise<void> => {
     for (const topic of topics) {
       try {
-        const [end, committed] = await Promise.all([
-          admin.fetchTopicOffsets(topic),
-          admin.fetchOffsets({ groupId: options.groupId, topics: [topic] }),
-        ]);
-        const committedByPartition = new Map(
-          (committed[0]?.partitions ?? []).map(({ partition, offset }) => [
-            partition,
-            Number(offset),
-          ]),
-        );
-        for (const { partition, high } of end) {
-          const position = committedByPartition.get(partition) ?? -1;
-          // No commit yet (-1) reads as "nothing consumed": lag = full log.
-          gauge.set(
-            { topic, partition: String(partition) },
-            Math.max(0, Number(high) - Math.max(0, position)),
-          );
-        }
+        await collectTopicLag(topic);
       } catch (err) {
         logger.warn({ err, topic }, 'consumer lag poll failed');
       }

@@ -5,20 +5,27 @@ import { startKafka, startOpenSearch } from '@xitter/testing';
 import { POSTS_INDEX, postsIndexDefinition } from '@xitter/config';
 import { CONSUMER_GROUPS, createEventConsumer, createEventProducer } from '@xitter/events';
 import type { Profile } from '@xitter/api-contracts';
-import { handleEvent, type SearchApi, type SocialApi } from './handlers.js';
+import { handleBatch, type SearchApi, type SocialApi } from './handlers.js';
 
 /**
  * Search-index consumption contract against throwaway Kafka + OpenSearch
  * (testcontainers): the real consumer wiring from main.ts (group, topics,
- * fromBeginning) driving the real handleEvent, fed by a real producer - the
- * search internal API is faked with a direct OpenSearch writer using the
- * shared index definition, so the suite proves the full worker -> index
- * -> query roundtrip plus checkpoint resume after group loss.
+ * fromBeginning, BATCHED eachBatch mode) driving the real handleBatch, fed
+ * by a real producer - the search internal API is faked with a direct
+ * OpenSearch writer using the shared index definition, so the suite proves
+ * the full worker -> index -> query roundtrip, the batch -> flush ->
+ * checkpoint ordering, and checkpoint resume after group loss.
  */
 const AUTHOR = '00000000-0000-4000-8000-00000000a001';
 const NOW = '2026-08-19T09:00:00.000Z';
 
 const uid = (n: string) => `00000000-0000-4000-8000-${n.padStart(12, '0')}`;
+
+/** Ordered side-effect journal: proves flush-before-checkpoint ordering. */
+type JournalEntry =
+  | { kind: 'bulk-ok'; at: number; docs: string[] }
+  | { kind: 'bulk-failed'; at: number; docs: string[] }
+  | { kind: 'checkpoint'; at: number; topicPartition: string; offset: number };
 
 describe('search-index consumption (testcontainers kafka + opensearch)', () => {
   let kafka: Awaited<ReturnType<typeof startKafka>>;
@@ -28,20 +35,32 @@ describe('search-index consumption (testcontainers kafka + opensearch)', () => {
   let client: Client;
   const checkpoints = new Map<string, number>();
   const eventsSeen: string[] = [];
+  const journal: JournalEntry[] = [];
+  let journalClock = 0;
+  /** One-shot bulk failure injector (mid-batch redelivery test). */
+  let failNextBulk = false;
 
   // The search internal API seam, backed by the real OpenSearch via the
   // shared index definition (what the service's PostsIndex does) - including
   // the async-refresh write semantics (#103).
   const search: SearchApi = {
     internalUpsertDocuments: (documents) => {
+      const docs = documents.map((doc) => doc.postId);
+      if (failNextBulk) {
+        failNextBulk = false;
+        journal.push({ kind: 'bulk-failed', at: journalClock++, docs });
+        return Promise.reject(new Error('injected mid-batch failure'));
+      }
       const body = documents.flatMap((doc) => [
         { index: { _index: POSTS_INDEX, _id: doc.postId } },
         doc,
       ]);
       return client.bulk({ body, refresh: false }).then((res) => {
         if (res.body.errors) {
+          journal.push({ kind: 'bulk-failed', at: journalClock++, docs });
           throw new Error(`bulk failed: ${JSON.stringify(res.body.items?.[0])}`);
         }
+        journal.push({ kind: 'bulk-ok', at: journalClock++, docs });
         return { indexed: documents.length };
       });
     },
@@ -67,6 +86,12 @@ describe('search-index consumption (testcontainers kafka + opensearch)', () => {
     },
     internalPutCheckpoint: (input) => {
       checkpoints.set(input.topicPartition, input.offset);
+      journal.push({
+        kind: 'checkpoint',
+        at: journalClock++,
+        topicPartition: input.topicPartition,
+        offset: input.offset,
+      });
       return Promise.resolve();
     },
   };
@@ -104,9 +129,10 @@ describe('search-index consumption (testcontainers kafka + opensearch)', () => {
       topics: ['posts', 'social'],
       fromBeginning: true,
     });
-    await consumer.run((envelope, raw) => {
-      eventsSeen.push((envelope as { eventType: string }).eventType);
-      return handleEvent(envelope, raw, {
+    await consumer.runBatch((events, context) => {
+      for (const { envelope } of events)
+        eventsSeen.push((envelope as { eventType: string }).eventType);
+      return handleBatch(events, context, {
         search,
         social,
         consumerKey: CONSUMER_GROUPS.searchIndexWorker,
@@ -165,24 +191,26 @@ describe('search-index consumption (testcontainers kafka + opensearch)', () => {
     return (res.body._source as { text: string }).text;
   }
 
+  const emitPost = (postId: string, text: string, key = postId) =>
+    producer.emit('posts', {
+      eventType: 'posts.post.created',
+      producer: 'posts',
+      occurredAt: NOW,
+      key,
+      payload: {
+        postId,
+        authorId: AUTHOR,
+        text,
+        mediaIds: [],
+        replyToId: null,
+        repostOfId: null,
+        createdAt: NOW,
+      },
+    });
+
   it('roundtrips: created -> indexed, deleted -> tombstoned, profile -> renamed', async () => {
     const postId = uid('f001');
-    const emit = () =>
-      producer.emit('posts', {
-        eventType: 'posts.post.created',
-        producer: 'posts',
-        occurredAt: NOW,
-        key: postId,
-        payload: {
-          postId,
-          authorId: AUTHOR,
-          text: 'roundtrip mango #tropical',
-          mediaIds: [],
-          replyToId: null,
-          repostOfId: null,
-          createdAt: NOW,
-        },
-      });
+    const emit = () => emitPost(postId, 'roundtrip mango #tropical');
 
     await emitUntil(emit, () => indexedText(postId).then((text) => text !== null));
     expect(await indexedText(postId)).toBe('roundtrip mango #tropical');
@@ -227,37 +255,21 @@ describe('search-index consumption (testcontainers kafka + opensearch)', () => {
     const second = uid('f002');
     await emitUntil(
       () =>
-        producer
-          .emit('posts', {
-            eventType: 'posts.post.created',
-            producer: 'posts',
+        emitPost(second, 'second papaya post').then(() =>
+          producer.emit('social', {
+            eventType: 'social.profile.updated',
+            producer: 'social',
             occurredAt: NOW,
-            key: second,
+            key: AUTHOR,
             payload: {
-              postId: second,
-              authorId: AUTHOR,
-              text: 'second papaya post',
-              mediaIds: [],
-              replyToId: null,
-              repostOfId: null,
-              createdAt: NOW,
+              profileId: AUTHOR,
+              username: 'demo1',
+              displayName: 'Fresh Name',
+              bio: null,
+              updatedAt: NOW,
             },
-          })
-          .then(() =>
-            producer.emit('social', {
-              eventType: 'social.profile.updated',
-              producer: 'social',
-              occurredAt: NOW,
-              key: AUTHOR,
-              payload: {
-                profileId: AUTHOR,
-                username: 'demo1',
-                displayName: 'Fresh Name',
-                bio: null,
-                updatedAt: NOW,
-              },
-            }),
-          ),
+          }),
+        ),
       async () => {
         const res = await client.get({ index: POSTS_INDEX, id: second }).catch(() => null);
         return Boolean(
@@ -267,45 +279,100 @@ describe('search-index consumption (testcontainers kafka + opensearch)', () => {
     );
   }, 120_000);
 
+  it('batches: a burst lands in fewer bulks than documents, checkpointed only after the flush', async () => {
+    const burst = Array.from({ length: 12 }, (_, i) => uid(`f10${String(i).padStart(2, '0')}`));
+
+    await emitUntil(
+      async () => {
+        for (const postId of burst) await emitPost(postId, `burst lychee ${postId.slice(-4)}`);
+      },
+      async () => {
+        for (const postId of burst) if ((await indexedText(postId)) === null) return false;
+        return true;
+      },
+    );
+
+    const burstBulks = journal.filter(
+      (entry): entry is { kind: 'bulk-ok'; at: number; docs: string[] } =>
+        entry.kind === 'bulk-ok' && entry.docs.some((doc) => burst.includes(doc)),
+    );
+    // The mechanism: kafkajs handed us multiple messages per fetch batch and
+    // the worker flushed them together - strictly fewer bulk calls than
+    // documents, with at least one multi-doc bulk.
+    const docsBulkked = burstBulks.reduce((sum, entry) => sum + entry.docs.length, 0);
+    expect(docsBulkked).toBeGreaterThanOrEqual(burst.length); // replays allowed
+    expect(burstBulks.length).toBeLessThan(burst.length);
+    expect(Math.max(...burstBulks.map((entry) => entry.docs.length))).toBeGreaterThanOrEqual(2);
+
+    // Ordering: the checkpoint that covers the burst follows the bulk that
+    // landed its last documents - the checkpoint never precedes a flush.
+    const lastBulkAt = Math.max(...burstBulks.map((entry) => entry.at));
+    const coveringCheckpoint = journal
+      .filter(
+        (
+          entry,
+        ): entry is { kind: 'checkpoint'; at: number; topicPartition: string; offset: number } =>
+          entry.kind === 'checkpoint' && entry.topicPartition.startsWith('xitter.posts.v1'),
+      )
+      .some((entry) => entry.at > lastBulkAt);
+    expect(coveringCheckpoint).toBe(true);
+  }, 120_000);
+
+  it('redelivery: a mid-batch bulk failure checkpoints nothing until the whole batch re-flushes', async () => {
+    const probe = Array.from({ length: 4 }, (_, i) => uid(`f11${String(i).padStart(2, '0')}`));
+
+    failNextBulk = true;
+    await emitUntil(
+      async () => {
+        for (const postId of probe) await emitPost(postId, `redelivery durian ${postId.slice(-4)}`);
+      },
+      async () => {
+        for (const postId of probe) if ((await indexedText(postId)) === null) return false;
+        return true;
+      },
+    );
+
+    // Exactly one injected failure, and its whole doc set re-landed in a
+    // later successful bulk (whole-batch redelivery, nothing dropped).
+    const failed = journal.filter(
+      (entry): entry is { kind: 'bulk-failed'; at: number; docs: string[] } =>
+        entry.kind === 'bulk-failed',
+    );
+    expect(failed).toHaveLength(1);
+    const failure = failed[0];
+    if (!failure) throw new Error('expected one injected bulk failure');
+    const recovered = journal.some(
+      (entry) =>
+        entry.kind === 'bulk-ok' &&
+        entry.at > failure.at &&
+        failure.docs.every((doc) => entry.docs.includes(doc)),
+    );
+    expect(recovered).toBe(true);
+
+    // No checkpoint landed between the failed flush and its recovery - the
+    // resume cursor never pointed past unprocessed work.
+    const between = journal.filter(
+      (entry) => entry.kind === 'checkpoint' && entry.at > failure.at,
+    ) as Array<{ kind: 'checkpoint'; at: number; offset: number }>;
+    const recovery = journal.find(
+      (entry): entry is { kind: 'bulk-ok'; at: number; docs: string[] } =>
+        entry.kind === 'bulk-ok' && failure.docs.every((doc) => entry.docs.includes(doc)),
+    );
+    if (!recovery) throw new Error('expected a recovering bulk after the failure');
+    expect(between.some((entry) => entry.at < recovery.at)).toBe(false);
+    // ...and once the batch did land, its checkpoint followed.
+    expect(between.some((entry) => entry.at > recovery.at)).toBe(true);
+  }, 120_000);
+
   it('resumes from checkpoints after consumer-group loss (no data skipped)', async () => {
     // Two posts on one partition (same key -> ordered).
     const first = uid('f010');
     const second = uid('f011');
     await emitUntil(
-      () =>
-        producer
-          .emit('posts', {
-            eventType: 'posts.post.created',
-            producer: 'posts',
-            occurredAt: NOW,
-            key: 'resume-probe',
-            payload: {
-              postId: first,
-              authorId: AUTHOR,
-              text: 'resume checkpoint guava one',
-              mediaIds: [],
-              replyToId: null,
-              repostOfId: null,
-              createdAt: NOW,
-            },
-          })
-          .then(() =>
-            producer.emit('posts', {
-              eventType: 'posts.post.created',
-              producer: 'posts',
-              occurredAt: NOW,
-              key: 'resume-probe',
-              payload: {
-                postId: second,
-                authorId: AUTHOR,
-                text: 'resume checkpoint guava two',
-                mediaIds: [],
-                replyToId: null,
-                repostOfId: null,
-                createdAt: NOW,
-              },
-            }),
-          ),
+      async () => {
+        await emitPost(first, 'resume checkpoint guava one', 'resume-probe');
+        await emitPost(second, 'resume checkpoint guava two', 'resume-probe');
+      },
       async () => (await indexedText(second)) !== null,
     );
 
@@ -336,22 +403,7 @@ describe('search-index consumption (testcontainers kafka + opensearch)', () => {
     // backlog must NOT be reprocessed.
     const after = uid('f012');
     await emitUntil(
-      () =>
-        producer.emit('posts', {
-          eventType: 'posts.post.created',
-          producer: 'posts',
-          occurredAt: NOW,
-          key: 'resume-probe',
-          payload: {
-            postId: after,
-            authorId: AUTHOR,
-            text: 'resume checkpoint guava three',
-            mediaIds: [],
-            replyToId: null,
-            repostOfId: null,
-            createdAt: NOW,
-          },
-        }),
+      () => emitPost(after, 'resume checkpoint guava three', 'resume-probe'),
       async () => seenAfterResume.includes('resume checkpoint guava three'),
     );
 

@@ -75,10 +75,16 @@ export class PostsIndex implements OnModuleInit {
    * at-least-once contract (the await still covers the write; a doc is
    * searchable within one refresh interval, <=1s by default) and moves the
    * worker to HTTP-bound throughput instead of refresh-bound.
+   *
+   * No per-call `ensure()` either (#109): `indices.create` on every write
+   * was a wasted round-trip + `resource_already_exists_exception` per
+   * document (harmless at 1 req/s, pure overhead once the worker batches).
+   * The index is ensured at boot (onModuleInit); if a write races the
+   * nightly reset's index deletion, the `index_not_found` retry below
+   * recreates it once and replays the bulk - idempotent by postId.
    */
   async upsertDocuments(documents: SearchIndexDocument[]): Promise<number> {
     if (documents.length === 0) return 0;
-    await this.ensure();
     const body = documents.flatMap((doc) => [
       { index: { _index: POSTS_INDEX, _id: doc.postId } },
       {
@@ -91,12 +97,15 @@ export class PostsIndex implements OnModuleInit {
         deletedAt: doc.deletedAt,
       },
     ]);
-    const result = await this.client.bulk({ body, refresh: false });
-    if (result.body.errors) {
-      const reason = JSON.stringify(result.body.items?.[0]?.index?.error ?? 'unknown bulk error');
-      throw new Error(`search index bulk upsert failed: ${reason}`);
+    try {
+      return checkBulk(await this.client.bulk({ body, refresh: false }), documents.length);
+    } catch (err) {
+      if (!isIndexMissing(err)) throw err;
+      // The index vanished under us (reset wiped it between boot and this
+      // write): recreate, then retry the whole bulk once.
+      await this.ensure();
+      return checkBulk(await this.client.bulk({ body, refresh: false }), documents.length);
     }
-    return documents.length;
   }
 
   /**
@@ -243,6 +252,18 @@ export function buildSearchBody(options: SearchOptions): Record<string, unknown>
     sort: [{ createdAt: 'desc' }, { postId: 'desc' }],
     ...(options.after ? { search_after: [options.after.createdAt, options.after.postId] } : {}),
   };
+}
+
+/** Surface the first bulk item error as a throw (the await must not lie). */
+function checkBulk(
+  result: { body: { errors?: boolean; items?: Array<{ index?: { error?: unknown } }> } },
+  expected: number,
+): number {
+  if (result.body.errors) {
+    const reason = JSON.stringify(result.body.items?.[0]?.index?.error ?? 'unknown bulk error');
+    throw new Error(`search index bulk upsert failed: ${reason}`);
+  }
+  return expected;
 }
 
 interface OpenSearchErrorBody {
