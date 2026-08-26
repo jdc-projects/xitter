@@ -113,17 +113,24 @@ describe('PostsIndex.upsertDocuments ensure-once (#109)', () => {
   function clientWith(overrides: {
     bulk: () => Promise<unknown>;
     create?: () => Promise<unknown>;
-  }): { client: Client; create: ReturnType<typeof vi.fn>; bulk: ReturnType<typeof vi.fn> } {
+    exists?: () => Promise<{ body: boolean }>;
+  }): {
+    client: Client;
+    create: ReturnType<typeof vi.fn>;
+    bulk: ReturnType<typeof vi.fn>;
+    exists: ReturnType<typeof vi.fn>;
+  } {
     const create = vi.fn(overrides.create ?? (() => Promise.resolve({ body: {} })));
     const bulk = vi.fn(overrides.bulk);
+    const exists = vi.fn(overrides.exists ?? (() => Promise.resolve({ body: true })));
     const client = {
       bulk,
-      indices: { create },
+      indices: { create, exists },
     } as unknown as Client;
-    return { client, create, bulk };
+    return { client, create, bulk, exists };
   }
 
-  it('does NOT create the index on writes (boot owns the ensure)', async () => {
+  it('does NOT create the index when it exists (boot + existence check)', async () => {
     const { client, create } = clientWith({
       bulk: () => Promise.resolve({ body: { errors: false } }),
     });
@@ -132,6 +139,22 @@ describe('PostsIndex.upsertDocuments ensure-once (#109)', () => {
     await posts.upsertDocuments([doc('p3')]);
 
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it('recreates the index WITH its definition when the reset deleted it (auto-create guard)', async () => {
+    // The live bug (#118 regression): a bulk against a missing index does
+    // not fail - OpenSearch auto-creates a dynamic-mapping index and every
+    // analyzer-dependent query silently returns nothing. The per-call
+    // existence check must recreate the index via ensure() BEFORE the bulk.
+    const { client, create, bulk } = clientWith({
+      exists: () => Promise.resolve({ body: false }),
+      bulk: () => Promise.resolve({ body: { errors: false } }),
+    });
+    const posts = new PostsIndex(client);
+
+    await expect(posts.upsertDocuments([doc('p1')])).resolves.toBe(1);
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(bulk).toHaveBeenCalledTimes(1);
   });
 
   it('re-ensures once and retries the bulk when the index vanished mid-write', async () => {
@@ -157,6 +180,33 @@ describe('PostsIndex.upsertDocuments ensure-once (#109)', () => {
 
     await expect(posts.upsertDocuments([doc('p1')])).rejects.toThrow('cluster gone');
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it('treats an item-level index_not_found in a 200 response as missing (re-ensure + retry)', async () => {
+    // Bulk item errors ride a 200 - the client never throws them. The
+    // auto-created-index guard makes this unreachable in practice, but if
+    // the index vanishes between the existence check and the bulk this is
+    // the shape recovery must recognise.
+    let calls = 0;
+    const { client, create } = clientWith({
+      exists: () => Promise.resolve({ body: true }),
+      bulk: () => {
+        calls += 1;
+        return calls === 1
+          ? Promise.resolve({
+              body: {
+                errors: true,
+                items: [{ index: { error: { type: 'index_not_found_exception' } } }],
+              },
+            })
+          : Promise.resolve({ body: { errors: false } });
+      },
+    });
+    const posts = new PostsIndex(client);
+
+    await expect(posts.upsertDocuments([doc('p1')])).resolves.toBe(1);
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(calls).toBe(2);
   });
 
   it('surfaces bulk item errors after the retry', async () => {

@@ -79,12 +79,23 @@ export class PostsIndex implements OnModuleInit {
    * No per-call `ensure()` either (#109): `indices.create` on every write
    * was a wasted round-trip + `resource_already_exists_exception` per
    * document (harmless at 1 req/s, pure overhead once the worker batches).
-   * The index is ensured at boot (onModuleInit); if a write races the
-   * nightly reset's index deletion, the `index_not_found` retry below
-   * recreates it once and replays the bulk - idempotent by postId.
+   * The index is ensured at boot (onModuleInit) plus an existence check
+   * per call (one HEAD, batch-amortised): the nightly reset deletes the
+   * index while the service is LIVE (workers pause, services do not), and
+   * a naive bulk against the missing index does NOT fail - OpenSearch
+   * auto-creates it with a dynamic mapping (observed live: analyzer-less
+   * index, every query 0 hits). The check recreates it WITH the definition
+   * before the bulk; the thrown-error retry below remains as the race
+   * fallback (index deleted between the check and the bulk).
    */
   async upsertDocuments(documents: SearchIndexDocument[]): Promise<number> {
     if (documents.length === 0) return 0;
+    // Client v3 wraps the HEAD result in an ApiResponse object that is
+    // always truthy - the boolean lives in .body.
+    const exists = await this.client.indices.exists({ index: POSTS_INDEX });
+    if (!exists.body) {
+      await this.ensure();
+    }
     const body = documents.flatMap((doc) => [
       { index: { _index: POSTS_INDEX, _id: doc.postId } },
       {
@@ -254,14 +265,29 @@ export function buildSearchBody(options: SearchOptions): Record<string, unknown>
   };
 }
 
-/** Surface the first bulk item error as a throw (the await must not lie). */
+/**
+ * Surface the first bulk item error as a throw (the await must not lie).
+ * The thrown error carries the original item error body so downstream
+ * classification (isIndexMissing) works - bulk item errors are NOT thrown
+ * by the client, they ride a 200 response.
+ */
 function checkBulk(
-  result: { body: { errors?: boolean; items?: Array<{ index?: { error?: unknown } }> } },
+  result: {
+    body: {
+      errors?: boolean;
+      items?: Array<{ index?: { error?: OpenSearchErrorBody['error'] } }>;
+    };
+  },
   expected: number,
 ): number {
   if (result.body.errors) {
-    const reason = JSON.stringify(result.body.items?.[0]?.index?.error ?? 'unknown bulk error');
-    throw new Error(`search index bulk upsert failed: ${reason}`);
+    const itemError = result.body.items?.[0]?.index?.error;
+    const err = new Error(
+      `search index bulk upsert failed: ${JSON.stringify(itemError ?? 'unknown bulk error')}`,
+    );
+    // Preserve the error shape a thrown client error would have had.
+    (err as { body?: OpenSearchErrorBody }).body = { error: itemError };
+    throw err;
   }
   return expected;
 }
