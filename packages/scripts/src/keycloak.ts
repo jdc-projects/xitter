@@ -12,7 +12,7 @@ import KcAdminClient from '@keycloak/keycloak-admin-client';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { envInt, envString, loadRepoEnv, localUrl } from '@xitter/config';
-import { SERVICE_CLIENTS, WORKER_CLIENTS } from '@xitter/auth';
+import { CLIENT_AUDIENCES } from '@xitter/auth';
 import { keycloakBaseUrl } from './lib/wait.js';
 
 export interface DemoUser {
@@ -64,7 +64,7 @@ async function withRetry<T>(call: () => Promise<T>, what: string, attempts = 5):
 
 // Re-exported for callers of this module; the canonical lists live in
 // @xitter/auth so services' guards and the provisioner cannot drift.
-export { SERVICE_CLIENTS, WORKER_CLIENTS };
+export { CLIENT_AUDIENCES };
 
 // Deployed runs (nightly reset, ensure-demo-users job) must converge the
 // web client on the edge origin tofu manages (keycloak.tf
@@ -274,15 +274,19 @@ export interface DemoRealmOptions {
    * breaks. Falls back to the local `${client}-local-secret` convention.
    */
   machineSecrets?: Readonly<Record<string, string>>;
+  /** Pre-authenticated admin client (tests inject a fake). */
+  adminClient?: KcAdminClient;
 }
 
 export async function initDemoRealm(options: DemoRealmOptions = {}): Promise<DemoUser[]> {
   loadRepoEnv();
-  const kc = await createAdminClient(options.baseUrl);
+  const kc = options.adminClient ?? (await createAdminClient(options.baseUrl));
   const { realm, userPrefix, userCount, password } = demoCredentials();
 
   await ensureRealm(kc, realm);
   await ensureRole(kc, realm, 'demo-user');
+  // Needed before svc-admin's service-account role mapping below.
+  await ensureRole(kc, realm, 'system-admin');
 
   await ensureClient(kc, realm, 'web', {
     public: true,
@@ -290,19 +294,20 @@ export async function initDemoRealm(options: DemoRealmOptions = {}): Promise<Dem
     // Password grant for the deterministic seeder only; user login is OIDC.
     directGrants: true,
   });
-  for (const serviceClient of SERVICE_CLIENTS) {
-    const uuid = await ensureClient(kc, realm, serviceClient, {
+
+  // Machine clients in registry order: each gets its scoped audience mappers
+  // (CLIENT_AUDIENCES - the call graph). Tofu mints the same mappers for the
+  // clients it manages (keycloak.tf); the naming is identical so the two
+  // upserts converge on ONE mapper per (client, audience) instead of
+  // duplicating `aud` entries (#80).
+  let adminClientUuid: string | undefined;
+  for (const [clientId, audiences] of Object.entries(CLIENT_AUDIENCES)) {
+    const uuid = await ensureClient(kc, realm, clientId, {
       serviceAccount: true,
-      secret: machineSecret(serviceClient, options),
+      secret: machineSecret(clientId, options),
     });
-    await ensureAudienceMapper(kc, realm, uuid, SERVICE_CLIENTS);
-  }
-  for (const worker of WORKER_CLIENTS) {
-    const uuid = await ensureClient(kc, realm, worker.clientId, {
-      serviceAccount: true,
-      secret: machineSecret(worker.clientId, options),
-    });
-    await ensureAudienceMapper(kc, realm, uuid, worker.audiences);
+    await ensureAudienceMapper(kc, realm, clientId, uuid, audiences);
+    if (clientId === 'svc-admin') adminClientUuid = uuid;
   }
 
   // Admin tooling client (T10): a machine principal for bruno/scripts that
@@ -310,12 +315,6 @@ export async function initDemoRealm(options: DemoRealmOptions = {}): Promise<Dem
   // `@Internal({ admin: true })` gate on the services' internal admin
   // endpoints. The panel browser cannot hold a secret, so it uses the
   // admin realm instead; this client is the non-browser path.
-  await ensureRole(kc, realm, 'system-admin');
-  const adminClientUuid = await ensureClient(kc, realm, 'svc-admin', {
-    serviceAccount: true,
-    secret: envString('XITTER_ADMIN_CLIENT_SECRET', 'svc-admin-local-secret'),
-  });
-  await ensureAudienceMapper(kc, realm, adminClientUuid, [...SERVICE_CLIENTS]);
   const adminServiceAccount = await kc.clients.getServiceAccountUser({
     realm,
     id: adminClientUuid,
@@ -334,7 +333,24 @@ export async function initDemoRealm(options: DemoRealmOptions = {}): Promise<Dem
 }
 
 function machineSecret(clientId: string, options: DemoRealmOptions): string {
+  if (clientId === 'svc-admin') {
+    // Not a Tofu-managed machine client, so machineSecrets never carries it;
+    // keep the dedicated env override (deployed panels/bruno rely on it).
+    return options.machineSecrets?.[clientId] ?? envString('XITTER_ADMIN_CLIENT_SECRET', 'svc-admin-local-secret');
+  }
   return options.machineSecrets?.[clientId] ?? `${clientId}-local-secret`;
+}
+
+/**
+ * Mapper naming contract shared with keycloak.tf
+ * (`name = "audience-${replace(each.key, "__", "-to-")}"` on
+ * `"<client>__<aud>"` keys): identical names mean the script upsert and the
+ * Tofu apply converge on ONE mapper per (client, audience) instead of each
+ * leaving the other's duplicates behind (#80). Parity of the audience MAP is
+ * enforced by keycloak-parity.test.ts.
+ */
+export function audienceMapperName(clientId: string, audience: string): string {
+  return `audience-${clientId}-to-${audience}`;
 }
 
 /**
@@ -343,31 +359,34 @@ function machineSecret(clientId: string, options: DemoRealmOptions): string {
  * audience = own client id (the contract @xitter/auth createTokenVerifier
  * enforces). Keycloak's oidc-audience-mapper takes exactly one audience per
  * mapper, so one mapper is created per audience; idempotent by mapper name.
+ *
+ * Foreign audience mappers (names outside the desired set - the legacy
+ * comma-joined `xitter-service-audience`, or this script's older
+ * `xitter-audience-<aud>` names that Tofu never managed) are deleted so a
+ * pre-fix realm converges to one mapper per (client, audience) on the next
+ * init; non-audience mappers are never touched.
  */
 async function ensureAudienceMapper(
   kc: KcAdminClient,
   realm: string,
+  clientId: string,
   clientUuid: string,
   audiences: readonly string[],
 ): Promise<void> {
   const existing = await kc.clients.listProtocolMappers({ realm, id: clientUuid });
+  const desiredNames = new Set(audiences.map((audience) => audienceMapperName(clientId, audience)));
   const existingNames = new Set(existing.map((m) => m.name));
 
-  // Legacy single mapper with a comma-joined audience value - that produced
-  // one bogus aud string instead of separate entries; remove when found.
-  const legacy = existing.find((m) => m.name === 'xitter-service-audience');
-  if (legacy?.id) {
-    await kc.clients.delProtocolMapper({
-      realm,
-      id: clientUuid,
-      mapperId: legacy.id,
-    });
-    existingNames.delete('xitter-service-audience');
-    console.log(`client ${realm}: legacy audience mapper removed`);
+  for (const mapper of existing) {
+    if (mapper.protocolMapper !== 'oidc-audience-mapper') continue;
+    if (desiredNames.has(mapper.name!)) continue;
+    await kc.clients.delProtocolMapper({ realm, id: clientUuid, mapperId: mapper.id! });
+    existingNames.delete(mapper.name!);
+    console.log(`client ${realm}/${clientId}: stale audience mapper removed (${mapper.name})`);
   }
 
   for (const audience of audiences) {
-    const name = `xitter-audience-${audience}`;
+    const name = audienceMapperName(clientId, audience);
     if (existingNames.has(name)) continue;
     await kc.clients.addProtocolMapper(
       { realm, id: clientUuid },
@@ -378,10 +397,14 @@ async function ensureAudienceMapper(
         config: {
           'included.client.audience': audience,
           'access.token.claim': 'true',
+          // Explicit so script-created mappers match Tofu's
+          // (add_to_id_token = false) bit-for-bit - an omitted field would
+          // surface as perpetual plan drift on the provider side.
+          'id.token.claim': 'false',
         },
       },
     );
-    console.log(`client ${realm}: audience mapper added (${audience})`);
+    console.log(`client ${realm}/${clientId}: audience mapper added (${audience})`);
   }
 }
 

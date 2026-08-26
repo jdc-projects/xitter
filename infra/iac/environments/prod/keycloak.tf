@@ -1,30 +1,40 @@
 # Keycloak: the xitter-demo realm and its clients. Mirrors the logic in
 # packages/scripts/src/keycloak.ts (which stays local/reset-only), so the
-# local bootstrap and the deployed realm converge on the same contract.
+# local bootstrap and the deployed realm converge on the same contract -
+# enforced for the audience map by
+# packages/scripts/src/keycloak-parity.test.ts (#80).
 # Demo users themselves are NOT Tofu-managed - the reset/seeder job owns them
 # (see docs/specs/operations/02-data-reset.md).
 
 locals {
   demo_realm = "xitter-demo"
 
-  # Machine clients and the audiences their service-account tokens carry
-  # (receivers validate aud = their own client id):
-  #   - each API service may call any other API service (mirrors local
-  #     SERVICE_CLIENTS), so svc-* tokens carry all five audiences;
-  #   - workers carry only the audiences of the services they call.
-  # dev also carries svc-reset (its nightly reset job); prod's reset CronJob
-  # and its client land with the data-lifecycle follow-up (#13) - not here,
-  # deliberately, so this environment never ships reset credentials unused.
-  service_audiences = ["svc-social", "svc-posts", "svc-media", "svc-feed", "svc-search"]
+  # Receiver audiences: the five API services (guards validate aud = own id).
+  service_clients = ["svc-social", "svc-posts", "svc-media", "svc-feed", "svc-search"]
 
-  machine_clients = merge(
-    { for c in local.service_audiences : c => local.service_audiences },
-    {
-      "svc-worker-fanout"        = ["svc-social", "svc-posts", "svc-feed"],
-      "svc-worker-media-process" = ["svc-media"],
-      "svc-worker-search-index"  = ["svc-search"],
-    },
-  )
+  # Machine clients and the audiences their service-account tokens carry -
+  # EXACTLY the internal APIs each client calls, plus a service's own id
+  # (its tokens then satisfy its own verifier):
+  #   - svc-posts checks social relationships + media assets before accepting
+  #     a post; svc-feed and svc-search hydrate through posts/social bulk
+  #     lookups; svc-social and svc-media call no other service;
+  #   - workers carry only the audiences of the services they call.
+  # MUST mirror CLIENT_AUDIENCES in packages/auth/src/clients.ts verbatim -
+  # parity (and mapper naming) is enforced by
+  # packages/scripts/src/keycloak-parity.test.ts. Dev also carries svc-reset
+  # (its nightly reset job); prod's reset CronJob and its client land with
+  # the data-lifecycle follow-up (#13) - not here, deliberately, so this
+  # environment never ships reset credentials unused.
+  machine_clients = {
+    "svc-social"                = ["svc-social"],
+    "svc-posts"                 = ["svc-posts", "svc-social", "svc-media"],
+    "svc-media"                 = ["svc-media"],
+    "svc-feed"                  = ["svc-feed", "svc-posts", "svc-social"],
+    "svc-search"                = ["svc-search", "svc-posts", "svc-social"],
+    "svc-worker-fanout"         = ["svc-social", "svc-posts", "svc-feed"],
+    "svc-worker-media-process"  = ["svc-media"],
+    "svc-worker-search-index"   = ["svc-search", "svc-social"],
+  }
 
   # client_id => audience pairs for one mapper per (client, audience).
   client_audiences = merge(
@@ -37,9 +47,12 @@ locals {
     },
     # Browser tokens (PKCE login on the `web` client) pass through the edge's
     # oidc-api audience check on every /api/{service} route, so the web client
-    # must mint tokens carrying each service's audience too.
+    # must mint tokens carrying each service's audience too. Script-side
+    # realm init deliberately does NOT mirror these: the local edge
+    # (infra/proxy/traefik) never validates audience, so they are a
+    # deployed-edge-only concern owned here.
     {
-      for aud in local.service_audiences : "web__${aud}" => { client = "web", aud = aud }
+      for aud in local.service_clients : "web__${aud}" => { client = "web", aud = aud }
     },
   )
 }
