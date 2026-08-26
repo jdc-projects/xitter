@@ -68,7 +68,8 @@ export class ValkeyInteractionRealtime implements InteractionRealtime {
     }
   }
 
-  // fallow-ignore-next-line unused-class-member -- releases the Valkey connection at shutdown (optional stop() seam; PostsLifecycle wiring lands with it)
+  // The optional stop() seam releases the Valkey connection at shutdown
+  // (PostsLifecycle wiring lands with it); tests exercise it directly.
   async stop(): Promise<void> {
     await this.connection?.quit().catch(() => undefined);
   }
