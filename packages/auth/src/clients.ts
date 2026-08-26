@@ -1,7 +1,7 @@
 /**
  * Canonical machine-client registry for the demo realm, shared by the realm
  * provisioner (packages/scripts/src/keycloak.ts), Tofu
- * (infra/iac/environments/*/keycloak.tf - parity pinned by
+ * (infra/iac/environments/{dev,prod}/keycloak.tf - parity pinned by
  * packages/scripts/src/keycloak-parity.test.ts) and token guards. Receiving
  * services validate audience = their own client id on `internal/*` routes,
  * so each client's audiences are EXACTLY the internal APIs it calls (plus a
@@ -26,7 +26,8 @@ export const SERVICE_CLIENTS = [
  *   - svc-feed and svc-search hydrate content through posts/social bulk
  *     lookups (@xitter/service-kit ServiceContentSource, client credentials);
  *   - svc-social and svc-media call no other service;
- *   - workers hit only the services they feed (apps/workers/*/src/main.ts):
+ *   - workers hit only the services they feed (apps/workers/{fanout,
+ *     media-process,search-index}/src/main.ts):
  *     fanout materialises feeds (social + posts + feed), media-process calls
  *     back into media, search-index feeds the index (svc-search) and resolves
  *     author display names via social's bulk profile lookup (#9);
@@ -55,8 +56,8 @@ export const INTERNAL_CLIENTS: readonly string[] = Object.keys(CLIENT_AUDIENCES)
 
 /** Machine clients outside the service set (derive: registry is the source). */
 export const WORKER_CLIENTS: readonly { clientId: string; audiences: readonly string[] }[] =
-  INTERNAL_CLIENTS.filter((clientId) => !(SERVICE_CLIENTS as readonly string[]).includes(clientId)).map(
-    (clientId) => ({ clientId, audiences: CLIENT_AUDIENCES[clientId]! }),
-  );
+  INTERNAL_CLIENTS.filter(
+    (clientId) => !(SERVICE_CLIENTS as readonly string[]).includes(clientId),
+  ).map((clientId) => ({ clientId, audiences: CLIENT_AUDIENCES[clientId]! }));
 
 export type ServiceClientName = (typeof SERVICE_CLIENTS)[number];

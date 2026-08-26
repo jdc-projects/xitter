@@ -26,15 +26,15 @@ locals {
   # parity (and mapper naming) is enforced by
   # packages/scripts/src/keycloak-parity.test.ts.
   machine_clients = {
-    "svc-social"                = ["svc-social"],
-    "svc-posts"                 = ["svc-posts", "svc-social", "svc-media"],
-    "svc-media"                 = ["svc-media"],
-    "svc-feed"                  = ["svc-feed", "svc-posts", "svc-social"],
-    "svc-search"                = ["svc-search", "svc-posts", "svc-social"],
-    "svc-worker-fanout"         = ["svc-social", "svc-posts", "svc-feed"],
-    "svc-worker-media-process"  = ["svc-media"],
-    "svc-worker-search-index"   = ["svc-search", "svc-social"],
-    "svc-reset"                 = local.service_clients,
+    "svc-social"               = ["svc-social"],
+    "svc-posts"                = ["svc-posts", "svc-social", "svc-media"],
+    "svc-media"                = ["svc-media"],
+    "svc-feed"                 = ["svc-feed", "svc-posts", "svc-social"],
+    "svc-search"               = ["svc-search", "svc-posts", "svc-social"],
+    "svc-worker-fanout"        = ["svc-social", "svc-posts", "svc-feed"],
+    "svc-worker-media-process" = ["svc-media"],
+    "svc-worker-search-index"  = ["svc-search", "svc-social"],
+    "svc-reset"                = local.service_clients,
   }
 
   # client_id => audience pairs for one mapper per (client, audience).

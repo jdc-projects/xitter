@@ -315,6 +315,7 @@ export async function initDemoRealm(options: DemoRealmOptions = {}): Promise<Dem
   // `@Internal({ admin: true })` gate on the services' internal admin
   // endpoints. The panel browser cannot hold a secret, so it uses the
   // admin realm instead; this client is the non-browser path.
+  if (!adminClientUuid) throw new Error('svc-admin missing from CLIENT_AUDIENCES');
   const adminServiceAccount = await kc.clients.getServiceAccountUser({
     realm,
     id: adminClientUuid,
@@ -336,7 +337,10 @@ function machineSecret(clientId: string, options: DemoRealmOptions): string {
   if (clientId === 'svc-admin') {
     // Not a Tofu-managed machine client, so machineSecrets never carries it;
     // keep the dedicated env override (deployed panels/bruno rely on it).
-    return options.machineSecrets?.[clientId] ?? envString('XITTER_ADMIN_CLIENT_SECRET', 'svc-admin-local-secret');
+    return (
+      options.machineSecrets?.[clientId] ??
+      envString('XITTER_ADMIN_CLIENT_SECRET', 'svc-admin-local-secret')
+    );
   }
   return options.machineSecrets?.[clientId] ?? `${clientId}-local-secret`;
 }
