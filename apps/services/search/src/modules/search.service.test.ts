@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { BadRequestException } from '@nestjs/common';
 import type { Post, Profile, SearchIndexDocument } from '@xitter/api-contracts';
 import { decodeCursor } from '@xitter/service-kit';
-import { CheckpointRepository, type CheckpointInput, type SearchDb } from './checkpoint.repository.js';
+import {
+  CheckpointRepository,
+  type CheckpointInput,
+  type SearchDb,
+} from './checkpoint.repository.js';
 import type { PostHit, PostsIndex, SearchOptions, SearchOutcome } from './posts-index.js';
 import type { SearchContentSource } from './search-content.js';
 import { SearchService } from './search.service.js';
@@ -34,7 +38,12 @@ interface SeedDoc {
   profileKnown: boolean;
 }
 
-const seed = (post: string, author: string, hours: number, overrides: Partial<SeedDoc> = {}): SeedDoc => ({
+const seed = (
+  post: string,
+  author: string,
+  hours: number,
+  overrides: Partial<SeedDoc> = {},
+): SeedDoc => ({
   postId: uid(post),
   authorId: uid(author),
   createdAt: at(hours),
@@ -109,12 +118,21 @@ class FakeIndex {
           (doc.createdAt === after.createdAt && doc.postId < after.postId),
       )
       .sort((a, b) =>
-        a.createdAt === b.createdAt ? (a.postId < b.postId ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1,
+        a.createdAt === b.createdAt
+          ? a.postId < b.postId
+            ? 1
+            : -1
+          : a.createdAt < b.createdAt
+            ? 1
+            : -1,
       );
     const hits = matching.slice(0, options.limit).map(hitFrom);
     const last = hits.at(-1);
     const hasMore = matching.length > options.limit;
-    return { hits, nextAfter: hasMore && last ? { createdAt: last.createdAt, postId: last.postId } : null };
+    return {
+      hits,
+      nextAfter: hasMore && last ? { createdAt: last.createdAt, postId: last.postId } : null,
+    };
   }
 
   async upsertDocuments(documents: SearchIndexDocument[]): Promise<number> {
@@ -145,13 +163,17 @@ class FakeContent implements SearchContentSource {
 
   async posts(postIds: string[]): Promise<Map<string, Post>> {
     this.postsCalls.push([...postIds]);
-    return new Map(postIds.filter((id) => this.postStore.has(id)).map((id) => [id, this.postStore.get(id)!]));
+    return new Map(
+      postIds.filter((id) => this.postStore.has(id)).map((id) => [id, this.postStore.get(id)!]),
+    );
   }
 
   async profiles(userIds: string[]): Promise<Map<string, Profile>> {
     this.profilesCalls.push([...userIds]);
     return new Map(
-      userIds.filter((id) => this.profileStore.has(id)).map((id) => [id, this.profileStore.get(id)!]),
+      userIds
+        .filter((id) => this.profileStore.has(id))
+        .map((id) => [id, this.profileStore.get(id)!]),
     );
   }
 
@@ -222,14 +244,14 @@ describe('SearchService.searchPosts page assembly', () => {
     const page = await service.searchPosts(VIEWER, { q: 'needle', limit: 3 });
 
     expect(page.items.map((item) => item.post.id)).toEqual([
-      docs[2].postId,
-      docs[1].postId,
-      docs[0].postId,
+      docs[2]!.postId,
+      docs[1]!.postId,
+      docs[0]!.postId,
     ]);
     expect(page.nextCursor).toBeNull();
     expect(page.items[0]).toEqual({
-      post: content.postStore.get(docs[2].postId)!,
-      author: content.profileStore.get(docs[2].authorId)!,
+      post: content.postStore.get(docs[2]!.postId)!,
+      author: content.profileStore.get(docs[2]!.authorId)!,
       reason: 'post', // search results are plain posts, never repost entries
       repostedBy: null,
     });
@@ -247,7 +269,9 @@ describe('SearchService.searchPosts page assembly', () => {
   });
 
   it('caps the page at the contract ceiling of 50 regardless of the requested limit', async () => {
-    const docs = Array.from({ length: 80 }, (_, i) => seed(`1${String(i).padStart(3, '0')}`, '2001', i));
+    const docs = Array.from({ length: 80 }, (_, i) =>
+      seed(`1${String(i).padStart(3, '0')}`, '2001', i),
+    );
     const { index, service } = harness(docs);
 
     const page = await service.searchPosts(VIEWER, { q: 'needle', limit: 500 });
@@ -298,16 +322,19 @@ describe('SearchService.searchPosts page assembly', () => {
       seen.push(...page.items.map((item) => item.post.id));
       if (!page.nextCursor) break;
       const last = page.items.at(-1)!;
-      expect(decodeCursor(page.nextCursor)).toEqual({ createdAt: last.post.createdAt, id: last.post.id });
+      expect(decodeCursor(page.nextCursor)).toEqual({
+        createdAt: last.post.createdAt,
+        id: last.post.id,
+      });
       cursor = page.nextCursor;
     }
 
     expect(seen).toEqual([
-      docs[4].postId,
-      docs[3].postId,
-      docs[2].postId,
-      docs[1].postId,
-      docs[0].postId,
+      docs[4]!.postId,
+      docs[3]!.postId,
+      docs[2]!.postId,
+      docs[1]!.postId,
+      docs[0]!.postId,
     ]);
   });
 
@@ -404,7 +431,7 @@ describe('SearchService.searchPosts refill walks (hydration drops)', () => {
 
     const page = await service.searchPosts(VIEWER, { q: 'needle', limit: 2 });
 
-    expect(page.items.map((item) => item.post.id)).toEqual([docs[0].postId, docs[1].postId]);
+    expect(page.items.map((item) => item.post.id)).toEqual([docs[0]!.postId, docs[1]!.postId]);
     expect(page.nextCursor).not.toBeNull();
   });
 });
