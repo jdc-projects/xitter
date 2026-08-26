@@ -76,6 +76,12 @@ same path the env configs resolve locally. Local tofu runs use the same file
 
 ## Notes
 
+- CI plan/apply jobs on the self-hosted runner route the keycloak + sentry
+  providers in-cluster (`TF_VAR_provider_*`, ADR 0011) — no tofu auth from CI
+  crosses the Cloudflare edge, so CrowdSec home-IP bans cannot fail or be
+  tripped by a plan. Local runs keep the public URLs (see
+  [02-deploying-an-environment.md](02-deploying-an-environment.md) for that
+  failure mode).
 - Sentry/Grafana/Prometheus need no secrets here: xitter consumes them via
   Tofu remote state (`infra/iac/REMOTE-STATE.md`) and pushes its own CRs.
 - Everything else (image pushes) uses the built-in `GITHUB_TOKEN`.
