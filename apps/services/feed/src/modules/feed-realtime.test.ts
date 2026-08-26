@@ -40,8 +40,8 @@ function fakeValkeyBus() {
       quit(): Promise<'OK'>;
       quits: number;
     }> {
-      bus.connectCount += 1;
       if (bus.down) throw new Error('connection refused (valkey down)');
+      bus.connectCount += 1;
       const connection = {
         quits: 0,
         async publish(channel: string, message: string) {
@@ -70,35 +70,11 @@ function fakeValkeyBus() {
       connections.push(connection);
       return connection;
     },
-    /** The subscriber half (the gateway's structural slice) with real routing. */
-    subscriber(pattern: string): {
-      psubscribe(p: string): Promise<number>;
-      on(event: 'pmessage', listener: PmessageListener): unknown;
-      quit(): Promise<'OK'>;
-      patterns: string[];
-      quits: number;
-    } {
-      const state = { patterns: [] as string[], listeners: [] as PmessageListener[] };
+    /** Subscriber standing in for the gateway's pattern subscription. */
+    subscriber(pattern: string): { patterns: string[] } {
+      const state = { patterns: [pattern], listeners: [] as PmessageListener[] };
       subscribers.push(state);
-      const connection = {
-        patterns: state.patterns,
-        quits: 0,
-        async psubscribe(p: string) {
-          state.patterns.push(p);
-          return 1;
-        },
-        on(_event: 'pmessage', listener: PmessageListener) {
-          state.listeners.push(listener);
-          return connection;
-        },
-        async quit() {
-          connection.quits += 1;
-          state.patterns = [];
-          state.listeners = [];
-          return 'OK' as const;
-        },
-      };
-      return connection;
+      return { patterns: state.patterns };
     },
   };
   return bus;

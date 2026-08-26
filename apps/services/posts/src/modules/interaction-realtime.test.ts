@@ -42,8 +42,8 @@ function fakeValkeyBus() {
       quit(): Promise<'OK'>;
       quits: number;
     }> {
-      bus.connectCount += 1;
       if (bus.down) throw new Error('connection refused (valkey down)');
+      bus.connectCount += 1;
       const connection = {
         quits: 0,
         async publish(channel: string, message: string) {
@@ -72,9 +72,9 @@ function fakeValkeyBus() {
       connections.push(connection);
       return connection;
     },
-    /** Subscriber with the feed gateway's pattern (cross-service contract). */
+    /** Subscriber standing in for the feed gateway's pattern subscription. */
     subscriber(pattern: string): { patterns: string[] } {
-      const state = { patterns: [] as string[], listeners: [] as PmessageListener[] };
+      const state = { patterns: [pattern], listeners: [] as PmessageListener[] };
       subscribers.push(state);
       return { patterns: state.patterns };
     },

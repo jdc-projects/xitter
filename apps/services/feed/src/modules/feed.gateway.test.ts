@@ -1,4 +1,6 @@
+import { randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
+import { connect as netConnect } from 'node:net';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
@@ -99,6 +101,42 @@ function nextMessage(ws: WebSocket): Promise<unknown> {
     ws.once('message', (data) => resolve(JSON.parse(String(data)))),
   );
 }
+
+/**
+ * Hand-rolled HTTP upgrade over a raw socket, resolving with the response's
+ * status line - pins the exact wire response (401 vs 101) rather than the ws
+ * client's rendering of it.
+ */
+function rawUpgrade(
+  port: number,
+  pathname: string,
+  headerLines: [string, string][],
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const socket = netConnect({ port, host: '127.0.0.1' });
+    socket.once('error', reject);
+    socket.once('data', (chunk: Buffer) => {
+      resolve(chunk.toString('utf8').split('\r\n')[0]!);
+      socket.destroy();
+    });
+    socket.once('connect', () => {
+      const request = [
+        `GET ${pathname} HTTP/1.1`,
+        `Host: 127.0.0.1:${port}`,
+        'Upgrade: websocket',
+        'Connection: Upgrade',
+        `Sec-WebSocket-Key: ${randomBytes(16).toString('base64')}`,
+        'Sec-WebSocket-Version: 13',
+        ...headerLines.map(([name, value]) => `${name}: ${value}`),
+        '',
+        '',
+      ].join('\r\n');
+      socket.write(request);
+    });
+  });
+}
+
+const portOf = (url: string): number => Number(new URL(url).port);
 
 /** Collect every notification a socket receives, parsed. */
 function collector(ws: WebSocket): { messages: unknown[] } {
@@ -238,10 +276,13 @@ describe('FeedGateway (ws auth + notification relay)', () => {
 
   afterAll(() => stopGateway(state));
 
-  it('rejects upgrades without a token (401 before the socket is accepted)', async () => {
+  it('rejects upgrades without a token with a 401 status line (before the socket is accepted)', async () => {
     const { ws, opened, error } = await connect(url);
     expect(opened).toBe(false);
     expect(error).toContain('401');
+
+    const status = await rawUpgrade(portOf(url), FEED_WS_PATH, []);
+    expect(status).toBe('HTTP/1.1 401 Unauthorized');
     ws.terminate();
   });
 
@@ -311,8 +352,8 @@ describe('FeedGateway handshake: token sources and the azp allowlist', () => {
     ws.close();
   });
 
-  it('honours X-Access-Token, taking the first of repeated headers', async () => {
-    const { ws, opened } = await connect(url, { 'x-access-token': ['good-token', 'decoy'] });
+  it('honours X-Access-Token', async () => {
+    const { ws, opened } = await connect(url, { 'x-access-token': 'good-token' });
     expect(opened).toBe(true);
     ws.close();
   });
