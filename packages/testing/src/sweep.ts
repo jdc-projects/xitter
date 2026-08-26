@@ -171,7 +171,8 @@ export function ensureSuiteActivity(): void {
     try {
       utimesSync(activityMarkerDir(), new Date(), new Date());
     } catch {
-      /* dir removed underneath us - the next ensureSuiteActivity recreates */
+      /* dir removed underneath us - the marker is advisory; the conservative
+         running-resource gate remains the safety backstop */
     }
   }, ACTIVITY_HEARTBEAT_MS);
   heartbeat.unref();
