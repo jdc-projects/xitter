@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import {
+  DEFAULT_ORPHAN_AGE_MS,
   KAFKA_TEST_LABEL,
   OPENSEARCH_TEST_LABEL,
   POSTGRES_TEST_LABEL,
@@ -97,11 +98,12 @@ export async function startPostgres(
 ): Promise<PostgresHandle> {
   // Ephemeral host port, so no fixed-port lock - but label the container so
   // crashed-run orphans can be identified and swept (the label-scoped sweep
-  // below only removes containers older than the vitest suite timeout:
-  // a live suite's container is always younger).
+  // below uses the conservative 30-minute gate: live suites on loaded
+  // machines run longer than any tighter bound - observed 17+ min in the
+  // wild - so anything younger is left alone).
   await sweepOrphanedTestResources({
     labels: [POSTGRES_TEST_LABEL],
-    minAgeMs: 10 * 60_000,
+    minAgeMs: DEFAULT_ORPHAN_AGE_MS,
   }).catch(() => undefined);
   const container: StartedPostgreSqlContainer = await new PostgreSqlContainer(
     'postgres:18.6-alpine',

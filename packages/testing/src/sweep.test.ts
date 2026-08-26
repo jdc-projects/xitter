@@ -99,6 +99,26 @@ describe('selectOrphanResources', () => {
     ];
     expect(selectOrphanResources(resources, NOW, ENV_TEARDOWN_GRACE_MS)).toEqual([]);
   });
+
+  it('holds RUNNING containers to the conservative gate, not the grace', () => {
+    // deps:down shape: 60s grace for stopped, 30min for running. An
+    // interrupted run's orphans are usually still RUNNING - but so is a
+    // live suite's, so only age past the conservative gate separates them.
+    const age = 10 * 60_000;
+    const resources = [
+      { Id: 'running', Created: (NOW - age) / 1000, State: 'running', Labels: { 'xitter.test.postgres': 'true' } },
+      { Id: 'exited', Created: (NOW - age) / 1000, State: 'exited', Labels: { 'xitter.test.postgres': 'true' } },
+    ];
+    const swept = selectOrphanResources(resources, NOW, ENV_TEARDOWN_GRACE_MS, DEFAULT_ORPHAN_AGE_MS);
+    expect(swept.map((r) => r.Id)).toEqual(['exited']);
+  });
+
+  it('state-less resources (networks/volumes) use the conservative gate', () => {
+    const age = 5 * 60_000;
+    const resources = [{ Id: 'vol', Created: (NOW - age) / 1000, Labels: { 'xitter.test.kafka': 'true' } }];
+    const swept = selectOrphanResources(resources, NOW, ENV_TEARDOWN_GRACE_MS, DEFAULT_ORPHAN_AGE_MS);
+    expect(swept).toEqual([]);
+  });
 });
 
 describe('suite activity markers', () => {
@@ -177,7 +197,15 @@ describe('suite activity markers', () => {
 });
 
 describe('label constants', () => {
-  it('fixture labels share the documented prefix', () => {
+  it('fixture labels share the documented prefix (containers.ts uses these verbatim)', () => {
     expect(TEST_RESOURCE_LABEL_PREFIX).toBe('xitter.test.');
+    for (const label of [
+      `${TEST_RESOURCE_LABEL_PREFIX}postgres`,
+      `${TEST_RESOURCE_LABEL_PREFIX}kafka`,
+      `${TEST_RESOURCE_LABEL_PREFIX}opensearch`,
+      `${TEST_RESOURCE_LABEL_PREFIX}rustfs`,
+    ]) {
+      expect(hasTestResourceLabel({ [label]: 'true' })).toBe(true);
+    }
   });
 });

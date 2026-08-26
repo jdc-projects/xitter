@@ -1,9 +1,9 @@
 import { defineConfig } from 'vitest/config';
-import { stopAllTestContainers, sweepOrphansGlobalSetup } from '@xitter/testing';
+import { stopAllTestContainers } from '@xitter/testing';
 
 export default defineConfig({
   test: {
-    globalSetup: sweepOrphansGlobalSetup,
+    globalSetup: './vitest.global-setup.ts',
     globalTeardown: stopAllTestContainers,
     include: ['src/**/*.test.ts'],
     passWithNoTests: true,

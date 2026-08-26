@@ -13,8 +13,12 @@ import { join } from 'node:path';
  *
  * - suite start - `sweepOrphansGlobalSetup` as vitest `globalSetup`,
  *   conservative 30-minute age gate only
- * - environment teardown - `npm run deps:down` sweeps with a 60s grace,
- *   falling back to the 30-minute gate when a live suite is detected
+ * - environment teardown - `npm run deps:down`: 60s grace for stopped
+ *   resources; running containers keep the 30-minute gate (an interrupted
+ *   run's orphans are usually still RUNNING - and so is a live suite's, so
+ *   liveness alone cannot separate them and the gate must stay high). A
+ *   fresh activity marker (live suite on this code) raises every gate to
+ *   the conservative 30 minutes.
  * - manual - `npm run test:sweep` (age configurable via `--age-min`)
  *
  * Safety: only resources carrying a `xitter.test.*` label are ever
@@ -74,19 +78,23 @@ export function hasTestResourceLabel(
  * The orphan decision: label match AND age over the gate. Everything the
  * docker-facing sweeps delete goes through here, so this function is the
  * safety net that keeps unlabeled or too-young resources untouched.
+ *
+ * `runningMinAgeMs` gates resources whose liveness we cannot disprove -
+ * RUNNING containers (an interrupted run's orphans are usually still
+ * running, and so is a live suite's) and networks/volumes (no state field).
+ * Callers that can prove nothing of ours is alive may lower it.
  */
-export function selectOrphanResources<T extends DockerResource>(
+export function selectOrphanResources<T extends DockerResource & { State?: string }>(
   resources: T[],
   nowMs: number,
   minAgeMs: number,
+  runningMinAgeMs = minAgeMs,
 ): T[] {
   return resources.filter((resource) => {
     const createdAt = createdMs(resource.Created);
-    return (
-      createdAt !== null &&
-      hasTestResourceLabel(resource.Labels) &&
-      createdAt <= nowMs - minAgeMs
-    );
+    if (createdAt === null || !hasTestResourceLabel(resource.Labels)) return false;
+    const gate = resource.State === 'running' || resource.State === undefined ? runningMinAgeMs : minAgeMs;
+    return createdAt <= nowMs - gate;
   });
 }
 
@@ -184,8 +192,15 @@ export function endSuiteActivity(): void {
 // ---------------------------------------------------------------------------
 
 export interface SweepOptions {
-  /** Minimum resource age (ms) to qualify as an orphan. Default 30 minutes. */
+  /** Minimum age (ms) for a stopped resource to qualify. Default 30 minutes. */
   minAgeMs?: number;
+  /**
+   * Minimum age (ms) for a RUNNING container (or state-less networks and
+   * volumes) to qualify - liveness of a live suite cannot be disproven
+   * without an activity marker, so this gate must stay conservative.
+   * Defaults to `minAgeMs`.
+   */
+  runningMinAgeMs?: number;
   /**
    * Restrict the sweep to containers carrying one of these exact labels
    * (docker-side filter - the fixture-scoped startup sweeps). Networks and
@@ -256,6 +271,7 @@ async function removeResources(ids: readonly string[], kind: 'containers' | 'net
  */
 export async function sweepOrphanedTestResources(options: SweepOptions = {}): Promise<SweepResult> {
   const minAgeMs = options.minAgeMs ?? DEFAULT_ORPHAN_AGE_MS;
+  const runningMinAgeMs = options.runningMinAgeMs ?? minAgeMs;
   const now = Date.now();
   const labelFilter = options.labels
     ? `&filters=${encodeURIComponent(JSON.stringify({ label: [...options.labels] }))}`
@@ -265,10 +281,10 @@ export async function sweepOrphanedTestResources(options: SweepOptions = {}): Pr
     'GET',
     `/containers/json?all=1${labelFilter}`,
   )) as DockerResource[];
-  const containers = selectOrphanResources(listed, now, minAgeMs);
+  const containers = selectOrphanResources(listed, now, minAgeMs, runningMinAgeMs);
   if (containers.length > 0) {
     process.stderr.write(
-      `[test-sweep] removing ${containers.length} orphaned test container(s) older than ${Math.round(minAgeMs / 1000)}s\n`,
+      `[test-sweep] removing ${containers.length} orphaned test container(s) older than ${Math.round(minAgeMs / 1000)}s (running gate ${Math.round(runningMinAgeMs / 1000)}s)\n`,
     );
   }
   const result: SweepResult = {
@@ -281,8 +297,9 @@ export async function sweepOrphanedTestResources(options: SweepOptions = {}): Pr
 
   // Unrestricted sweep: also catch labelled networks/volumes (containers/json
   // shape differs from /networks and /volumes, hence the per-endpoint mapping).
+  // Networks and volumes carry no state - the conservative running gate applies.
   const networks = (await dockerRequest('GET', '/networks')) as DockerResource[];
-  const orphanNetworks = selectOrphanResources(networks, now, minAgeMs);
+  const orphanNetworks = selectOrphanResources(networks, now, minAgeMs, runningMinAgeMs);
   if (orphanNetworks.length > 0) {
     process.stderr.write(`[test-sweep] removing ${orphanNetworks.length} orphaned test network(s)\n`);
   }
@@ -292,7 +309,7 @@ export async function sweepOrphanedTestResources(options: SweepOptions = {}): Pr
     Volumes?: (Omit<DockerResource, 'Id'> & { Name: string })[] | null;
   };
   const volumes = (volumeList?.Volumes ?? []).map((volume) => ({ ...volume, Id: volume.Name }));
-  const orphanVolumes = selectOrphanResources(volumes, now, minAgeMs);
+  const orphanVolumes = selectOrphanResources(volumes, now, minAgeMs, runningMinAgeMs);
   if (orphanVolumes.length > 0) {
     process.stderr.write(`[test-sweep] removing ${orphanVolumes.length} orphaned test volume(s)\n`);
   }

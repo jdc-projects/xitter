@@ -100,17 +100,22 @@ export async function down(volumes = false): Promise<void> {
 /**
  * #47: interrupted test runs leak labelled testcontainers until some later
  * run sweeps them. deps:down is the natural "clean the environment" moment,
- * so sweep here too. Normally nothing of ours is running and a 60s grace
- * suffices; when a live suite is detected (fresh activity marker from
- * @xitter/testing) fall back to the conservative 30-minute gate rather than
- * skipping - cleanup still happens, just never mid-suite. Label-scoped:
- * compose resources and anything unlabelled are never touched.
+ * so sweep here too. Normally nothing of ours is running: stopped leftovers
+ * go with a 60s grace. RUNNING containers keep the conservative 30-minute
+ * gate - an interrupted run's orphans are usually still running, and so are
+ * a live suite's (possibly from a checkout without activity markers), so
+ * liveness cannot separate them and only age can. When a fresh activity
+ * marker says a suite on this code is live, every gate rises to 30 minutes.
+ * Label-scoped throughout: compose resources and anything unlabelled are
+ * never touched.
  */
 async function sweepOrphanedTestContainers(): Promise<void> {
   const suiteActive = anySuiteActive();
-  const minAgeMs = suiteActive ? DEFAULT_ORPHAN_AGE_MS : ENV_TEARDOWN_GRACE_MS;
+  const options = suiteActive
+    ? { minAgeMs: DEFAULT_ORPHAN_AGE_MS }
+    : { minAgeMs: ENV_TEARDOWN_GRACE_MS, runningMinAgeMs: DEFAULT_ORPHAN_AGE_MS };
   try {
-    const swept = await sweepOrphanedTestResources({ minAgeMs });
+    const swept = await sweepOrphanedTestResources(options);
     const total = swept.containers + swept.networks + swept.volumes;
     if (total > 0) {
       console.log(
