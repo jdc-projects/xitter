@@ -20,6 +20,8 @@ import { MEDIA_STORAGE, type MediaStorage } from './storage.js';
 
 const CALLER = '00000000-0000-4000-8000-0000000000c1';
 const MEDIA_ID = '00000000-0000-4000-8000-0000000000d1';
+/** An id no row exists for (mid-processing wipe / moderation delete / typo). */
+const MISSING_ID = '00000000-0000-4000-8000-0000000000d2';
 
 @Controller('placeholder')
 class PlaceholderController {
@@ -57,7 +59,7 @@ const row = (overrides: Partial<MediaRow> = {}): MediaRow => ({
 });
 
 const repoStub = {
-  find: () => Promise.resolve(row()),
+  find: (id: string) => Promise.resolve(id === MISSING_ID ? null : row()),
   findByIds: () => Promise.resolve([row()]),
   create: () => Promise.resolve(row({ id: '00000000-0000-4000-8000-0000000000e1' })),
   markUploaded: () => Promise.resolve(row({ uploadedAt: new Date() })),
@@ -174,6 +176,14 @@ describe('media HTTP wiring', () => {
     const asset = found.json() as MediaAsset;
     expect(asset.id).toBe(MEDIA_ID);
     expect(asset.variants).toEqual([]);
+  });
+
+  it('polling an absent asset 404s with the standard envelope', async () => {
+    app = await createApp();
+
+    const missing = await app.inject({ method: 'GET', url: `/api/media/v1/media/${MISSING_ID}` });
+    expect(missing.statusCode).toBe(404);
+    expect(missing.json()).toMatchObject({ error: { code: 'NOT_FOUND' } });
   });
 
   it('serves internal endpoints outside the versioned prefix', async () => {
