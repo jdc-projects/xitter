@@ -310,6 +310,27 @@ describe.skipIf(!hasGeneratedClient)('search integration (testcontainers)', () =
     expect(count.body.count).toBe(1);
   });
 
+  it('recreates the index WITH its definition after deletion (reset deleted it live)', async () => {
+    // The #118 live regression: the nightly reset deletes the index while
+    // the service is running; the next bulk must NOT rely on OpenSearch's
+    // auto-create (dynamic mapping, no analyzer - every query 0 hits). The
+    // existence check recreates via ensure() and stemming works again.
+    await osClient.indices.delete({ index: POSTS_INDEX });
+
+    const doc1 = doc(uid('d001'), AUTHOR, 'the quokkas were jumping', at(60));
+    await index.upsertDocuments([doc1]);
+    await osClient.indices.refresh({ index: POSTS_INDEX });
+
+    // The analyzer is the definition's, not a dynamic default: a stemmed
+    // query only matches under post_text (porter_stem: 'jumps' and the
+    // indexed 'jumping' both reduce to 'jump'; a dynamically-mapped index
+    // would find nothing).
+    const settings = await osClient.indices.getSettings({ index: POSTS_INDEX });
+    expect(JSON.stringify(settings.body)).toContain('post_text');
+    const { hits: found } = await index.search({ q: 'jumps', limit: 10, excludeAuthorIds: [] });
+    expect(found).toHaveLength(1);
+  });
+
   it('search body never leaks blocked ids into the must clause', () => {
     // Belt+braces on the pure builder: the unit suite owns shape; this pins
     // the integration entry point uses the same builder.
