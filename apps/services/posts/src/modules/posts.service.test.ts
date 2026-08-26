@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createPostRequestSchema, POST_MEDIA_MAX, POST_TEXT_MAX } from '@xitter/api-contracts';
 import type { MediaAsset } from '@xitter/api-contracts';
 import { PostsService } from './posts.service.js';
-import { NullMediaChecker, type MediaChecker } from './media-checker.js';
+import { MediaServiceChecker, NullMediaChecker, type MediaChecker } from './media-checker.js';
 import { NullInteractionRealtime } from './interaction-realtime.js';
 import type { PostsEvents } from './posts-events.js';
 import type { PostsRepository, PostRow } from './posts.repository.js';
@@ -225,6 +225,130 @@ describe('PostsService media attach rules', () => {
     await expect(
       service.create(AUTHOR, { text: 'x', mediaIds: [mediaId(4)], replyToId: null }),
     ).rejects.toThrow('media down');
+  });
+});
+
+describe('media outage during post-create (fail-closed attach)', () => {
+  const CHECKER_OPTS = {
+    baseUrl: 'http://media.local:8104',
+    tokenUrl: 'http://keycloak.local:8090/realms/xitter-demo/protocol/openid-connect/token',
+    clientId: 'svc-posts',
+    clientSecret: 'svc-posts-local-secret',
+  };
+  // Contract-valid ids: the checker parses media's answer with the shared
+  // zod schemas, so the resolved assets must satisfy mediaAssetSchema.
+  const WRITER = '00000000-0000-4000-8000-0000000000f1';
+  const IMG = '00000000-0000-4000-8000-0000000005e1';
+
+  const jsonResponse = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status });
+
+  /** What a healthy media answers the internal lookup for the given ids. */
+  const lookupBody = (ids: string[]) => ({
+    items: ids.map((id) => ({
+      id,
+      ownerId: WRITER,
+      status: 'ready',
+      variants: [],
+      createdAt: '2026-08-18T00:00:00.000Z',
+    })),
+  });
+
+  it('503s and leaves no orphaned post row behind', async () => {
+    const { repo, posts } = fakeRepo();
+    const events = spyEvents();
+    const outage: typeof fetch = async () => {
+      throw new Error('connect ECONNREFUSED 10.42.7.19:8104');
+    };
+    const service = new PostsService(
+      repo,
+      events,
+      allowAll,
+      new MediaServiceChecker({ ...CHECKER_OPTS, fetchImpl: outage }),
+      new NullInteractionRealtime(),
+    );
+
+    await expect(
+      service.create(WRITER, { text: 'with image', mediaIds: [IMG], replyToId: null }),
+    ).rejects.toMatchObject({
+      status: 503,
+      response: { error: { code: 'INTERNAL' } },
+    });
+
+    // Rollback semantics: validation precedes the write, so the outage must
+    // not leave a post row (or a created event feeding fanout) behind.
+    expect(posts.size).toBe(0);
+    expect(events.calls).toHaveLength(0);
+  });
+
+  it('still creates text-only posts while media is unreachable', async () => {
+    const { repo, posts } = fakeRepo();
+    const outage: typeof fetch = async () => {
+      throw new Error('connect ECONNREFUSED 10.42.7.19:8104');
+    };
+    const service = new PostsService(
+      repo,
+      spyEvents(),
+      allowAll,
+      new MediaServiceChecker({ ...CHECKER_OPTS, fetchImpl: outage }),
+      new NullInteractionRealtime(),
+    );
+
+    await expect(
+      service.create(WRITER, { text: 'words only', mediaIds: [], replyToId: null }),
+    ).resolves.toMatchObject({ text: 'words only', media: [] });
+    expect(posts.size).toBe(1); // no mediaIds → the checker is never consulted
+  });
+
+  it('the retried create succeeds once media recovers', async () => {
+    const { repo, posts } = fakeRepo();
+    const events = spyEvents();
+    let mediaUp = false;
+    const flapping: typeof fetch = async (input) => {
+      if (!mediaUp) throw new Error('connect ECONNREFUSED 10.42.7.19:8104');
+      if (String(input).endsWith('/token')) {
+        return jsonResponse({ access_token: 'm2m-token', expires_in: 300 });
+      }
+      return jsonResponse(lookupBody([IMG]));
+    };
+    const service = new PostsService(
+      repo,
+      events,
+      allowAll,
+      new MediaServiceChecker({ ...CHECKER_OPTS, fetchImpl: flapping }),
+      new NullInteractionRealtime(),
+    );
+
+    await expect(
+      service.create(WRITER, { text: 'retry me', mediaIds: [IMG], replyToId: null }),
+    ).rejects.toMatchObject({ status: 503 });
+
+    mediaUp = true;
+    const post = await service.create(WRITER, {
+      text: 'retry me',
+      mediaIds: [IMG],
+      replyToId: null,
+    });
+
+    expect(post.media).toMatchObject([{ id: IMG, status: 'ready' }]);
+    expect(posts.size).toBe(1); // exactly the retried row - no orphan from the outage
+    expect(events.calls).toHaveLength(1);
+  });
+
+  it('service-level validation rejects non-http callers without writing a row', async () => {
+    const { repo, posts } = fakeRepo();
+    const service = new PostsService(
+      repo,
+      spyEvents(),
+      allowAll,
+      new NullMediaChecker(),
+      new NullInteractionRealtime(),
+    );
+
+    await expect(
+      service.create(WRITER, { text: '', mediaIds: [], replyToId: null }),
+    ).rejects.toMatchObject({ response: { error: { code: 'VALIDATION_ERROR' } } });
+    expect(posts.size).toBe(0); // the 1..512 rule holds for seed/internal callers too
   });
 });
 

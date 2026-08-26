@@ -20,6 +20,8 @@ import { MEDIA_STORAGE, type MediaStorage } from './storage.js';
 
 const CALLER = '00000000-0000-4000-8000-0000000000c1';
 const MEDIA_ID = '00000000-0000-4000-8000-0000000000d1';
+/** An id no row exists for (mid-processing wipe / moderation delete / typo). */
+const MISSING_ID = '00000000-0000-4000-8000-0000000000d2';
 
 @Controller('placeholder')
 class PlaceholderController {
@@ -57,7 +59,7 @@ const row = (overrides: Partial<MediaRow> = {}): MediaRow => ({
 });
 
 const repoStub = {
-  find: () => Promise.resolve(row()),
+  find: (id: string) => Promise.resolve(id === MISSING_ID ? null : row()),
   findByIds: () => Promise.resolve([row()]),
   create: () => Promise.resolve(row({ id: '00000000-0000-4000-8000-0000000000e1' })),
   markUploaded: () => Promise.resolve(row({ uploadedAt: new Date() })),
@@ -176,6 +178,14 @@ describe('media HTTP wiring', () => {
     expect(asset.variants).toEqual([]);
   });
 
+  it('polling an absent asset 404s with the standard envelope', async () => {
+    app = await createApp();
+
+    const missing = await app.inject({ method: 'GET', url: `/api/media/v1/media/${MISSING_ID}` });
+    expect(missing.statusCode).toBe(404);
+    expect(missing.json()).toMatchObject({ error: { code: 'NOT_FOUND' } });
+  });
+
   it('serves internal endpoints outside the versioned prefix', async () => {
     app = await createApp();
 
@@ -205,6 +215,28 @@ describe('media HTTP wiring', () => {
     });
     expect(variants.statusCode).toBe(200);
     expect(variants.json()).toMatchObject({ status: 'ready' });
+
+    // Worker-facing state read + failure report (redelivery idempotency).
+    const state = await app.inject({ method: 'GET', url: `/api/media/internal/media/${MEDIA_ID}` });
+    expect(state.statusCode).toBe(200);
+    expect(state.json()).toMatchObject({ id: MEDIA_ID, objectKey: expect.any(String) });
+
+    const failure = await app.inject({
+      method: 'POST',
+      url: `/api/media/internal/media/${MEDIA_ID}/failure`,
+      payload: { error: 'sharp exploded' },
+    });
+    expect(failure.statusCode).toBe(200);
+    // The failure response is the public asset shape: pending until the cap,
+    // and storage coordinates/attempts stay on the internal GET only.
+    expect(failure.json()).toMatchObject({ id: MEDIA_ID, status: 'pending' });
+    expect(failure.json()).not.toHaveProperty('attempts');
+
+    const missingState = await app.inject({
+      method: 'GET',
+      url: `/api/media/internal/media/${MISSING_ID}`,
+    });
+    expect(missingState.statusCode).toBe(404);
 
     const reseed = await app.inject({ method: 'POST', url: '/api/media/internal/reseed' });
     expect(reseed.statusCode).toBe(200);

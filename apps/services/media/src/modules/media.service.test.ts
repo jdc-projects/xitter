@@ -26,6 +26,7 @@ const row = (overrides: Partial<MediaRow> = {}): MediaRow => ({
 function makeDeps(
   statBytes: number | null = 1024,
   statContentType: string | undefined = 'image/png',
+  options: { removeFails?: boolean } = {},
 ) {
   const rows = new Map<string, MediaRow>();
   const emitted: [string, Record<string, unknown>][] = [];
@@ -85,6 +86,9 @@ function makeDeps(
     put: () => Promise.resolve(),
     remove: (objectKey) => {
       removed.push(objectKey);
+      // Object cleanup is best-effort: a failing RustFS must not turn the
+      // rejection/cap transition into a 500 (the bucket wipe catches up).
+      if (options.removeFails) return Promise.reject(new Error('rustfs down'));
       return Promise.resolve();
     },
   };
@@ -102,6 +106,7 @@ function makeDeps(
     service: new MediaService(repo, storage, events),
     rows,
     repo,
+    events,
     emitted,
     presigned,
     removed,
@@ -236,6 +241,17 @@ describe('complete (server-side verification)', () => {
     expect(emitted).toHaveLength(0);
   });
 
+  it('still fails the upload when the rejected object cannot be removed', async () => {
+    const { service, rows, emitted } = makeDeps(MEDIA_MAX_BYTES + 1, 'image/png', {
+      removeFails: true,
+    });
+    const slot = await service.createUpload(OWNER, { mimeType: 'image/png', bytes: 512 });
+
+    await expect(service.complete(OWNER, slot.mediaId)).rejects.toMatchObject({ status: 400 });
+    expect(rows.get(slot.mediaId)).toMatchObject({ status: 'failed' });
+    expect(emitted).toHaveLength(0);
+  });
+
   it('is idempotent: a repeat complete does not re-emit the event', async () => {
     const { service, emitted } = makeDeps();
     const slot = await service.createUpload(OWNER, { mimeType: 'image/png', bytes: 512 });
@@ -266,6 +282,30 @@ describe('complete (server-side verification)', () => {
 });
 
 describe('variant recording (worker callbacks)', () => {
+  it('a failed event emission never fails the committed mutation', async () => {
+    const deps = makeDeps();
+    deps.events.emit = () => Promise.reject(new Error('kafka down'));
+    const slot = await deps.service.createUpload(OWNER, { mimeType: 'image/png', bytes: 512 });
+
+    // markUploaded commits; the missed media.uploaded event only stalls the
+    // asset in pending until the nightly reset.
+    const asset = await deps.service.complete(OWNER, slot.mediaId);
+    expect(asset.status).toBe('pending');
+    expect(deps.rows.get(slot.mediaId)!.uploadedAt).toBeInstanceOf(Date);
+    expect(deps.emitted).toHaveLength(0);
+  });
+
+  it('recordVariants commits ready even when the processed event cannot be emitted', async () => {
+    const deps = makeDeps();
+    deps.events.emit = () => Promise.reject(new Error('kafka down'));
+    const slot = await deps.service.createUpload(OWNER, { mimeType: 'image/png', bytes: 512 });
+
+    const asset = await deps.service.recordVariants(slot.mediaId, [validVariant]);
+
+    expect(asset.status).toBe('ready');
+    expect(deps.rows.get(slot.mediaId)).toMatchObject({ status: 'ready' });
+  });
+
   it('flips to ready, emits processed, and serves /media urls', async () => {
     const { service, emitted } = makeDeps();
     const slot = await service.createUpload(OWNER, { mimeType: 'image/png', bytes: 512 });
@@ -329,6 +369,117 @@ describe('variant recording (worker callbacks)', () => {
 
     expect(removed).toEqual([`${OWNER}/${slot.mediaId}/original.png`]);
   });
+
+  it('still flips to failed when the dead object cannot be removed', async () => {
+    const { service, rows } = makeDeps(1024, 'image/png', { removeFails: true });
+    const slot = await service.createUpload(OWNER, { mimeType: 'image/png', bytes: 512 });
+
+    for (let attempt = 1; attempt <= MAX_PROCESS_ATTEMPTS; attempt++) {
+      const asset = await service.reportFailure(slot.mediaId, 'sharp could not decode');
+      expect(asset.status).toBe(attempt === MAX_PROCESS_ATTEMPTS ? 'failed' : 'pending');
+    }
+    expect(rows.get(slot.mediaId)).toMatchObject({
+      status: 'failed',
+      attempts: MAX_PROCESS_ATTEMPTS,
+    });
+  });
+});
+
+describe('getMedia (upload polling)', () => {
+  it('404s for an asset id that never existed', async () => {
+    const { service } = makeDeps();
+
+    await expect(service.getMedia('00000000-0000-4000-8000-0000000000dd')).rejects.toMatchObject({
+      status: 404,
+      response: { error: { code: 'NOT_FOUND' } },
+    });
+  });
+
+  it('tracks the visible lifecycle: pending → uploaded (still pending) → ready', async () => {
+    const { service } = makeDeps(2048);
+    const slot = await service.createUpload(OWNER, { mimeType: 'image/png', bytes: 512 });
+
+    // Slot granted, nothing PUT yet: polling already sees the asset.
+    await expect(service.getMedia(slot.mediaId)).resolves.toMatchObject({
+      id: slot.mediaId,
+      ownerId: OWNER,
+      status: 'pending',
+      variants: [],
+    });
+
+    await service.complete(OWNER, slot.mediaId);
+    // Uploaded but the worker has not converged: still pending, no variants.
+    await expect(service.getMedia(slot.mediaId)).resolves.toMatchObject({ status: 'pending' });
+
+    await service.recordVariants(slot.mediaId, [
+      validVariant,
+      {
+        ...validVariant,
+        kind: 'thumb',
+        objectKey: `${OWNER}/${slot.mediaId}/thumb.png`,
+        bytes: 100,
+      },
+    ]);
+
+    const ready = await service.getMedia(slot.mediaId);
+    expect(ready.status).toBe('ready');
+    expect(ready.variants).toEqual([
+      expect.objectContaining({ kind: 'original', url: `/media/${validVariant.objectKey}` }),
+      expect.objectContaining({ kind: 'thumb', url: `/media/${OWNER}/${slot.mediaId}/thumb.png` }),
+    ]);
+    // The public poll view never leaks storage coordinates (internal only).
+    expect(ready).not.toHaveProperty('objectKey');
+  });
+
+  it('reports failed once the worker attempt cap is exhausted', async () => {
+    const { service } = makeDeps();
+    const slot = await service.createUpload(OWNER, { mimeType: 'image/png', bytes: 512 });
+
+    for (let attempt = 0; attempt < MAX_PROCESS_ATTEMPTS; attempt++) {
+      await service.reportFailure(slot.mediaId, 'sharp exploded');
+    }
+
+    await expect(service.getMedia(slot.mediaId)).resolves.toMatchObject({ status: 'failed' });
+  });
+
+  it('404s mid-processing once the metadata is wiped (nightly reset)', async () => {
+    const { service } = makeDeps();
+    const slot = await service.createUpload(OWNER, { mimeType: 'image/png', bytes: 512 });
+    await service.complete(OWNER, slot.mediaId);
+
+    await expect(service.getMedia(slot.mediaId)).resolves.toMatchObject({ status: 'pending' });
+
+    await service.reseed(); // the reset wipes metadata while the worker runs
+
+    await expect(service.getMedia(slot.mediaId)).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe('getInternal (worker state reads)', () => {
+  it('404s for an unknown asset id', async () => {
+    const { service } = makeDeps();
+
+    await expect(service.getInternal('00000000-0000-4000-8000-0000000000dd')).rejects.toMatchObject(
+      { status: 404, response: { error: { code: 'NOT_FOUND' } } },
+    );
+  });
+
+  it('exposes the storage coordinates and attempt count the public view omits', async () => {
+    const { service } = makeDeps(2048);
+    const slot = await service.createUpload(OWNER, { mimeType: 'image/png', bytes: 512 });
+    await service.complete(OWNER, slot.mediaId);
+    await service.reportFailure(slot.mediaId, 'transient sharp error');
+
+    const internal = await service.getInternal(slot.mediaId);
+    expect(internal).toMatchObject({
+      id: slot.mediaId,
+      status: 'pending', // one attempt in: the cap has not tripped yet
+      objectKey: `${OWNER}/${slot.mediaId}/original.png`,
+      mimeType: 'image/png',
+      bytes: 2048, // the object's real size from the complete-time HEAD
+      attempts: 1,
+    });
+  });
 });
 
 describe('lookup + reseed (internal)', () => {
@@ -351,5 +502,41 @@ describe('lookup + reseed (internal)', () => {
     await service.createUpload(OWNER, { mimeType: 'image/png', bytes: 10 });
     await service.reseed();
     expect(rows.size).toBe(0);
+  });
+
+  it('is idempotent: wiping an already-wiped set is a no-op', async () => {
+    const { service, rows } = makeDeps();
+    await service.createUpload(OWNER, { mimeType: 'image/png', bytes: 10 });
+
+    await service.reseed();
+    await service.reseed();
+
+    expect(rows.size).toBe(0);
+  });
+});
+
+describe('reseed convergence (bucket wipe + seed re-upload)', () => {
+  /** One seed fixture's full path: slot → complete → variants → ready. */
+  async function seedOneAsset(service: MediaService) {
+    const slot = await service.createUpload(OWNER, { mimeType: 'image/png', bytes: 2048 });
+    await service.complete(OWNER, slot.mediaId);
+    return service.recordVariants(slot.mediaId, [validVariant]);
+  }
+
+  it('re-uploading the same seed slot after a wipe converges to one ready asset', async () => {
+    const { service, rows } = makeDeps();
+    const first = await seedOneAsset(service);
+    expect(rows.size).toBe(1);
+
+    await service.reseed(); // nightly wipe between seed runs
+    const second = await seedOneAsset(service);
+
+    // Converged: exactly one asset for the re-uploaded fixture, ready again,
+    // and the wiped id is gone from every read path.
+    expect(rows.size).toBe(1);
+    expect(second).toMatchObject({ status: 'ready', ownerId: OWNER });
+    expect(second.id).not.toBe(first.id);
+    await expect(service.getMedia(first.id)).rejects.toMatchObject({ status: 404 });
+    await expect(service.lookup(OWNER, [first.id])).resolves.toEqual([]);
   });
 });
