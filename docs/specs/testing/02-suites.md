@@ -66,6 +66,8 @@ Load runs never target dev mode and are excluded from per-PR gates ([03-coverage
 - **Quiet console, rich artifacts**: `logLevel: warn` + clear-text reporter limited to the per-file score table — per-mutant diffs and test listings live in the HTML/JSON reports under `reports/mutation/`. Real errors (dry-run failures, config errors) still print at error/warn level and still fail the run.
 - PRs run mutation only on **affected workspaces** (turbo filters); **full run on merge to `dev`**.
 - Score expectations: aim high on domain/service logic; exclude skeleton files and `main` entrypoints via config ([03-coverage-and-gates.md](03-coverage-and-gates.md)).
+- **In the fold**: all 8 apps, plus `@xitter/scripts` (reset/seed orchestration — excludes the docker/npm/mmdc shell-out glue and destructive entrypoints via the factory's `mutateExclude`; `data/` JSON never matches the src globs). Deliberately out: `@xitter/events` (declarative zod schemas — the registries' NoCoverage mutants in services were judged skip-worthy) and `apps/cms` (Payload 3 build; decision pending, not silent).
+- **Integration suites stay out of the sandbox**: every workspace whose tests include `*.integration.test.ts` (testcontainers) must set `excludeIntegrationTests: true` (factory) and carry a `vitest.mutation.config.ts` excluding those suites — enforced by a unit test in `@xitter/testing` (`src/stryker.test.ts`) that walks all mutating workspaces.
 
 ## Bruno — API
 

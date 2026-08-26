@@ -32,6 +32,10 @@ tests/playwright/*/report/
 # from the repo root (`npm run test:e2e`), nesting it under the config dir
 tests/playwright/*/tests/
 
+# Release derivation output (release-version.ts CLI); CI uploads it, local
+# and mutation runs just leave it behind
+.release/
+
 # Generated per-service OpenAPI artifacts (collected into docs/specs/architecture/openapi)
 apps/**/openapi.json
 

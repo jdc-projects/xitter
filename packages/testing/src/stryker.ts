@@ -19,10 +19,18 @@
  * machine-wide port lock serialises packages into an hours-long crawl (or an
  * apparent stall). Integration correctness is asserted by those suites in
  * `turbo test`; mutation testing targets pure logic.
+ *
+ * `mutateExclude`: extra negate-globs appended to the shared mutate patterns
+ * for non-service layouts (e.g. @xitter/scripts' docker/npm shell-out glue).
  */
 export function createStrykerConfig(
   projectName: string,
-  options: { excludeIntegrationTests?: boolean } = {},
+  options: {
+    excludeIntegrationTests?: boolean;
+    mutateExclude?: string[];
+    /** Score floor (`thresholds.break`); set from a measured baseline, never invented. */
+    thresholds?: { break: number };
+  } = {},
 ) {
   return {
     $schema:
@@ -53,12 +61,14 @@ export function createStrykerConfig(
     },
     incremental: true,
     incrementalFile: `reports/mutation/${projectName}.incr`,
+    thresholds: options.thresholds,
     mutate: [
       'src/**/*.ts',
       '!src/**/*.test.ts',
       '!src/generated/**',
       '!src/main.ts',
       '!src/index.ts',
+      ...(options.mutateExclude ?? []),
     ],
     coverageAnalysis: 'perTest',
   } as const;
