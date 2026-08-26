@@ -12,36 +12,17 @@
  * processed event.
  */
 import { internalCredentials, SearchClient, SocialClient } from '@xitter/api-client';
-import {
-  kafkaBrokers,
-  localPort,
-  localUrl,
-  loadRepoEnv,
-  parseEnv,
-  valkeyUrl,
-} from '@xitter/config';
+import { loadRepoEnv, parseEnv } from '@xitter/config';
 import { CONSUMER_GROUPS, runEventWorker } from '@xitter/events';
 import { createLogger } from '@xitter/observability';
-import { z } from 'zod';
 import { handleEvent } from './handlers.js';
+import { envSchema } from './env.js';
 
 const logger = createLogger({ service: 'search-index-worker' });
 
 loadRepoEnv();
 
-const env = parseEnv(
-  z.object({
-    KAFKA_BROKERS: z.string().min(1).default(kafkaBrokers()),
-    SEARCH_INTERNAL_URL: z.string().url().default(localUrl('search')),
-    SOCIAL_INTERNAL_URL: z.string().url().default(localUrl('social')),
-    METRICS_PORT: z.coerce.number().int().positive().default(localPort('searchIndexMetrics')),
-    KEYCLOAK_BASE_URL: z.string().url().default(localUrl('keycloak')),
-    DEMO_REALM: z.string().min(1).default('xitter-demo'),
-    KEYCLOAK_CLIENT_ID: z.string().min(1).default('svc-worker-search-index'),
-    KEYCLOAK_CLIENT_SECRET: z.string().min(1).default('svc-worker-search-index-local-secret'),
-    VALKEY_URL: z.string().url().default(valkeyUrl()),
-  }),
-);
+const env = parseEnv(envSchema);
 
 // Internal clients build /api/{service}/internal/... from the bare base URL
 // (mirrors fanout); M2M tokens carry the scoped audiences (svc-search for

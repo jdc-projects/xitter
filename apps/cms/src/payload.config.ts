@@ -1,7 +1,8 @@
 import { postgresAdapter } from '@payloadcms/db-postgres';
 import { lexicalEditor } from '@payloadcms/richtext-lexical';
 import { buildConfig } from 'payload';
-import { env, isEphemeralEnv } from './env';
+import { isDeployedEnv } from '@xitter/config';
+import { env } from './env';
 import { Users } from './collections/users';
 import { LandingContent } from './collections/landing-content';
 import { Faq } from './collections/faq';
@@ -18,7 +19,7 @@ export default buildConfig({
     pool: { connectionString: env.DATABASE_URL },
     // Local/CI boots push the schema automatically (no migration files for a
     // disposable demo database); deployed environments manage migrations.
-    push: isEphemeralEnv(),
+    push: !isDeployedEnv(),
   }),
   collections: [Users, LandingContent, Faq],
   typescript: { outputFile: 'src/payload-types.ts' },

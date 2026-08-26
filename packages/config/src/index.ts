@@ -5,6 +5,7 @@ import { config as parseDotenv, parse as parseDotenvToStrings } from 'dotenv';
 export * from './ports.js';
 export * from './schema.js';
 export * from './service-env.js';
+export * from './env-mode.js';
 export * from './health-routes.js';
 export * from './search-index.js';
 export * from './valkey-keys.js';

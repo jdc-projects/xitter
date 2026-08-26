@@ -55,7 +55,17 @@ function cleanQuery(query: Record<string, string | undefined>): Record<string, s
   return Object.fromEntries(
     Object.entries(query).filter((entry): entry is [string, string] => Boolean(entry[1])),
   );
-} /** Base URLs resolved from env-driven local ports; override with env in deployed contexts. */
+}
+
+/**
+ * Base URLs resolved from env-driven local ports; override with env in
+ * deployed contexts. The localhost fallback is a LOCAL-ONLY convenience: in
+ * a deployed pod it silently targets the pod itself and every call
+ * ECONNREFUSEDs (#112). Enforcement therefore lives one layer up, at the
+ * consumers' zod env schemas (the boot boundary) via @xitter/config's
+ * crossServiceUrlSchema - required when XITTER_ENV is dev/prod, defaulted
+ * locally (#113). No second enforcement layer here.
+ */
 export const localServiceUrls = () => ({
   social: process.env.XITTER_SOCIAL_URL ?? localUrl('social'),
   posts: process.env.XITTER_POSTS_URL ?? localUrl('posts'),

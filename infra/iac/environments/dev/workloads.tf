@@ -79,6 +79,14 @@ locals {
       { name = "XITTER_MEDIA_S3_ENDPOINT", value = "http://${local.rustfs_svc}:9000" },
       { name = "XITTER_MEDIA_S3_BUCKET", value = local.rustfs_bucket },
     ]
+    # search-index (#9): denormalised author names refresh through social's
+    # internal profile lookup. This was MISSING - the worker's localhost
+    # fallback silently ECONNREFUSEDd every author-name refresh in dev (same
+    # trap as posts' XITTER_MEDIA_URL, #112) and #113's boot-time requirement
+    # would brick the deploy without it.
+    "search-index" = [
+      { name = "SOCIAL_INTERNAL_URL", value = local.svc_base.social },
+    ]
   }
 
   # Per-service additions to the standard secret_env (T5: media's RustFS

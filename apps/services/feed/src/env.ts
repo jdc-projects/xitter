@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { localUrl, parseEnv, serviceEnvSchema } from '@xitter/config';
+import { crossServiceUrlSchema, parseEnv, serviceEnvSchema } from '@xitter/config';
 
 // Feed extends the shared service env with the posts + social M2M wiring:
 // reads hydrate post bodies and author profiles server-side (spec 03) and
@@ -12,7 +12,8 @@ export const env = parseEnv(
   serviceEnvSchema('feed').extend({
     KEYCLOAK_CLIENT_ID: z.string().min(1).default('svc-feed'),
     KEYCLOAK_CLIENT_SECRET: z.string().min(1).default('svc-feed-local-secret'),
-    XITTER_POSTS_URL: z.string().url().default(localUrl('posts')),
-    XITTER_SOCIAL_URL: z.string().url().default(localUrl('social')),
+    // Cross-service URLs: localhost locally, REQUIRED when deployed (#113).
+    XITTER_POSTS_URL: crossServiceUrlSchema('XITTER_POSTS_URL', 'posts'),
+    XITTER_SOCIAL_URL: crossServiceUrlSchema('XITTER_SOCIAL_URL', 'social'),
   }),
 );
