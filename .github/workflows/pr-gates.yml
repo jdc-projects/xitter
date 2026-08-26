@@ -217,6 +217,22 @@ jobs:
           printf '%s' "${{ secrets.CLUSTER_KUBECONFIG }}" > infra/cluster.yml
       - name: tofu plan (dev)
         working-directory: infra/iac/environments/dev
+        # Providers route in-cluster, same as the deploy/release applies
+        # (#72/#83): the runner is on the LAN, and the public idp/sentry
+        # URLs present the home IP at Cloudflare - a CrowdSec ban on it
+        # 403s the provider login (PR #99's gate run, issue #100) and
+        # blocks every tofu auth sharing that IP. Internal services have
+        # no edge (ADR 0011).
+        env:
+          TF_VAR_provider_keycloak_url: http://keycloak-keycloakx-http.keycloak:80
+          TF_VAR_provider_sentry_base_url: http://sentry-web.sentry:9000/api/
         run: |
           tofu init
           tofu plan -input=false
+      - name: Annotate provider-init failures
+        # The plan buries provider init/login 403s inside hundreds of
+        # refresh lines; surface the routing context at job level so the
+        # failure is legible without scrolling (ADR 0011).
+        if: failure()
+        run: |
+          echo "::error title=tofu plan (dev) failed::If the log shows provider init/login 403s, check which URL failed: https://*.jd-chapman.dev means the in-cluster override did not apply (CrowdSec ban exposure - issue #100); http://keycloak-keycloakx-http.keycloak:80 or http://sentry-web.sentry:9000/api/ are the intended routes and failing there means the service itself, not the edge. See docs/decisions/0011-ci-tofu-provider-routing.md."
