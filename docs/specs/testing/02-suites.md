@@ -13,6 +13,7 @@ Per-suite detail. For philosophy and ownership see [01-strategy.md](01-strategy.
 - **Unit**: pure logic (domain rules, contract parsing, helper functions). Mocks are fine; mock collaborators, not the code under test.
 - **Integration**: real service modules against **testcontainers** Postgres/Kafka via helpers from `@xitter/testing`. Real migrations applied; **per-test isolation** (fresh container or truncate between tests).
 - No test touches a running dev server or shared local database.
+- **Orphaned testcontainers** (#47): Ryuk cannot run on Podman-backed sockets, so interrupted/killed runs leak containers. Every fixture labels its containers `xitter.test.*` and sweeps fire on three triggers: suite start (vitest `globalSetup`, 30-minute age gate — see `@xitter/testing` `sweep.ts`), `npm run deps:down` (60s grace for stopped resources; running containers keep the 30-minute gate), and manual `npm run test:sweep`. A live suite also heartbeats an activity marker so aggressive sweeps stand down; only labelled resources are ever removed.
 
 ## Playwright — web (isolated frontend)
 

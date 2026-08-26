@@ -2,6 +2,7 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
+    globalSetup: './vitest.global-setup.ts',
     include: ['src/**/*.test.ts'],
     passWithNoTests: true,
     // container start/teardown under parallel turbo runs can far exceed the

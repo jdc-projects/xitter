@@ -2,6 +2,12 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { findRepoRoot, loadRepoEnv, localPort, type PortName } from '@xitter/config';
+import {
+  anySuiteActive,
+  environmentTeardownSweepOptions,
+  sweepOrphanedTestResources,
+  type SweepResult,
+} from '@xitter/testing/sweep';
 import { run, capture } from './exec.js';
 
 const COMPOSE_FILE = join(findRepoRoot(), 'infra', 'docker', 'compose.yaml');
@@ -88,6 +94,34 @@ export async function up(detach = true): Promise<void> {
 export async function down(volumes = false): Promise<void> {
   loadRepoEnv();
   await run('docker', [...composeArgs(), 'down', ...(volumes ? ['--volumes'] : [])]);
+  await sweepOrphanedTestContainers();
+}
+
+/**
+ * #47: interrupted test runs leak labelled testcontainers until some later
+ * run sweeps them. deps:down is the natural "clean the environment" moment,
+ * so sweep here too (policy + rationale in @xitter/testing sweep.ts:
+ * environmentTeardownSweepOptions). Label-scoped throughout - compose
+ * resources and anything unlabelled are never touched.
+ */
+async function sweepOrphanedTestContainers(): Promise<void> {
+  try {
+    const swept = await sweepOrphanedTestResources(
+      environmentTeardownSweepOptions(anySuiteActive()),
+    );
+    logSweptResources(swept);
+  } catch (err) {
+    console.warn(
+      `deps:down: test orphan sweep skipped (${err instanceof Error ? err.message : err})`,
+    );
+  }
+}
+
+function logSweptResources(swept: SweepResult): void {
+  const total = swept.containers + swept.networks + swept.volumes;
+  if (total > 0) {
+    console.log(`deps:down removed ${total} orphaned test resource(s)`);
+  }
 }
 
 export async function status(): Promise<void> {

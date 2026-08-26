@@ -3,6 +3,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import {
+  DEFAULT_ORPHAN_AGE_MS,
+  KAFKA_TEST_LABEL,
+  OPENSEARCH_TEST_LABEL,
+  POSTGRES_TEST_LABEL,
+  RUSTFS_TEST_LABEL,
+  endSuiteActivity,
+  ensureSuiteActivity,
+  sweepOrphanedTestResources,
+} from './sweep.js';
 export interface Disposable {
   stop(): Promise<unknown>;
 }
@@ -22,9 +32,10 @@ process.env.TESTCONTAINERS_RYUK_DISABLED ??= 'true';
  * With Ryuk disabled there is no reaper backstop, so every started
  * container is tracked here and `resilientStop` retries a failed stop once
  * (podman's socket intermittently drops stop calls even on green runs -
- * that is how orphans accumulate). `sweepAllTracked` is wired as vitest
+ * that is how orphans accumulate). `stopAllTestContainers` is wired as vitest
  * globalTeardown: at end-of-run every remaining tracked container is by
- * definition orphaned.
+ * definition orphaned. Orphans from runs that never reach teardown (kill,
+ * crash, interrupt) are swept by sweep.ts - see its header for the triggers.
  */
 const tracked = new Set<StartedTestContainer>();
 
@@ -46,6 +57,9 @@ async function resilientStop(container: StartedTestContainer): Promise<unknown> 
 
 function track(container: StartedTestContainer): StartedTestContainer {
   tracked.add(container);
+  // Live containers imply a live suite: mark it so aggressive orphan sweeps
+  // (deps:down's short grace) stand down while this process holds any.
+  ensureSuiteActivity();
   return container;
 }
 
@@ -56,7 +70,10 @@ function untrack(container: StartedTestContainer): void {
 /** End-of-run cleanup: stop anything still tracked (vitest globalTeardown). */
 export async function stopAllTestContainers(): Promise<void> {
   const leftovers = [...tracked];
-  if (leftovers.length === 0) return;
+  if (leftovers.length === 0) {
+    endSuiteActivity();
+    return;
+  }
   // Workers flush async afterAll cleanup (pg pools, prisma clients) around
   // their exit; stopping containers in that window throws uncaught
   // "terminating connection" exceptions from their sockets and fails the
@@ -67,6 +84,7 @@ export async function stopAllTestContainers(): Promise<void> {
   );
   await Promise.allSettled(leftovers.map((c) => resilientStop(c)));
   tracked.clear();
+  endSuiteActivity();
 }
 
 /**
@@ -80,9 +98,13 @@ export async function startPostgres(
 ): Promise<PostgresHandle> {
   // Ephemeral host port, so no fixed-port lock - but label the container so
   // crashed-run orphans can be identified and swept (the label-scoped sweep
-  // below only removes containers older than the vitest suite timeout:
-  // a live suite's container is always younger).
-  await sweepLabelledOrphans(POSTGRES_TEST_LABEL, 10 * 60_000).catch(() => undefined);
+  // below uses the conservative 30-minute gate: live suites on loaded
+  // machines run longer than any tighter bound - observed 17+ min in the
+  // wild - so anything younger is left alone).
+  await sweepOrphanedTestResources({
+    labels: [POSTGRES_TEST_LABEL],
+    minAgeMs: DEFAULT_ORPHAN_AGE_MS,
+  }).catch(() => undefined);
   const container: StartedPostgreSqlContainer = await new PostgreSqlContainer(
     'postgres:18.6-alpine',
   )
@@ -100,9 +122,6 @@ export async function startPostgres(
     },
   };
 }
-
-/** Postgres test containers carry this label (orphan sweep, below). */
-const POSTGRES_TEST_LABEL = 'xitter.test.postgres';
 
 export interface KafkaHandle extends Disposable {
   bootstrapServers: string;
@@ -124,8 +143,6 @@ export interface OpenSearchHandle extends Disposable {
 
 // Ephemeral host port (no fixed-port lock needed), labelled so crashed-run
 // orphans can be swept by hand - same pattern as the RustFS container.
-const OPENSEARCH_TEST_LABEL = 'xitter.test.opensearch';
-
 /**
  * Start a throwaway OpenSearch node, same image + env as the local compose
  * stack (infra/docker/compose.yaml): single node, security plugin disabled.
@@ -181,8 +198,6 @@ export async function startOpenSearch(): Promise<OpenSearchHandle> {
 
 // Ephemeral host port, so no fixed-port lock is needed - but label the
 // container so crashed-run orphans can be identified and swept by hand.
-const RUSTFS_TEST_LABEL = 'xitter.test.rustfs';
-
 /**
  * Start a throwaway RustFS (S3-compatible) server, same image as the local
  * compose stack (infra/docker/compose.yaml). Ephemeral host port; callers
@@ -220,22 +235,16 @@ export async function startRustfs(
 }
 
 /**
- * Serialise fixed-port usage across concurrent vitest runs (CI runs service
- * suites in parallel and docker fails the whole start on a port clash).
- * A lock directory per port: exists = busy, removed on release.
- */
-/**
  * Orphaned containers from interrupted/killed runs keep their host-port
  * publishing alive in the podman socket; every later publish to the same
  * port then fails with "proxy already running" (a podman API quirk - no
- * actual proxy process is involved). Only containers WE created (labelled
- * below) and that publish our port are ever swept - a live suite's
- * container cannot match: the port lock serialises suites machine-wide, so
- * while we hold it, any labelled container on this port is a leftover from
- * a crashed run. Unrelated containers are never touched.
+ * actual proxy process is involved). Only containers WE created (labelled)
+ * and that publish our port are ever swept - a live suite's container
+ * cannot match: the port lock serialises suites machine-wide, so while we
+ * hold it, any labelled container on this port is a leftover from a crashed
+ * run. Unrelated containers are never touched. (The label- and age-gated
+ * general sweep lives in sweep.ts.)
  */
-const KAFKA_TEST_LABEL = 'xitter.test.kafka';
-
 async function sweepOrphansOnPort(port: number): Promise<void> {
   const socketPath = process.env.DOCKER_HOST?.replace(/^unix:\/\//, '') ?? '/var/run/docker.sock';
   const fetch = (await import('node:http')).request;
@@ -276,68 +285,6 @@ async function sweepOrphansOnPort(port: number): Promise<void> {
       (c) =>
         new Promise<void>((resolve) => {
           const req = fetch(
-            { socketPath, path: `/containers/${c.Id}?force=true`, method: 'DELETE' },
-            () => resolve(),
-          );
-          req.on('error', () => resolve());
-          req.end();
-        }),
-    ),
-  );
-}
-
-/**
- * Remove labelled containers older than `minAgeMs`. Ephemeral-port fixtures
- * (Postgres) leak when a vitest run is killed: nothing else can identify
- * them, so the label does. Age-gated because concurrency: another suite's
- * in-flight container matches the label but is necessarily younger than a
- * suite timeout; only long-lived leftovers are ever removed. Never touches
- * unlabelled containers.
- */
-async function sweepLabelledOrphans(label: string, minAgeMs: number): Promise<void> {
-  const socketPath = process.env.DOCKER_HOST?.replace(/^unix:\/\//, '') ?? '/var/run/docker.sock';
-  const http = await import('node:http');
-  const list = await new Promise<{ Id: string; Created: number }[]>((resolve, reject) => {
-    const req = http.request(
-      {
-        socketPath,
-        path: `/containers/json?all=1&filters=${encodeURIComponent(
-          JSON.stringify({ label: [label] }),
-        )}`,
-        method: 'GET',
-      },
-      (res) => {
-        let body = '';
-        res.on('data', (c) => (body += c));
-        res.on('end', () => {
-          try {
-            const parsed = JSON.parse(body) as unknown;
-            if (res.statusCode !== 200 || !Array.isArray(parsed)) {
-              reject(new Error(`orphan sweep list failed (${res.statusCode})`));
-              return;
-            }
-            resolve(parsed as { Id: string; Created: number }[]);
-          } catch {
-            reject(new Error('orphan sweep list returned non-JSON'));
-          }
-        });
-      },
-    );
-    req.on('error', reject);
-    req.end();
-  });
-  const cutoff = (Date.now() - minAgeMs) / 1000;
-  const stale = list.filter((c) => c.Created < cutoff);
-  if (stale.length > 0) {
-    process.stderr.write(
-      `[test-containers] sweeping ${stale.length} orphaned ${label} container(s)\n`,
-    );
-  }
-  await Promise.all(
-    stale.map(
-      (c) =>
-        new Promise<void>((resolve) => {
-          const req = http.request(
             { socketPath, path: `/containers/${c.Id}?force=true`, method: 'DELETE' },
             () => resolve(),
           );

@@ -51,7 +51,7 @@ Deploy triggers: merge to `dev` deploys the mutable `dev` image tag (Deploy dev 
 
 Local port map (base, before offset): web 3456, cms 3457, admin 3458, services 8101-8105, postgres 5532, kafka 9092, opensearch 9200, rustfs 9000, valkey 6379, keycloak 8090, edge 8080. The local edge (`infra/proxy/traefik`) mirrors cluster path routing so a service exercised at `localhost:8080` behaves like its deployed counterpart.
 
-Local dependency lifecycle: `npm run deps:up` / `deps:down` / `deps:status`, `npm run bootstrap`, `npm run reset` / `reset:reseed`.
+Local dependency lifecycle: `npm run deps:up` / `deps:down` / `deps:status`, `npm run bootstrap`, `npm run reset` / `reset:reseed`. `deps:down` also sweeps leftover **test**containers from interrupted test runs (label-scoped to `xitter.test.*`; stopped ones after a 60s grace, running ones only past a 30-minute gate so a live suite is never hit); `npm run test:sweep` runs the same sweep on demand (`--age-min`, `--age-running-min`).
 
 ## Access control
 
