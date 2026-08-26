@@ -45,7 +45,7 @@ async function signToken(
 ): Promise<string> {
   return new jose.SignJWT(claims)
     .setProtectedHeader({ alg: 'RS256', ...header })
-    .setIssuer(ISSUER)
+    .setIssuer(String(claims.iss ?? ISSUER))
     .setIssuedAt()
     .setSubject('user-1')
     .setExpirationTime('5m')
@@ -81,6 +81,30 @@ describe('createTokenVerifier', () => {
     const token = await signToken(privateKey, {}, USER_CLAIMS);
 
     await expect(verifier.verify(token)).resolves.toMatchObject({ subject: 'user-1' });
+  });
+
+  it('accepts the opposite scheme of the same issuer (Keycloak proxy iss split)', async () => {
+    const privateKey = await mintKey();
+    const verifier = createTokenVerifier({ issuer: 'https://idp.example/realms/xitter-demo' });
+    // Minted via the in-cluster http service while the configured issuer is
+    // the public https one (or vice versa) - same realm, same key set.
+    const token = await signToken(
+      privateKey,
+      { typ: 'Bearer' },
+      { ...USER_CLAIMS, iss: 'http://idp.example/realms/xitter-demo' },
+    );
+    await expect(verifier.verify(token)).resolves.toMatchObject({ subject: 'user-1' });
+  });
+
+  it('still rejects a DIFFERENT issuer entirely', async () => {
+    const privateKey = await mintKey();
+    const verifier = createTokenVerifier({ issuer: 'https://idp.example/realms/xitter-demo' });
+    const token = await signToken(
+      privateKey,
+      { typ: 'Bearer' },
+      { ...USER_CLAIMS, iss: 'https://evil.example/realms/xitter-demo' },
+    );
+    await expect(verifier.verify(token)).rejects.toThrow();
   });
 
   it('rejects ID tokens even though they verify and carry azp=web', async () => {

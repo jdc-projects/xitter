@@ -49,6 +49,19 @@ function jose(): Promise<JoseModule> {
 export function createTokenVerifier(options: TokenVerifierOptions): TokenVerifier {
   let jwks: unknown;
 
+  // Keycloak derives `iss` from the scheme of the URL that minted the token
+  // (KC_PROXY_HEADERS=xforwarded): a grant via the public https edge carries
+  // https://..., the same grant via the in-cluster http service carries
+  // http://... A single configured issuer can only match one population.
+  // Accept the configured issuer in EITHER scheme - the JWKS fetch
+  // (jwksUri, in-cluster transport) validates the realm's single key set
+  // either way, and azp/audience checks constrain the client separately.
+  const issuerVariants = options.issuer.startsWith('https://')
+    ? [options.issuer, options.issuer.replace(/^https:/, 'http:')]
+    : options.issuer.startsWith('http://')
+      ? [options.issuer, options.issuer.replace(/^http:/, 'https:')]
+      : [options.issuer];
+
   return {
     async verify(token: string): Promise<AuthContext> {
       const j = await jose();
@@ -56,7 +69,7 @@ export function createTokenVerifier(options: TokenVerifierOptions): TokenVerifie
         new URL(options.jwksUri ?? `${options.issuer}/protocol/openid-connect/certs`),
       );
       const { payload, protectedHeader } = await j.jwtVerify(token, jwks, {
-        issuer: options.issuer,
+        issuer: issuerVariants,
         ...(options.audience ? { audience: options.audience } : {}),
       });
       // Keycloak stamps ID tokens with typ "ID". They pass signature and
