@@ -36,7 +36,16 @@ locals {
   # indexes into / queries the OpenSearch cluster (#9); authn is M2M via
   # KEYCLOAK_CLIENT_ID/SECRET below.
   service_extra_env = {
-    posts = [{ name = "XITTER_SOCIAL_URL", value = local.svc_base.social }]
+    # posts calls social (reply block enforcement, #5) and media (attach
+    # validation via the internal lookup, #5/T5) - BOTH URLs are load-bearing:
+    # a missing one silently falls back to localhost (the api-client default)
+    # and every cross-service call fails with ECONNREFUSED. The missing
+    # XITTER_MEDIA_URL was the nightly seed's 503 'Cannot verify attached
+    # images' across every reset run (found 2026-08-26).
+    posts = [
+      { name = "XITTER_SOCIAL_URL", value = local.svc_base.social },
+      { name = "XITTER_MEDIA_URL", value = local.svc_base.media },
+    ]
     feed = [
       { name = "XITTER_POSTS_URL", value = local.svc_base.posts },
       { name = "XITTER_SOCIAL_URL", value = local.svc_base.social },

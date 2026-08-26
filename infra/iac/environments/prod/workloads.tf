@@ -38,7 +38,12 @@ locals {
   # indexes into / queries the OpenSearch cluster (#9); authn is M2M via
   # KEYCLOAK_CLIENT_ID/SECRET below.
   service_extra_env = {
-    posts = [{ name = "XITTER_SOCIAL_URL", value = local.svc_base.social }]
+    # posts→media attach validation needs the in-cluster media URL (same
+    # localhost-fallback trap as dev - see dev's comment for the incident).
+    posts = [
+      { name = "XITTER_SOCIAL_URL", value = local.svc_base.social },
+      { name = "XITTER_MEDIA_URL", value = local.svc_base.media },
+    ]
     feed = [
       { name = "XITTER_POSTS_URL", value = local.svc_base.posts },
       { name = "XITTER_SOCIAL_URL", value = local.svc_base.social },
