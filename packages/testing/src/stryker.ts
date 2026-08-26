@@ -25,7 +25,12 @@
  */
 export function createStrykerConfig(
   projectName: string,
-  options: { excludeIntegrationTests?: boolean; mutateExclude?: string[] } = {},
+  options: {
+    excludeIntegrationTests?: boolean;
+    mutateExclude?: string[];
+    /** Score floor (`thresholds.break`); set from a measured baseline, never invented. */
+    thresholds?: { break: number };
+  } = {},
 ) {
   return {
     $schema:
@@ -56,6 +61,7 @@ export function createStrykerConfig(
     },
     incremental: true,
     incrementalFile: `reports/mutation/${projectName}.incr`,
+    thresholds: options.thresholds,
     mutate: [
       'src/**/*.ts',
       '!src/**/*.test.ts',

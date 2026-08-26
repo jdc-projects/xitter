@@ -1,6 +1,7 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { applyCmsContent, exportCmsContent, readContentFiles, CONTENT_DIR } from './content.js';
 
@@ -184,8 +185,15 @@ describe('content promotion', () => {
     }
   });
 
-  it('content dir sits under packages/scripts/data/content (runbook 03)', () => {
-    expect(CONTENT_DIR).toContain(join('packages', 'scripts', 'data', 'content'));
+  it('content dir sits under data/content next to src (runbook 03)', () => {
+    // Asserted relative to this test file rather than by absolute repo path:
+    // the Stryker sandbox relocates the workspace (same relative layout,
+    // different root), and the invariant that matters is the derivation -
+    // content.ts must resolve its data dir from its own module location,
+    // never from cwd or a repo-root assumption.
+    const expected = resolve(dirname(fileURLToPath(import.meta.url)), '../data/content');
+    expect(CONTENT_DIR).toBe(expected);
+    expect(existsSync(CONTENT_DIR)).toBe(true);
   });
 });
 

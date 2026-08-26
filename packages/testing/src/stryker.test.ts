@@ -1,11 +1,22 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { createStrykerConfig } from './stryker.js';
 
-/** This file lives at <root>/packages/testing/src - three hops to the root. */
-const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
+/**
+ * Walk up from the working directory (always the workspace root under both
+ * vitest and turbo) to the directory holding turbo.json. `import.meta` is
+ * not an option here: this package builds as CommonJS.
+ */
+function repoRoot(): string {
+  let current = process.cwd();
+  for (;;) {
+    if (existsSync(join(current, 'turbo.json'))) return current;
+    const parent = join(current, '..');
+    if (parent === current) throw new Error(`turbo.json not found above ${process.cwd()}`);
+    current = parent;
+  }
+}
 
 interface PackageJson {
   name?: string;
@@ -26,21 +37,20 @@ interface Workspace {
  * sync when workspaces are added or reorganised.
  */
 function loadWorkspaces(): Workspace[] {
-  const rootPkg = JSON.parse(
-    readFileSync(join(REPO_ROOT, 'package.json'), 'utf8'),
-  ) as PackageJson;
+  const root = repoRoot();
+  const rootPkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as PackageJson;
   const workspaces: Workspace[] = [];
   for (const glob of rootPkg.workspaces ?? []) {
-    const match = /^([^*]+)\*$/.exec(glob);
-    if (!match) continue;
-    const parent = join(REPO_ROOT, match[1]);
+    const prefix = /^([^*]+)\*$/.exec(glob)?.[1];
+    if (prefix === undefined) continue;
+    const parent = join(root, prefix);
     if (!existsSync(parent)) continue;
     for (const entry of readdirSync(parent)) {
       const dir = join(parent, entry);
       const manifest = join(dir, 'package.json');
       if (!existsSync(manifest)) continue;
       workspaces.push({
-        rel: dir.slice(REPO_ROOT.length + 1),
+        rel: dir.slice(root.length + 1),
         dir,
         pkg: JSON.parse(readFileSync(manifest, 'utf8')) as PackageJson,
       });
@@ -62,6 +72,8 @@ function hasIntegrationTests(dir: string): boolean {
   return walk(src);
 }
 
+const MUTATING_WORKSPACES = loadWorkspaces().filter((ws) => ws.pkg.scripts?.mutate !== undefined);
+
 describe('createStrykerConfig', () => {
   it('runs the default vitest config unless integration tests are excluded', () => {
     const plain = createStrykerConfig('demo');
@@ -81,9 +93,24 @@ describe('createStrykerConfig', () => {
     expect(config.mutate.slice(-1)).toEqual(['!src/entry.ts']);
     expect(config.mutate[0]).toBe('src/**/*.ts');
   });
+
+  it('passes the optional score floor through untouched', () => {
+    expect(createStrykerConfig('demo').thresholds).toBeUndefined();
+    expect(createStrykerConfig('demo', { thresholds: { break: 30 } }).thresholds).toEqual({
+      break: 30,
+    });
+  });
 });
 
 describe('repo mutation configs', () => {
+  /** Sanity for the walker itself: an empty result must never pass silently. */
+  it('discovers the mutating workspaces from the root manifests', () => {
+    const names = MUTATING_WORKSPACES.map((ws) => ws.rel).sort();
+    expect(names).toContain('apps/services/feed');
+    expect(names).toContain('packages/scripts');
+    expect(names.length).toBeGreaterThanOrEqual(9);
+  });
+
   /**
    * Guard for the `excludeIntegrationTests` convention: any workspace with
    * both a `mutate` task and testcontainers integration suites must keep
@@ -92,11 +119,7 @@ describe('repo mutation configs', () => {
    * points at must exist and exclude the suites.
    */
   it('excludes integration suites from every mutating workspace that has them', () => {
-    const offenders = loadWorkspaces()
-      .filter(
-        (ws) =>
-          ws.pkg.scripts?.mutate !== undefined && hasIntegrationTests(ws.dir),
-      )
+    const offenders = MUTATING_WORKSPACES.filter((ws) => hasIntegrationTests(ws.dir))
       .filter((ws) => {
         const strykerConfig = join(ws.dir, 'stryker.config.ts');
         if (!existsSync(strykerConfig)) return true;
@@ -104,9 +127,7 @@ describe('repo mutation configs', () => {
         if (!/excludeIntegrationTests:\s*true/.test(source)) return true;
         const vitestMutation = join(ws.dir, 'vitest.mutation.config.ts');
         if (!existsSync(vitestMutation)) return true;
-        return !readFileSync(vitestMutation, 'utf8').includes(
-          '*.integration.test.ts',
-        );
+        return !readFileSync(vitestMutation, 'utf8').includes('*.integration.test.ts');
       })
       .map((ws) => ws.rel);
 

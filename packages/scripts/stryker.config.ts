@@ -7,8 +7,8 @@
  * config runs as-is inside the sandbox.
  *
  * Exclusions beyond the shared factory defaults:
- * - `data/` is JSON seed content - the shared `src/**/*.ts` mutate globs
- *   never match it, so no explicit exclusion is needed.
+ * - `data/` is JSON seed content - the shared src mutate globs only match
+ *   TypeScript under src, so no explicit exclusion is needed.
  * - Shell-out glue and destructive entrypoints stay out of the sandbox:
  *   the docker compose/npm/mmdc wrappers (`lib/exec`, `lib/compose`,
  *   `docker`, `bootstrap`, `reset`, `diagrams`, `e2e-stack`) and the
@@ -24,6 +24,11 @@ import type { StrykerOptions } from '@stryker-mutator/core';
 import { createStrykerConfig } from '@xitter/testing';
 
 export default createStrykerConfig('scripts', {
+  // Floor from the measured baseline on this PR (2026-08-26, Stryker 10,
+  // 2463 mutants): 31.87 total. ~2 points of headroom absorb mutant-set
+  // drift without masking real regressions - a ratchet floor, not a
+  // target (see testing spec 03: judged by value, not score-chasing).
+  thresholds: { break: 30 },
   mutateExclude: [
     '!src/lib/exec.ts',
     '!src/lib/compose.ts',
