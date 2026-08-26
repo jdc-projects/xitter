@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildCorpus, type SeedCorpus } from './corpus.js';
 import { runSeed, type SeedUser } from './seed.js';
 
@@ -138,5 +138,348 @@ describe('runSeed probe', () => {
     expect(corpus.counts.users).toBe(3);
     expect(corpus.counts.posts).toBe(12);
     expect(expected.reduce((a, b) => a + b, 0)).toBe(12);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Retry hardening (#85): the phase x failure matrix end-to-end. Idempotent
+// calls ride out anything transient; plain creates retry only provably-
+// unprocessed causes and RECONCILE ambiguous ones instead of blind-retrying
+// (a duplicate post would fail the night's verification); the CMS phase is
+// covered by the same policies and still honours the dev skip flag.
+// ---------------------------------------------------------------------------
+
+describe('runSeed retry hardening (#85)', () => {
+  const tiny = buildCorpus({ userCount: 2, postsPerUser: 2, followDensity: 0 });
+  const tinyUsers: SeedUser[] = tiny.users.map((u, i) => ({
+    username: u.username,
+    userId: `sub-${i}`,
+  }));
+  const followingBy = tiny.follows.reduce<number[]>((acc, f) => {
+    acc[f.followerIndex] = (acc[f.followerIndex] ?? 0) + 1;
+    return acc;
+  }, []);
+
+  /** What undici surfaces when the server dies mid-request. */
+  const inFlightTimeout = (code = 'ETIMEDOUT'): Error => {
+    const cause = Object.assign(new Error(`connect ${code} 10.42.0.17:3000`), { code });
+    return Object.assign(new TypeError('fetch failed'), { cause });
+  };
+
+  interface SeedSurfaceState {
+    /** Posts the fake services hold (author's timeline items). */
+    posts: Array<{ id: string; text: string; author: number; deletedAt: string | null }>;
+    /** 200-level create responses served (excludes adopted/faulty attempts). */
+    postCreates: number;
+    /** Every POST /posts attempt, including thrown/reconciled ones. */
+    postAttempts: number;
+    uploadAttempts: number;
+    cmsListCalls: number;
+    cmsCalls: string[];
+    logs: string[];
+  }
+
+  type Injection = (
+    method: string,
+    pathname: string,
+  ) => number | Error | 'commit-then-timeout' | undefined;
+
+  /** One route of the fake surface: match by method + pathname regex. */
+  interface SurfaceRoute {
+    method: string;
+    test: RegExp;
+    /** May throw to simulate a network-level failure. */
+    respond(url: URL, body: { text?: string } | undefined, outcome: unknown): unknown;
+  }
+
+  /**
+   * Fake full service surface for one fresh-seed run: probe reads, corpus
+   * mutations (state-keeping so verification can pass), media pipeline,
+   * and the CMS collections. `inject` overrides the outcome of matching
+   * calls: an HTTP status, a thrown network error, or the ambiguous
+   * post-create ('commit-then-timeout' = server committed, response lost).
+   */
+  function seedSurface(inject: Injection = () => undefined): {
+    fetch: typeof globalThis.fetch;
+    state: SeedSurfaceState;
+  } {
+    const state: SeedSurfaceState = {
+      posts: [],
+      postCreates: 0,
+      postAttempts: 0,
+      uploadAttempts: 0,
+      cmsListCalls: 0,
+      cmsCalls: [],
+      logs: [],
+    };
+
+    const routes: SurfaceRoute[] = [
+      {
+        method: 'POST',
+        test: /\/protocol\/openid-connect\/token$/,
+        respond: () => ({ access_token: 'seed-test-token' }),
+      },
+      { method: 'GET', test: /\/cms\/api\/(landing-content|faq)/, respond: () => ({ docs: [] }) },
+      {
+        method: 'POST',
+        test: /\/cms\/api\/(landing-content|faq)/,
+        respond: () => ({ doc: {} }),
+      },
+      {
+        // The author timeline doubles as the reconciliation probe's read.
+        method: 'GET',
+        test: /\/api\/posts\/v1\/users\/(sub-\d+)\/posts$/,
+        respond: (url) => {
+          const author = Number(url.pathname.match(/sub-(\d+)/)![1]);
+          return { items: state.posts.filter((p) => p.author === author) };
+        },
+      },
+      {
+        method: 'POST',
+        test: /\/api\/posts\/v1\/posts$/,
+        respond: (_url, body, outcome) => {
+          // Corpus texts pin the slot (deterministic, unique per author).
+          const text = body?.text;
+          const slot =
+            typeof text === 'string' ? tiny.posts.find((p) => p.text === text) : undefined;
+          if (!slot || typeof text !== 'string') {
+            throw new Error(`fake surface: unknown post text "${String(text)}"`);
+          }
+          if (outcome === 'commit-then-timeout') {
+            // The server committed but the response never came back.
+            state.posts.push({ id: 'adopted-1', text, author: slot.authorIndex, deletedAt: null });
+            throw inFlightTimeout();
+          }
+          state.postCreates += 1;
+          const id = `created-${state.postCreates}`;
+          state.posts.push({ id, text, author: slot.authorIndex, deletedAt: null });
+          return { id };
+        },
+      },
+      {
+        method: 'POST',
+        test: /\/api\/media\/v1\/uploads$/,
+        respond: () => ({ mediaId: 'm-1', uploadUrl: 'http://rustfs.local/obj-1' }),
+      },
+      {
+        method: 'GET',
+        test: /\/api\/social\/v1\/profiles\/(sub-\d+)\/following/,
+        respond: (url) => {
+          const index = Number(url.pathname.match(/sub-(\d+)/)![1]);
+          return {
+            items: Array.from({ length: followingBy[index] ?? 0 }, () => ({ id: 'f' })),
+          };
+        },
+      },
+      {
+        method: 'GET',
+        test: /\/api\/media\/v1\/media\/m-1$/,
+        respond: () => ({ status: 'ready' }),
+      },
+      {
+        method: 'GET',
+        test: /\/api\/feed\/v1\/feed$/,
+        respond: () => ({ items: [], nextCursor: null }),
+      },
+      // Absence marker for the probe: no profile for this username yet.
+      {
+        method: 'GET',
+        test: /\/api\/social\/v1\/profiles\/username\/demo\d+$/,
+        respond: () => null,
+      },
+    ];
+
+    /** Attempt counters run BEFORE injection: a failed try is still a try. */
+    const countAttempt = (method: string, path: string): void => {
+      if (method === 'POST' && path === '/api/posts/v1/posts') state.postAttempts += 1;
+      if (method === 'POST' && path === '/api/media/v1/uploads') state.uploadAttempts += 1;
+      if (path.startsWith('/cms/api/')) {
+        state.cmsCalls.push(`${method} ${path}`);
+        if (method === 'GET') state.cmsListCalls += 1;
+      }
+    };
+
+    /** Token grants post urlencoded bodies; only JSON requests carry one. */
+    const jsonBody = (init?: RequestInit): { text?: string } | undefined => {
+      const raw = typeof init?.body === 'string' ? init.body : undefined;
+      return raw?.startsWith('{') ? (JSON.parse(raw) as { text: string }) : undefined;
+    };
+
+    const dispatch = async (method: string, url: URL, init?: RequestInit): Promise<Response> => {
+      const outcome = inject(method, url.pathname);
+      if (outcome instanceof Error) throw outcome;
+      if (typeof outcome === 'number') return new Response('unavailable', { status: outcome });
+      const route = routes.find((r) => r.method === method && r.test.test(url.pathname));
+      // Unrouted calls (profile upserts, follows, interactions, the object
+      // PUT) are the accepting catch-all.
+      const value = route ? await route.respond(url, jsonBody(init), outcome) : {};
+      return new Response(JSON.stringify(value ?? null));
+    };
+
+    const impl = (async (input: string | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(String(input));
+      const method = (init?.method ?? 'GET').toUpperCase();
+      countAttempt(method, url.pathname);
+      return await dispatch(method, url, init);
+    }) as typeof globalThis.fetch;
+    return { fetch: impl, state };
+  }
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('rides out deploy churn on the idempotent phases (probe retry, full seed)', async () => {
+    vi.stubEnv('XITTER_RESET_SKIP_CMS', '1');
+    let profileReads = 0;
+    const { fetch, state } = seedSurface((method, path) => {
+      // First profile probe read dies in flight; the read is idempotent
+      // (SEED_RETRY_IDEMPOTENT) so it must be retried, not escalated.
+      if (method === 'GET' && /\/profiles\/username\/demo\d+$/.test(path)) {
+        profileReads += 1;
+        return profileReads === 1 ? 502 : undefined;
+      }
+      return undefined;
+    });
+
+    const report = await runSeed({
+      corpus: tiny,
+      users: tinyUsers,
+      fetchImpl: fetch,
+      convergenceTimeoutMs: 1_000,
+      log: (m) => state.logs.push(m),
+    });
+
+    expect(report.skipped).toBe(false);
+    expect(report.created.posts).toBe(tiny.counts.posts);
+    expect(state.postCreates).toBe(tiny.counts.posts); // no duplicated creates
+  });
+
+  it('reconciles an ambiguous post-create failure by adopting the committed post', async () => {
+    vi.stubEnv('XITTER_RESET_SKIP_CMS', '1');
+    let postsSeen = 0;
+    const { fetch, state } = seedSurface((method, path) => {
+      if (method === 'POST' && path === '/api/posts/v1/posts') {
+        postsSeen += 1;
+        // First create commits server-side, then the response is lost.
+        return postsSeen === 1 ? 'commit-then-timeout' : undefined;
+      }
+      return undefined;
+    });
+
+    const report = await runSeed({
+      corpus: tiny,
+      users: tinyUsers,
+      fetchImpl: fetch,
+      convergenceTimeoutMs: 1_000,
+      log: (m) => state.logs.push(m),
+    });
+
+    // The committed post was adopted, not re-created: one fewer create
+    // response than corpus posts, yet every post exists exactly once.
+    expect(report.skipped).toBe(false);
+    expect(report.created.posts).toBe(tiny.counts.posts);
+    expect(state.postCreates).toBe(tiny.counts.posts - 1);
+    expect(state.posts).toHaveLength(tiny.counts.posts);
+    expect(new Set(state.posts.map((p) => p.id)).size).toBe(tiny.counts.posts);
+    expect(state.posts.map((p) => p.id)).toContain('adopted-1');
+    expect(state.logs.join('\n')).toContain('reconciled');
+  });
+
+  it('re-creates once when an ambiguous post-create provably never landed', async () => {
+    vi.stubEnv('XITTER_RESET_SKIP_CMS', '1');
+    let postsSeen = 0;
+    const { fetch, state } = seedSurface((method, path) => {
+      if (method === 'POST' && path === '/api/posts/v1/posts') {
+        postsSeen += 1;
+        // Timeout with NO commit: the probe finds nothing, so exactly one
+        // deliberate re-create follows.
+        return postsSeen === 1 ? inFlightTimeout() : undefined;
+      }
+      return undefined;
+    });
+
+    const report = await runSeed({
+      corpus: tiny,
+      users: tinyUsers,
+      fetchImpl: fetch,
+      convergenceTimeoutMs: 1_000,
+      log: (m) => state.logs.push(m),
+    });
+
+    expect(report.skipped).toBe(false);
+    expect(state.postAttempts).toBe(tiny.counts.posts + 1);
+    expect(state.postCreates).toBe(tiny.counts.posts);
+    expect(state.posts).toHaveLength(tiny.counts.posts);
+  });
+
+  it('fails loudly on an ambiguous media-slot create instead of blind-retrying', async () => {
+    vi.stubEnv('XITTER_RESET_SKIP_CMS', '1');
+    let uploadsSeen = 0;
+    const { fetch, state } = seedSurface((method, path) => {
+      if (method === 'POST' && path === '/api/media/v1/uploads') {
+        uploadsSeen += 1;
+        return uploadsSeen === 1 ? inFlightTimeout('ECONNRESET') : undefined;
+      }
+      return undefined;
+    });
+
+    // No user-scoped way to probe a media slot, so ambiguity escalates.
+    await expect(
+      runSeed({
+        corpus: tiny,
+        users: tinyUsers,
+        fetchImpl: fetch,
+        convergenceTimeoutMs: 1_000,
+        log: (m) => state.logs.push(m),
+      }),
+    ).rejects.toThrow('fetch failed');
+    expect(state.uploadAttempts).toBe(1); // never blindly retried
+  });
+
+  it('retries a transient CMS list failure - the phase is covered, not skipped', async () => {
+    // Empty stub beats any ambient value: envString treats '' as unset.
+    vi.stubEnv('XITTER_RESET_SKIP_CMS', '');
+    let cmsListsSeen = 0;
+    const { fetch, state } = seedSurface((method, path) => {
+      if (method === 'GET' && /\/cms\/api\/(landing-content|faq)/.test(path)) {
+        cmsListsSeen += 1;
+        // First listing of the first collection rides one 503 out.
+        return cmsListsSeen === 1 ? 503 : undefined;
+      }
+      return undefined;
+    });
+
+    const report = await runSeed({
+      corpus: tiny,
+      users: tinyUsers,
+      fetchImpl: fetch,
+      convergenceTimeoutMs: 1_000,
+      log: (m) => state.logs.push(m),
+    });
+
+    expect(report.skipped).toBe(false);
+    // The 503'd listing was retried to success (2 collections -> >= 3 lists).
+    expect(state.cmsListCalls).toBeGreaterThanOrEqual(3);
+    expect(state.cmsCalls.some((c) => c.startsWith('POST /cms/api/'))).toBe(true);
+    expect(state.logs.join('\n')).toContain('cms content');
+  });
+
+  it('still skips the CMS phase entirely under XITTER_RESET_SKIP_CMS=1', async () => {
+    vi.stubEnv('XITTER_RESET_SKIP_CMS', '1');
+    const { fetch, state } = seedSurface();
+
+    const report = await runSeed({
+      corpus: tiny,
+      users: tinyUsers,
+      fetchImpl: fetch,
+      convergenceTimeoutMs: 1_000,
+      log: (m) => state.logs.push(m),
+    });
+
+    expect(report.skipped).toBe(false);
+    expect(report.created.posts).toBe(tiny.counts.posts);
+    expect(state.cmsCalls).toEqual([]);
+    expect(state.logs.join('\n')).toContain('cms content skipped (XITTER_RESET_SKIP_CMS)');
   });
 });

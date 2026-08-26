@@ -16,7 +16,13 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createJwtCache, realmUrls } from '@xitter/auth';
 import { envString, loadRepoEnv, localUrl } from '@xitter/config';
-import { requestJson } from './lib/api.js';
+import {
+  isAmbiguousFailure,
+  requestJson,
+  SEED_RETRY_CREATE,
+  SEED_RETRY_IDEMPOTENT,
+  type RetryPolicy,
+} from './lib/api.js';
 import { serviceBase } from './lib/targets.js';
 
 export interface LandingContentSeed {
@@ -78,8 +84,9 @@ async function api(
   init: Parameters<typeof requestJson>[2],
   token: string,
   fetchImpl: typeof fetch,
+  retry: RetryPolicy = SEED_RETRY_IDEMPOTENT,
 ): Promise<unknown> {
-  return requestJson(cmsBase(), path, init, token, fetchImpl);
+  return requestJson(cmsBase(), path, init, token, fetchImpl, retry);
 }
 
 async function listExisting(
@@ -103,6 +110,20 @@ async function listExisting(
   return json.docs ?? [];
 }
 
+/** Slug -> id for the docs that carry a slug (slug is the promotion key). */
+async function existingBySlug(
+  collection: 'landing-content' | 'faq',
+  token: string,
+  fetchImpl: typeof fetch,
+  purpose: 'export' | 'apply',
+): Promise<Map<string, number>> {
+  return new Map(
+    (await listExisting(collection, token, fetchImpl, purpose))
+      .filter((doc) => doc.slug)
+      .map((doc) => [doc.slug as string, doc.id]),
+  );
+}
+
 /** Payload's documented way to publish via REST (draft saves go to versions only). */
 const PUBLISHED = { _status: 'published' } as const;
 
@@ -112,11 +133,7 @@ async function upsertCollection(
   token: string,
   fetchImpl: typeof fetch,
 ): Promise<ContentApplyResult> {
-  const existing = new Map(
-    (await listExisting(collection, token, fetchImpl, 'apply'))
-      .filter((doc) => doc.slug)
-      .map((doc) => [doc.slug as string, doc.id]),
-  );
+  const existing = await existingBySlug(collection, token, fetchImpl, 'apply');
 
   let created = 0;
   let updated = 0;
@@ -132,17 +149,56 @@ async function upsertCollection(
         fetchImpl,
       );
       updated += 1;
-    } else {
-      await api(
-        `/cms/api/${collection}?draft=false`,
-        { method: 'POST', body: data },
-        token,
-        fetchImpl,
-      );
+    } else if (await createDoc(collection, data, token, fetchImpl)) {
       created += 1;
+    } else {
+      // The slug actually existed (reconciled) - the create landed after all.
+      updated += 1;
     }
   }
   return { created, updated };
+}
+
+/**
+ * CMS doc create with ambiguity reconciliation (#85). The list-then-POST
+ * is a classic TOCTOU: an in-flight failure (ETIMEDOUT after Payload
+ * committed) followed by a blind re-POST would trip the unique `slug`
+ * index and fail the run - while the original POST had actually landed.
+ * So the create retries only provably-unprocessed causes inside the
+ * call; an ambiguous failure re-lists by slug instead. Found = it landed
+ * (adopt: the doc already holds exactly this content, nothing to PATCH);
+ * absent = it never did, so one deliberate re-create is safe. A second
+ * ambiguous failure fails loudly - no loop, exactly like the seed's
+ * post-create reconciliation.
+ */
+async function createDoc(
+  collection: 'landing-content' | 'faq',
+  data: Record<string, unknown>,
+  token: string,
+  fetchImpl: typeof fetch,
+): Promise<boolean> {
+  const create = () =>
+    api(
+      `/cms/api/${collection}?draft=false`,
+      { method: 'POST', body: data },
+      token,
+      fetchImpl,
+      SEED_RETRY_CREATE,
+    );
+  try {
+    await create();
+    return true;
+  } catch (err) {
+    if (!isAmbiguousFailure(err)) throw err;
+    // Probe by slug: found = the create landed after all (adopt it - the
+    // doc already holds exactly this content, nothing to PATCH); absent =
+    // it never did, so one deliberate re-create is safe.
+    if ((await existingBySlug(collection, token, fetchImpl, 'apply')).has(data.slug as string)) {
+      return false;
+    }
+    await create();
+    return true;
+  }
 }
 
 /**
