@@ -6,6 +6,7 @@ import { LandingContentPreview } from '@/components/cms/landing-content-preview'
 import { LandingCopy } from '@/components/cms/landing-copy';
 import { PublicHeader } from '@/components/public-header';
 import { LandingAvatarMotif, StackStrip } from '@/components/stack-strip';
+import { getSessionUsername } from '@/lib/auth/session';
 import { cmsEnv, loadLandingContent } from '@/lib/cms/content';
 import { resolvePreviewId } from '@/lib/cms/preview';
 
@@ -24,11 +25,16 @@ export default async function LandingPage({ searchParams }: LandingPageProps) {
 
   // Preview renders are per-request (drafts, uncached - spec 04 exposure).
   if (previewId !== undefined) await connection();
+  // Session-aware public header (#38): the page is already per-request
+  // (searchParams), so resolving the cookie adds no further dynamism; the
+  // CMS fetch keeps its own 60s data cache. Signed-out visitors (and a
+  // Valkey outage) resolve to null without touching the store.
+  const username = await getSessionUsername();
   const entries = await loadLandingContent({ draft: previewId !== undefined });
 
   return (
     <>
-      <PublicHeader />
+      <PublicHeader username={username} />
       <Container size="sm" py="xl">
         <Stack gap="lg">
           <Group gap="md" align="center" wrap="nowrap">

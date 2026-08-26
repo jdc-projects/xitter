@@ -21,8 +21,8 @@ Edge cases: deep links to user content while unauthenticated → redirect to log
 
 ```mermaid
 flowchart TD
-    A[Login form] --> B{Cap.js captcha solved?}
-    B -- no --> B1[Block submission, retry captcha]
+    A[Login form] --> B{Cap.js challenge solved?}
+    B -- no --> B1[Block submission, retry challenge]
     B -- yes --> C{Credentials valid?}
     C -- no --> E[Generic error:\nnothing reveals which field failed]
     E --> A
@@ -32,7 +32,9 @@ flowchart TD
     F -- none --> H[Feed]
 ```
 
-Failure states: invalid demo username, wrong password, captcha failure/expiry, session expiry mid-use (re-authenticate and resume).
+Failure states: invalid demo username, wrong password, challenge failure/expiry, session expiry mid-use (re-authenticate and resume).
+
+Edge cases: a signed-in visitor opening `/login` is redirected straight to the sanitized intended destination (default `/feed`) — the form only ever starts a fresh authorization; account switching goes through logout (Keycloak end-session) first.
 
 ## 3. Posting with image
 

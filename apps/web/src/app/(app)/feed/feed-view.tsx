@@ -118,7 +118,8 @@ export function FeedView({ initialEntries, initialCursor, viewerId }: FeedViewPr
 
       {entries.length === 0 ? (
         <Text size="sm" c="dimmed" data-testid="feed-empty">
-          No posts yet - follow some accounts or write the first one above.
+          Nothing here yet - the feed shows posts from accounts you follow. Write the first one
+          above to get things started.
         </Text>
       ) : (
         <>

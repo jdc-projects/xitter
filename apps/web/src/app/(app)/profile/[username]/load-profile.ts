@@ -10,7 +10,28 @@ import { viewerStateByPostId } from '@/lib/posts/server';
 
 export type ProfileTab = 'posts' | 'following' | 'followers';
 
+/** Demo username range (spec 02 §2.4): demo1..demo10 exist in Keycloak. */
+const DEMO_USERNAME = /^demo(?:10|[1-9])$/;
+
+/**
+ * Demo-range usernames are real Keycloak accounts even without a profile:
+ * profiles are bootstrapped on first login and removed again by the nightly
+ * reset. Those render the dormant-profile shell (#36) instead of the 404 a
+ * genuinely unknown username gets.
+ */
+export function isDemoUsername(username: string): boolean {
+  return DEMO_USERNAME.test(username);
+}
+
+export interface DormantProfileView {
+  /** Demo account exists but has never logged in since the reset (#36). */
+  dormant: true;
+  username: string;
+}
+
 export interface ProfileViewData {
+  /** Discriminant (#36): absent/false = a live profile, true = dormant. */
+  dormant?: false;
   view: ReturnType<typeof profileViewState>;
   profile: { id: string; username: string; displayName: string; bio: string | null };
   counts: { following: number; followers: number };
@@ -88,15 +109,16 @@ export async function loadProfilePeoplePage(
 
 /**
  * All profile-page data fetching in one place so the page component is
- * layout-only: profile lookup (404 -> notFound), counts + relationship in
- * parallel, and the follow-list or posts page for the active tab.
+ * layout-only: profile lookup (404 -> dormant shell for demo accounts,
+ * notFound for anyone else), counts + relationship in parallel, and the
+ * follow-list or posts page for the active tab.
  */
 export async function loadProfileView(
   session: Session,
   username: string,
   tab: ProfileTab,
   cursor?: string,
-): Promise<ProfileViewData> {
+): Promise<ProfileViewData | DormantProfileView> {
   const social = new SocialClient({
     baseUrl: localServiceUrls().social,
     token: session.accessToken,
@@ -106,7 +128,10 @@ export async function loadProfileView(
   try {
     profile = await social.getProfileByUsername(username);
   } catch (error) {
-    if (error instanceof ApiError && error.status === 404) notFound();
+    if (error instanceof ApiError && error.status === 404) {
+      if (isDemoUsername(username)) return { dormant: true, username };
+      notFound();
+    }
     throw error;
   }
 

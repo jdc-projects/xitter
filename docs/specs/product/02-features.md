@@ -4,16 +4,16 @@ Acceptance-style catalogue of every user-facing feature area. "Must" = required 
 
 ## 1. Landing page
 
-| #   | Acceptance criteria                                                                                                                                                                 |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1.1 | Public (unauthenticated). Serves as the site's front door with a short intro managed in the CMS.                                                                                    |
-| 1.2 | Shows an **unmissable reset notice**: all data is wiped nightly (default 00:30 UTC).                                                                                                |
-| 1.3 | Links to the About page (which includes the FAQ section).                                                                                                                           |
-| 1.4 | Provides a clear path to login. No user-generated content is visible.                                                                                                               |
-| 1.5 | Renders the shared **public header** (brand → home, About, Log in); the authenticated shell renders its own nav instead and links back to the About page.                           |
-| 1.6 | Carries the demo: hero treatment of the CMS intro (wordmark, avatar-gradient motif) with the intro in larger type.                                                                  |
-| 1.7 | Renders an **under-the-hood stack strip** — what the platform is and runs on (web app, services, workers, stores, IaC). Facts live in code; the CMS intro stays the editable prose. |
-| 1.8 | Shows a **demo-credentials entry point** (accounts + password, public by design) that links to login.                                                                               |
+| #   | Acceptance criteria                                                                                                                                                                                                                                                                                   |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.1 | Public (unauthenticated). Serves as the site's front door with a short intro managed in the CMS.                                                                                                                                                                                                      |
+| 1.2 | Shows an **unmissable reset notice**: all data is wiped nightly (default 00:30 UTC).                                                                                                                                                                                                                  |
+| 1.3 | Links to the About page (which includes the FAQ section).                                                                                                                                                                                                                                             |
+| 1.4 | Provides a clear path to login. No user-generated content is visible.                                                                                                                                                                                                                                 |
+| 1.5 | Renders the shared **public header** (brand → home, About, Log in — or the signed-in visitor's handle and a _Back to the feed_ link when a session resolves); nav links mark the current page (`aria-current`). The authenticated shell renders its own nav instead and links back to the About page. |
+| 1.6 | Carries the demo: hero treatment of the CMS intro (wordmark, avatar-gradient motif) with the intro in larger type.                                                                                                                                                                                    |
+| 1.7 | Renders an **under-the-hood stack strip** — what the platform is and runs on (web app, services, workers, stores, IaC). Facts live in code; the CMS intro stays the editable prose.                                                                                                                   |
+| 1.8 | Shows a **demo-credentials entry point** (accounts + password, public by design) that links to login.                                                                                                                                                                                                 |
 
 ## 2. About page
 
@@ -29,13 +29,14 @@ Acceptance-style catalogue of every user-facing feature area. "Must" = required 
 
 ## 3. Auth
 
-| #   | Acceptance criteria                                                                                                                                                                                                                                                                          |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 3.1 | Login with demo accounts only. No signup, no password change, no account management.                                                                                                                                                                                                         |
-| 3.2 | Login form is protected by a Cap.js captcha. Deployed environments (tofu-managed) treat it as mandatory: web refuses to boot without it (`XITTER_CAP_REQUIRED`), so a misconfigured deploy fails loudly instead of serving an unprotected login form. Local/ephemeral stacks run without it. |
-| 3.3 | Unauthenticated visitors can only reach landing + About; any user-generated content (feeds, profiles, posts) requires login.                                                                                                                                                                 |
-| 3.4 | Logout works from anywhere in the app and returns the visitor to the landing page.                                                                                                                                                                                                           |
-| 3.5 | Invalid credentials show a generic error without revealing whether username or password failed.                                                                                                                                                                                              |
+| #   | Acceptance criteria                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 3.1 | Login with demo accounts only. No signup, no password change, no account management.                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| 3.2 | Login form is protected by a Cap.js proof-of-work challenge (not an image captcha); user-facing copy describes it as a quick verification that runs in the browser, and the `error=challenge` param drives the failure message. Deployed environments (tofu-managed) treat it as mandatory: web refuses to boot without it (`XITTER_CAP_REQUIRED`), so a misconfigured deploy fails loudly instead of serving an unprotected login form. Local/ephemeral stacks run without it — no copy renders for the disabled widget. |
+| 3.3 | Unauthenticated visitors can only reach landing + About; any user-generated content (feeds, profiles, posts) requires login.                                                                                                                                                                                                                                                                                                                                                                                              |
+| 3.4 | Logout works from anywhere in the app and returns the visitor to the landing page.                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 3.5 | Invalid credentials show a generic error without revealing whether username or password failed.                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| 3.6 | A signed-in visitor opening `/login` is redirected straight to the sanitized intended destination (default `/feed`) instead of the form; switching accounts goes through logout (end-session) first.                                                                                                                                                                                                                                                                                                                      |
 
 ## 4. Posts
 
@@ -86,12 +87,14 @@ Acceptance-style catalogue of every user-facing feature area. "Must" = required 
 
 ## 8. Profiles
 
-| #   | Acceptance criteria                                                                                                  |
-| --- | -------------------------------------------------------------------------------------------------------------------- |
-| 8.1 | Any logged-in user can view any profile: avatar, display name, bio, posts, following, followers.                     |
-| 8.2 | Users can edit their own **displayName** and **bio** only — nothing else is user-editable.                           |
-| 8.3 | Bio carries a PII reminder (demo site; keep it non-personal).                                                        |
-| 8.4 | Profile data resets nightly like everything else (see [../data/03-data-lifecycle.md](../data/03-data-lifecycle.md)). |
+| #   | Acceptance criteria                                                                                                                                                                               |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 8.1 | Any logged-in user can view any profile: avatar, display name, bio, posts, following, followers.                                                                                                  |
+| 8.2 | Users can edit their own **displayName** and **bio** only — nothing else is user-editable.                                                                                                        |
+| 8.3 | Bio carries a PII reminder (demo site; keep it non-personal).                                                                                                                                     |
+| 8.4 | Profile data resets nightly like everything else (see [../data/03-data-lifecycle.md](../data/03-data-lifecycle.md)).                                                                              |
+| 8.5 | A demo-range username with no profile yet (never logged in since the reset) renders a "has not logged in yet" shell with next actions, not the generic 404; unknown non-demo usernames still 404. |
+| 8.6 | Empty states offer the next action: your own postless profile links to the feed (composer), your empty following list explains what following does, and the empty feed points at the composer.    |     |
 
 ## 9. Search
 

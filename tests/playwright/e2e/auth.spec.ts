@@ -82,10 +82,22 @@ test.describe('login flow', () => {
     await expect(page).toHaveURL(/\/login/);
   });
 
-  test('captcha failures surface as a login error message', async ({ page }) => {
+  test('challenge failures surface as a login error message', async ({ page }) => {
     // The full browser widget flow needs a CAP-enabled run (see PR notes);
     // this covers the error rendering path users see after a failed verify.
-    await page.goto('/login?error=captcha');
-    await expect(page.getByTestId('login-error')).toContainText(/captcha/i);
+    await page.goto('/login?error=challenge');
+    await expect(page.getByTestId('login-error')).toContainText(/verification/i);
+  });
+
+  test('an authenticated visit to /login redirects to the feed', async ({ page }) => {
+    await loginViaKeycloak(page, 'demo4', 'DemoPass123!');
+    await page.waitForURL(/\/feed$/);
+
+    // A live session has nothing to do on the login form (#40) - it would
+    // just start a second OIDC authorization. Switching accounts goes
+    // through logout (Keycloak end-session) first.
+    await page.goto('/login');
+    await page.waitForURL(/\/feed$/);
+    await expect(page.getByTestId('nav-username')).toHaveText('@demo4');
   });
 });

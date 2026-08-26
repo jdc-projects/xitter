@@ -4,6 +4,7 @@ import { ResetNotice } from '@xitter/ui';
 import { FaqContentPreview } from '@/components/cms/faq-content-preview';
 import { FaqList } from '@/components/cms/faq-list';
 import { PublicHeader } from '@/components/public-header';
+import { getSessionUsername } from '@/lib/auth/session';
 import { cmsEnv, loadFaq } from '@/lib/cms/content';
 import { resolvePreviewId } from '@/lib/cms/preview';
 
@@ -21,11 +22,13 @@ export default async function AboutPage({ searchParams }: AboutPageProps) {
 
   // Preview renders are per-request (drafts, uncached - spec 04 exposure).
   if (previewId !== undefined) await connection();
+  // Session-aware public header (#38); the page is already per-request.
+  const username = await getSessionUsername();
   const faq = await loadFaq({ draft: previewId !== undefined });
 
   return (
     <>
-      <PublicHeader />
+      <PublicHeader username={username} />
       <Container size="sm" py="xl">
         <Stack gap="lg">
           <Title order={1}>About</Title>

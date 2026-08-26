@@ -1,8 +1,19 @@
-import { Anchor, Badge, Container, Divider, Group, Stack, Text, Title } from '@mantine/core';
+import {
+  Anchor,
+  Badge,
+  Button,
+  Container,
+  Divider,
+  Group,
+  Stack,
+  Text,
+  Title,
+} from '@mantine/core';
 import { UserAvatar } from '@xitter/ui';
 import type { Metadata } from 'next';
 import { requireSession } from '@/lib/auth/session';
 import { toPostCardItems } from '@/lib/posts/cards';
+import { DormantProfile } from './dormant-profile';
 import { EditProfileForm } from './edit-profile-form';
 import { ProfileActions } from './profile-actions';
 import { ProfileTabLists } from './profile-tab-lists';
@@ -64,6 +75,41 @@ function ProfileTabs({
 }
 
 /**
+ * Posts-tab empty state (#43): your own postless profile points at the
+ * composer instead of dead-ending; anyone else's stays plain.
+ */
+function PostsTabEmpty({ isOwnProfile }: { isOwnProfile: boolean }) {
+  if (!isOwnProfile) {
+    return (
+      <Text size="sm" c="dimmed" data-testid="profile-posts-empty">
+        No posts yet.
+      </Text>
+    );
+  }
+  return (
+    <Stack gap="xs" align="flex-start" data-testid="profile-posts-empty">
+      <Text size="sm" c="dimmed">
+        You have not posted yet - say something on the feed.
+      </Text>
+      <Button component="a" href="/feed" size="xs" variant="light">
+        Go to the feed
+      </Button>
+    </Stack>
+  );
+}
+
+/** Follow-graph empty state (#43): your own empty following list explains why. */
+function PeopleTabEmpty({ isOwnFollowing }: { isOwnFollowing: boolean }) {
+  return (
+    <Text size="sm" c="dimmed" data-testid="profile-list-empty">
+      {isOwnFollowing
+        ? 'You are not following anyone yet - the feed only shows posts from accounts you follow.'
+        : 'Nobody here yet.'}
+    </Text>
+  );
+}
+
+/**
  * Profile page (#4): identity header, relationship actions, and the active
  * tab's list. Load more appends in place on the shared cursor pattern (#41)
  * - the old `?cursor=` anchor walks scrolled back to the top.
@@ -79,11 +125,11 @@ export default async function ProfilePage({
   const session = await requireSession(`/profile/${username}`);
   const { tab = 'posts' } = await searchParams;
 
-  const { view, profile, counts, listTab, list, posts, viewerFlags } = await loadProfileView(
-    session,
-    username,
-    tab as ProfileTab,
-  );
+  const data = await loadProfileView(session, username, tab as ProfileTab);
+  // Demo account that has never logged in (#36): empty-profile shell, not
+  // the generic 404.
+  if (data.dormant) return <DormantProfile username={data.username} />;
+  const { view, profile, counts, listTab, list, posts, viewerFlags } = data;
 
   // Card rows for the client-side lists (#41): hydrated server-side, page 1.
   const authorMap = new Map([[profile.id, profile]]);
@@ -173,9 +219,7 @@ export default async function ProfilePage({
             people={null}
           />
         ) : (
-          <Text size="sm" c="dimmed" data-testid="profile-posts-empty">
-            No posts yet.
-          </Text>
+          <PostsTabEmpty isOwnProfile={view.isOwnProfile} />
         )
       ) : null}
 
@@ -188,9 +232,7 @@ export default async function ProfilePage({
             people={peopleProps}
           />
         ) : (
-          <Text size="sm" c="dimmed" data-testid="profile-list-empty">
-            Nobody here yet.
-          </Text>
+          <PeopleTabEmpty isOwnFollowing={view.isOwnProfile && listTab === 'following'} />
         )
       ) : null}
     </Container>
