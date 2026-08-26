@@ -48,7 +48,11 @@ interface RedisPublisher {
 export class ValkeyInteractionRealtime implements InteractionRealtime {
   private connection?: RedisPublisher;
 
-  constructor(private readonly url: string) {}
+  constructor(
+    private readonly url: string,
+    /** Test seam: scripted connection factory (real wiring passes none). */
+    private readonly connectOverride?: () => Promise<RedisPublisher>,
+  ) {}
 
   async notifyAuthor(authorId: string): Promise<void> {
     try {
@@ -73,7 +77,9 @@ export class ValkeyInteractionRealtime implements InteractionRealtime {
     if (this.connection) return this.connection;
     // Same posture as the rate limiter: never block an interaction on a
     // degraded Valkey - handshake + leak-safety live in connectValkey.
-    this.connection = await connectValkey({ url: this.url });
+    this.connection = this.connectOverride
+      ? await this.connectOverride()
+      : await connectValkey({ url: this.url });
     return this.connection;
   }
 }

@@ -29,7 +29,11 @@ interface RedisPublisher {
 export class ValkeyFeedRealtime implements FeedRealtime {
   private connection?: RedisPublisher;
 
-  constructor(private readonly url: string) {}
+  constructor(
+    private readonly url: string,
+    /** Test seam: scripted connection factory (real wiring passes none). */
+    private readonly connectOverride?: () => Promise<RedisPublisher>,
+  ) {}
 
   async notify(userIds: string[]): Promise<void> {
     if (userIds.length === 0) return;
@@ -56,7 +60,9 @@ export class ValkeyFeedRealtime implements FeedRealtime {
     // Same posture as the rate limiter: fail fast while Valkey is down -
     // notifications are a UX hint, never worth blocking a request on.
     // Handshake + leak-safety live in the shared connectValkey helper.
-    this.connection = await connectValkey({ url: this.url });
+    this.connection = this.connectOverride
+      ? await this.connectOverride()
+      : await connectValkey({ url: this.url });
     return this.connection;
   }
 }
