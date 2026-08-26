@@ -216,6 +216,28 @@ describe('media HTTP wiring', () => {
     expect(variants.statusCode).toBe(200);
     expect(variants.json()).toMatchObject({ status: 'ready' });
 
+    // Worker-facing state read + failure report (redelivery idempotency).
+    const state = await app.inject({ method: 'GET', url: `/api/media/internal/media/${MEDIA_ID}` });
+    expect(state.statusCode).toBe(200);
+    expect(state.json()).toMatchObject({ id: MEDIA_ID, objectKey: expect.any(String) });
+
+    const failure = await app.inject({
+      method: 'POST',
+      url: `/api/media/internal/media/${MEDIA_ID}/failure`,
+      payload: { error: 'sharp exploded' },
+    });
+    expect(failure.statusCode).toBe(200);
+    // The failure response is the public asset shape: pending until the cap,
+    // and storage coordinates/attempts stay on the internal GET only.
+    expect(failure.json()).toMatchObject({ id: MEDIA_ID, status: 'pending' });
+    expect(failure.json()).not.toHaveProperty('attempts');
+
+    const missingState = await app.inject({
+      method: 'GET',
+      url: `/api/media/internal/media/${MISSING_ID}`,
+    });
+    expect(missingState.statusCode).toBe(404);
+
     const reseed = await app.inject({ method: 'POST', url: '/api/media/internal/reseed' });
     expect(reseed.statusCode).toBe(200);
     expect(reseed.json()).toEqual({ ok: true });

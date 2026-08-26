@@ -65,7 +65,12 @@ describe('MediaServiceChecker', () => {
 
     await expect(checker.resolveForAttach(OWNER, [MEDIA_ID])).rejects.toMatchObject({
       status: 503,
-      response: { error: { code: 'INTERNAL' } },
+      response: {
+        error: {
+          code: 'INTERNAL',
+          message: 'Cannot verify attached images right now - try again shortly',
+        },
+      },
     });
   });
 

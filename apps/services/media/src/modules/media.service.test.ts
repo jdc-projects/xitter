@@ -26,6 +26,7 @@ const row = (overrides: Partial<MediaRow> = {}): MediaRow => ({
 function makeDeps(
   statBytes: number | null = 1024,
   statContentType: string | undefined = 'image/png',
+  options: { removeFails?: boolean } = {},
 ) {
   const rows = new Map<string, MediaRow>();
   const emitted: [string, Record<string, unknown>][] = [];
@@ -85,6 +86,9 @@ function makeDeps(
     put: () => Promise.resolve(),
     remove: (objectKey) => {
       removed.push(objectKey);
+      // Object cleanup is best-effort: a failing RustFS must not turn the
+      // rejection/cap transition into a 500 (the bucket wipe catches up).
+      if (options.removeFails) return Promise.reject(new Error('rustfs down'));
       return Promise.resolve();
     },
   };
@@ -102,6 +106,7 @@ function makeDeps(
     service: new MediaService(repo, storage, events),
     rows,
     repo,
+    events,
     emitted,
     presigned,
     removed,
@@ -236,6 +241,17 @@ describe('complete (server-side verification)', () => {
     expect(emitted).toHaveLength(0);
   });
 
+  it('still fails the upload when the rejected object cannot be removed', async () => {
+    const { service, rows, emitted } = makeDeps(MEDIA_MAX_BYTES + 1, 'image/png', {
+      removeFails: true,
+    });
+    const slot = await service.createUpload(OWNER, { mimeType: 'image/png', bytes: 512 });
+
+    await expect(service.complete(OWNER, slot.mediaId)).rejects.toMatchObject({ status: 400 });
+    expect(rows.get(slot.mediaId)).toMatchObject({ status: 'failed' });
+    expect(emitted).toHaveLength(0);
+  });
+
   it('is idempotent: a repeat complete does not re-emit the event', async () => {
     const { service, emitted } = makeDeps();
     const slot = await service.createUpload(OWNER, { mimeType: 'image/png', bytes: 512 });
@@ -266,6 +282,30 @@ describe('complete (server-side verification)', () => {
 });
 
 describe('variant recording (worker callbacks)', () => {
+  it('a failed event emission never fails the committed mutation', async () => {
+    const deps = makeDeps();
+    deps.events.emit = () => Promise.reject(new Error('kafka down'));
+    const slot = await deps.service.createUpload(OWNER, { mimeType: 'image/png', bytes: 512 });
+
+    // markUploaded commits; the missed media.uploaded event only stalls the
+    // asset in pending until the nightly reset.
+    const asset = await deps.service.complete(OWNER, slot.mediaId);
+    expect(asset.status).toBe('pending');
+    expect(deps.rows.get(slot.mediaId)!.uploadedAt).toBeInstanceOf(Date);
+    expect(deps.emitted).toHaveLength(0);
+  });
+
+  it('recordVariants commits ready even when the processed event cannot be emitted', async () => {
+    const deps = makeDeps();
+    deps.events.emit = () => Promise.reject(new Error('kafka down'));
+    const slot = await deps.service.createUpload(OWNER, { mimeType: 'image/png', bytes: 512 });
+
+    const asset = await deps.service.recordVariants(slot.mediaId, [validVariant]);
+
+    expect(asset.status).toBe('ready');
+    expect(deps.rows.get(slot.mediaId)).toMatchObject({ status: 'ready' });
+  });
+
   it('flips to ready, emits processed, and serves /media urls', async () => {
     const { service, emitted } = makeDeps();
     const slot = await service.createUpload(OWNER, { mimeType: 'image/png', bytes: 512 });
@@ -328,6 +368,20 @@ describe('variant recording (worker callbacks)', () => {
     }
 
     expect(removed).toEqual([`${OWNER}/${slot.mediaId}/original.png`]);
+  });
+
+  it('still flips to failed when the dead object cannot be removed', async () => {
+    const { service, rows } = makeDeps(1024, 'image/png', { removeFails: true });
+    const slot = await service.createUpload(OWNER, { mimeType: 'image/png', bytes: 512 });
+
+    for (let attempt = 1; attempt <= MAX_PROCESS_ATTEMPTS; attempt++) {
+      const asset = await service.reportFailure(slot.mediaId, 'sharp could not decode');
+      expect(asset.status).toBe(attempt === MAX_PROCESS_ATTEMPTS ? 'failed' : 'pending');
+    }
+    expect(rows.get(slot.mediaId)).toMatchObject({
+      status: 'failed',
+      attempts: MAX_PROCESS_ATTEMPTS,
+    });
   });
 });
 

@@ -338,6 +338,22 @@ describe('media outage during post-create (fail-closed attach)', () => {
     expect(posts.size).toBe(1); // exactly the retried row - no orphan from the outage
     expect(events.calls).toHaveLength(1);
   });
+
+  it('service-level validation rejects non-http callers without writing a row', async () => {
+    const { repo, posts } = fakeRepo();
+    const service = new PostsService(
+      repo,
+      spyEvents(),
+      allowAll,
+      new NullMediaChecker(),
+      new NullInteractionRealtime(),
+    );
+
+    await expect(
+      service.create(WRITER, { text: '', mediaIds: [], replyToId: null }),
+    ).rejects.toMatchObject({ response: { error: { code: 'VALIDATION_ERROR' } } });
+    expect(posts.size).toBe(0); // the 1..512 rule holds for seed/internal callers too
+  });
 });
 
 describe('PostsService rules', () => {
