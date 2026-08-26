@@ -6,7 +6,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { feedUpdatesChannel } from '@xitter/api-contracts';
 import type { AuthContext, TokenVerifier } from '@xitter/auth';
-import { FeedGateway, FEED_WS_PATH, type FeedGatewayOptions, type RedisSubscriber } from './feed.gateway.js';
+import {
+  FeedGateway,
+  FEED_WS_PATH,
+  type FeedGatewayOptions,
+  type RedisSubscriber,
+} from './feed.gateway.js';
 import { ValkeyFeedRealtime, feedChannel } from './feed-realtime.js';
 
 const USER = '00000000-0000-4000-8000-0000000000f1';
@@ -16,7 +21,11 @@ const STRANGER = '00000000-0000-4000-8000-0000000000e2';
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Poll until true - deterministic waits for async gateway internals. */
-async function waitFor(check: () => boolean, label = 'condition', timeoutMs = 2_000): Promise<void> {
+async function waitFor(
+  check: () => boolean,
+  label = 'condition',
+  timeoutMs = 2_000,
+): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (!check()) {
     if (Date.now() > deadline) throw new Error(`timed out waiting for ${label}`);
@@ -97,9 +106,7 @@ function connect(
 }
 
 function nextMessage(ws: WebSocket): Promise<unknown> {
-  return new Promise((resolve) =>
-    ws.once('message', (data) => resolve(JSON.parse(String(data)))),
-  );
+  return new Promise((resolve) => ws.once('message', (data) => resolve(JSON.parse(String(data)))));
 }
 
 /**
@@ -212,7 +219,10 @@ function fakeValkeyBus() {
   const subscribers: { patterns: string[]; listeners: Listener[] }[] = [];
   return {
     /** Publisher connection (ValkeyFeedRealtime's structural slice). */
-    async connect(): Promise<{ publish(channel: string, message: string): Promise<number> }> {
+    async connect(): Promise<{
+      publish(channel: string, message: string): Promise<number>;
+      quit(): Promise<'OK'>;
+    }> {
       return {
         async publish(channel: string, message: string) {
           for (const subscriber of subscribers) {
@@ -221,11 +231,15 @@ function fakeValkeyBus() {
                 ? channel.startsWith(pattern.slice(0, -1))
                 : pattern === channel;
               if (matched) {
-                for (const listener of [...subscriber.listeners]) listener(pattern, channel, message);
+                for (const listener of [...subscriber.listeners])
+                  listener(pattern, channel, message);
               }
             }
           }
           return 1;
+        },
+        async quit() {
+          return 'OK';
         },
       };
     },
