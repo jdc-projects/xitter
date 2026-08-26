@@ -7,9 +7,9 @@ import { documentFromPostCreated, tombstoneFromPostDeleted, UNKNOWN_AUTHOR } fro
 const logger = createLogger({ service: 'search-index-worker' });
 
 /** Contract ceilings (@xitter/api-contracts): bulk upsert / lookup / rename. */
-export const UPSERT_MAX = 1000;
-export const PROFILES_LOOKUP_MAX = 100;
-export const AUTHORS_REFRESH_MAX = 100;
+const UPSERT_MAX = 1000;
+const PROFILES_LOOKUP_MAX = 100;
+const AUTHORS_REFRESH_MAX = 100;
 
 /** What the worker needs from the search internal API (test seam). */
 export interface SearchApi {
@@ -61,7 +61,7 @@ export interface PendingBatch {
   last?: { eventId: string; eventAt: string; offset: number };
 }
 
-export function emptyBatch(): PendingBatch {
+function emptyBatch(): PendingBatch {
   return { documents: [], authorIds: [], renames: new Map() };
 }
 
