@@ -12,6 +12,7 @@ import {
 import type { Post } from '@xitter/api-contracts';
 import { interactAction } from '@/lib/posts/actions';
 import { imagesFor } from '@/lib/media/images';
+import { PostOverflowMenu } from './post-overflow-menu';
 
 export interface PostInteractionsProps {
   /** PostCard payload (serializable - this component owns the handlers). */
@@ -25,8 +26,14 @@ export interface PostInteractionsProps {
   replyToAuthor?: PostCardUser;
   /** Card images variant: thumbs in lists, originals on the detail page. */
   variant?: 'thumb' | 'original';
-  /** Detail-page link (the action row stays outside the anchor for a11y). */
+  /** Detail-page link: navigation rides the card's stretched overlay link. */
   href?: string;
+  /** Viewer's own post: render the owner-only overflow menu on the card. */
+  canDelete?: boolean;
+  /** Profile to revalidate after a delete (the card's host page). */
+  username?: string;
+  /** Redirect target after a delete (detail pages navigate away). */
+  goTo?: string;
 }
 
 /**
@@ -44,6 +51,9 @@ export function PostInteractions({
   replyToAuthor,
   variant = 'thumb',
   href,
+  canDelete = false,
+  username,
+  goTo,
 }: PostInteractionsProps) {
   const [optimistic, setOptimistic] = useState<PostCardViewer>(viewer);
   const [busy, setBusy] = useState<PostCardInteractionKind[]>([]);
@@ -90,6 +100,11 @@ export function PostInteractions({
         repostedBy={repostedBy}
         replyingTo={replyToAuthor}
         href={href}
+        actions={
+          canDelete ? (
+            <PostOverflowMenu postId={post.id} username={username} goTo={goTo} />
+          ) : undefined
+        }
       />
       {error ? (
         <Alert color="red" py={4} px="sm" mt={4} data-testid={`interact-error-${post.id}`}>

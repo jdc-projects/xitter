@@ -6,7 +6,6 @@ import { ApiError } from '@xitter/api-client';
 import { requireSession } from '@/lib/auth/session';
 import { PostComposer } from '@/components/post-composer';
 import { PostInteractions } from '@/components/post-interactions';
-import { DeletePostButton } from '@/components/delete-post-button';
 import { toThreadItems, threadTreePosts } from '@/lib/posts/cards';
 import { clientsForSession, profilesByAuthorIds, viewerStateByPostId } from '@/lib/posts/server';
 import { AncestorChain } from './ancestor-chain';
@@ -91,11 +90,12 @@ export default async function PostDetailPage({ params }: { params: Promise<{ pos
             author={author}
             viewer={flagsOf(thread.focus.id)}
             variant="original"
+            canDelete={thread.focus.authorId === session.subject}
+            username={author.username}
+            goTo="/feed"
           />
         </div>
-        {thread.focus.authorId === session.subject ? (
-          <DeletePostButton postId={thread.focus.id} username={author.username} goTo="/feed" />
-        ) : null}
+
 
         <Divider my="xs" />
 

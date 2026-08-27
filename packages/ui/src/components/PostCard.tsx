@@ -1,7 +1,7 @@
 'use client';
 
-import { Anchor } from '@mantine/core';
-import { Card, Group, Image, SimpleGrid, Stack, Text, UnstyledButton } from '@mantine/core';
+import type { ReactNode } from 'react';
+import { Anchor, Card, Group, Image, SimpleGrid, Stack, Text, UnstyledButton } from '@mantine/core';
 import { IconBookmark, IconHeart, IconMessageCircle, IconRepeat } from '@tabler/icons-react';
 import { UserAvatar } from './UserAvatar';
 import { RelativeTime } from './RelativeTime';
@@ -52,9 +52,11 @@ export interface PostCardProps {
   /** Reply context line ("Replying to @x") for replies rendered in lists (#147). */
   replyingTo?: PostCardUser;
   /**
-   * Detail-page link for the card's content (header/text/images). The action
-   * row stays OUTSIDE the anchor - nested interactive controls are invalid
-   * HTML and an axe violation.
+   * Detail-page link. The card itself is NOT an anchor (#142): a stretched
+   * overlay link (empty, absolutely positioned over the card) provides the
+   * navigation. No card text lives inside the anchor, so the browser
+   * :visited colour can never bleed onto it, and interactive controls
+   * never nest inside a link.
    */
   href?: string;
   /**
@@ -64,6 +66,11 @@ export interface PostCardProps {
    * selection stays with the caller's `images` prop.
    */
   variant?: 'thumb' | 'original' | 'ancestor';
+  /**
+   * Card-level controls (owner's overflow menu, #146), rendered top-right
+   * above the overlay link so they stay clickable.
+   */
+  actions?: ReactNode;
 }
 
 // aria-hidden: the glyphs are decorative - the adjacent label text (nav
@@ -113,6 +120,7 @@ export function PostCard({
   replyingTo,
   href,
   variant,
+  actions,
 }: PostCardProps) {
   const interactButton = (kind: PostCardInteractionKind, count: number | null, testId: string) => {
     const active =
@@ -146,6 +154,9 @@ export function PostCard({
         aria-label={label}
         title={label}
         data-testid={testId}
+        // Above the stretched overlay link (#142): a positioned element so
+        // clicks reach the button, not the card's navigation link.
+        style={{ position: 'relative', zIndex: 2 }}
         onClick={() => onInteract(kind, Boolean(active))}
       >
         {body}
@@ -167,7 +178,16 @@ export function PostCard({
             </Text>
           </Stack>
         </Group>
-        <RelativeTime date={post.createdAt} />
+        <Group wrap="nowrap" gap="xs" align="flex-start">
+          <RelativeTime date={post.createdAt} />
+          {actions ? (
+            // Above the stretched overlay link so the controls stay
+            // clickable (#146); anything else in the card navigates.
+            <Group gap={0} pos="relative" style={{ zIndex: 2 }}>
+              {actions}
+            </Group>
+          ) : null}
+        </Group>
       </Group>
 
       {repostedBy ? (
@@ -245,14 +265,26 @@ export function PostCard({
   }
 
   return (
-    <Card withBorder padding="sm" radius="md" data-testid={`post-${post.id}`}>
+    <Card
+      withBorder
+      padding="sm"
+      radius="md"
+      data-testid={`post-${post.id}`}
+      style={{ position: 'relative' }}
+    >
       {href ? (
-        <Anchor href={href} unstyled style={{ textDecoration: 'none', display: 'block' }}>
-          {content}
-        </Anchor>
-      ) : (
-        content
-      )}
+        // Stretched link (#142): empty of text nodes, so the browser
+        // :visited colour applies to nothing visible. Keyboard focus lands
+        // here first (no outline overrides - the default ring shows).
+        <Anchor
+          href={href}
+          unstyled
+          aria-label={`View post by @${author.username}`}
+          data-testid={`post-link-${post.id}`}
+          style={{ position: 'absolute', inset: 0, zIndex: 1 }}
+        />
+      ) : null}
+      {content}
 
       <Group mt="sm" gap="lg">
         <Text
