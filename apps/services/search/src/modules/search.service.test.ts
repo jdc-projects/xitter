@@ -36,6 +36,10 @@ interface SeedDoc {
   live: boolean;
   /** false = author profile vanished: a placeholder author renders. */
   profileKnown: boolean;
+  /** Set = this post is a reply; the parent author drives replyToAuthor (#147). */
+  replyToId?: string;
+  /** false = the reply's parent post vanished: context renders as null (#147). */
+  parentLive?: boolean;
 }
 
 const seed = (
@@ -58,7 +62,7 @@ const postFrom = (doc: SeedDoc): Post => ({
   authorId: doc.authorId,
   text: doc.text,
   media: [],
-  replyToId: null,
+  replyToId: doc.replyToId ?? null,
   repostOfId: null,
   counts: { replies: 0, likes: 0, reposts: 0 },
   createdAt: doc.createdAt,
@@ -254,8 +258,34 @@ describe('SearchService.searchPosts page assembly', () => {
       author: content.profileStore.get(docs[2]!.authorId)!,
       reason: 'post', // search results are plain posts, never repost entries
       repostedBy: null,
+      replyToAuthor: null,
     });
     expect(index.calls).toEqual([{ q: 'needle', limit: 3, after: null, excludeAuthorIds: [] }]);
+  });
+
+  it('hydrates the reply-target author for replies, batched (#147)', async () => {
+    const parent = seed('1101', '2001', 1);
+    const reply = seed('1102', '2002', 2, { replyToId: parent.postId });
+    const { content, service } = harness([parent, reply]);
+
+    const page = await service.searchPosts(VIEWER, { q: 'needle', limit: 10 });
+
+    const hydrated = page.items.find((item) => item.post.id === reply.postId)!;
+    expect(hydrated.replyToAuthor).toEqual(profileFor(parent.authorId));
+    // Batched: one posts lookup for the hits, ONE more for their reply
+    // targets - never a lookup per hit.
+    expect(content.postsCalls).toHaveLength(2);
+    expect(content.postsCalls[1]).toEqual([parent.postId]);
+  });
+
+  it('renders replies without context when the parent post is gone (#147)', async () => {
+    const reply = seed('1102', '2002', 2, { replyToId: uid('1101') });
+    const { service } = harness([reply]);
+
+    const page = await service.searchPosts(VIEWER, { q: 'needle', limit: 10 });
+
+    const hydrated = page.items.find((item) => item.post.id === reply.postId)!;
+    expect(hydrated.replyToAuthor).toBeNull();
   });
 
   it('matches the requested query text (non-matching posts never render)', async () => {

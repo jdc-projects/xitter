@@ -11,6 +11,8 @@ export interface PostCardItem {
   post: Post;
   author: { id: string; username: string; displayName: string };
   viewer?: { liked?: boolean; reposted?: boolean; bookmarked?: boolean };
+  /** Reply context ("Replying to @x") for replies in the list (#147). */
+  replyToAuthor?: { id: string; username: string; displayName: string };
   canDelete?: boolean;
   /** Profile to revalidate after a delete (the card's host page). */
   username?: string;
@@ -54,6 +56,7 @@ export function PaginatedPostList({
             post={item.post}
             author={item.author}
             viewer={item.viewer}
+            replyToAuthor={item.replyToAuthor}
             canDelete={item.canDelete}
             username={item.username}
             goTo={item.goTo}

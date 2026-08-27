@@ -12,6 +12,10 @@ export interface PostListItemProps {
   viewer?: { liked?: boolean; reposted?: boolean; bookmarked?: boolean };
   /** Repost attribution (feed repost entries). */
   repostedBy?: { id: string; username: string; displayName: string };
+  /** Reply context ("Replying to @x") for replies rendered in lists (#147). */
+  replyToAuthor?: { id: string; username: string; displayName: string };
+  /** #148a: optimistic entry (own fresh post) - renders slightly dimmed. */
+  pending?: boolean;
   /** Viewer's own post: render the delete affordance. */
   canDelete?: boolean;
   /** Profile to revalidate after a delete (the card's host page). */
@@ -30,7 +34,9 @@ export function PostListItem({
   author,
   viewer,
   repostedBy,
+  replyToAuthor,
   canDelete = false,
+  pending = false,
   username,
   goTo,
 }: PostListItemProps) {
@@ -39,12 +45,15 @@ export function PostListItem({
       // Disambiguated for the post-appears-twice case (own entry + repost
       // entry): selectors stay unique per feed row.
       data-testid={`post-item-${post.id}${repostedBy ? `-repost-${repostedBy.id}` : ''}`}
+      data-pending={pending ? 'true' : undefined}
+      style={pending ? { opacity: 0.75 } : undefined}
     >
       <PostInteractions
         post={post}
         author={author}
         viewer={viewer ?? {}}
         repostedBy={repostedBy}
+        replyToAuthor={replyToAuthor}
         variant="thumb"
         href={`/post/${post.id}`}
       />

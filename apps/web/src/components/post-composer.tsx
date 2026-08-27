@@ -15,6 +15,7 @@ import {
 } from '@mantine/core';
 import { IconPhoto, IconX } from '@tabler/icons-react';
 import { useActionState, useEffect, useRef, useState } from 'react';
+import type { Post } from '@xitter/api-contracts';
 import {
   MEDIA_ALT_TEXT_MAX,
   MEDIA_MAX_BYTES,
@@ -28,6 +29,12 @@ import { createPostAction, type ComposerResult } from '@/lib/posts/actions';
 const iconProps = { size: 18, stroke: 1.5, 'aria-hidden': true } as const;
 const closeIconProps = { size: 14, 'aria-hidden': true } as const;
 
+/** A successful compose, as handed to `onPosted` (#148). */
+export interface ComposerPosted {
+  post: Post;
+  author: { id: string; username: string; displayName: string };
+}
+
 export interface PostComposerProps {
   /** Set when composing a reply inline on a post detail page. */
   replyToId?: string;
@@ -35,6 +42,11 @@ export interface PostComposerProps {
   submitLabel?: string;
   /** Testid prefix so feed and reply composers are distinguishable in e2e. */
   testId?: string;
+  /**
+   * Fired once per successful submission with the created post (#148) -
+   * the feed prepends it optimistically instead of waiting on fanout.
+   */
+  onPosted?: (posted: ComposerPosted) => void;
 }
 
 type AttachmentStatus = 'new' | 'uploading' | 'processing' | 'ready' | 'failed';
@@ -183,6 +195,7 @@ export function PostComposer({
   placeholder = "What's happening?",
   submitLabel = 'Post',
   testId = 'composer',
+  onPosted,
 }: PostComposerProps) {
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -214,6 +227,20 @@ export function PostComposer({
     setAttachments([]);
     setUploadError(null);
   }
+
+  // Hand each successful result to the host surface (#148) - in an effect,
+  // not during render: the parent's state update must not fire while this
+  // component is still rendering. useActionState returns a fresh object per
+  // submission, so each success fires exactly once.
+  const onPostedRef = useRef(onPosted);
+  useEffect(() => {
+    onPostedRef.current = onPosted;
+  }, [onPosted]);
+  useEffect(() => {
+    if (state?.ok && state.post && state.author) {
+      onPostedRef.current?.({ post: state.post, author: state.author });
+    }
+  }, [state]);
 
   const overLimit = text.length > POST_TEXT_MAX;
   /** Bare ids when no alt was written, `{mediaId, altText}` entries when it was. */

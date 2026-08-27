@@ -68,9 +68,9 @@ Allowed types `png/jpeg/webp/gif`, max 5MB per file, max 4 media per post. Slot 
 
 Owns prefix `/api/feed`. Content rule: only posts from followed authors plus the caller's own posts, most recent first.
 
-| Method | Path       | Auth | Description                                                                                           | Key fields                                              |
-| ------ | ---------- | ---- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| GET    | `/v1/feed` | user | Materialised home timeline; entries joined server-side with social (profiles) and posts (post bodies) | req `cursor?`, `limit?` → paginated hydrated feed items |
+| Method | Path       | Auth | Description                                                                                                                                                                                                                                                                                                   | Key fields                                              |
+| ------ | ---------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| GET    | `/v1/feed` | user | Materialised home timeline; entries joined server-side with social (profiles) and posts (post bodies). Repost entries carry the reposter (`repostedBy`) for attribution; replies carry the reply-target's author (`replyToAuthor`, null when the parent is gone) for the "Replying to @x" context line (#147) | req `cursor?`, `limit?` → paginated hydrated feed items |
 
 ### WebSocket contract
 

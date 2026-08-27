@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { HydratedFeedItem, SearchIndexDocument } from '@xitter/api-contracts';
+import type { HydratedFeedItem, Post, SearchIndexDocument } from '@xitter/api-contracts';
 import {
   assertValidCursor,
   decodeCursor,
@@ -129,7 +129,20 @@ export class SearchService {
   private async hydrate(hits: PostHit[]): Promise<HydratedFeedItem[]> {
     if (hits.length === 0) return [];
     const posts = await this.content.posts([...new Set(hits.map((hit) => hit.postId))]);
-    const profiles = await this.content.profiles([...new Set(hits.map((hit) => hit.authorId))]);
+    // Reply context (#147): one batched lookup for the reply targets so
+    // their authors ride the profile batch - never per-hit.
+    const replyToIds = [
+      ...new Set([...posts.values()].flatMap((post) => (post.replyToId ? [post.replyToId] : []))),
+    ];
+    const parents = replyToIds.length
+      ? await this.content.posts(replyToIds)
+      : new Map<string, Post>();
+    const profiles = await this.content.profiles([
+      ...new Set([
+        ...hits.map((hit) => hit.authorId),
+        ...[...parents.values()].map((parent) => parent.authorId),
+      ]),
+    ]);
 
     const items: HydratedFeedItem[] = [];
     for (const hit of hits) {
@@ -137,11 +150,15 @@ export class SearchService {
       if (!post) continue; // deleted since indexed - dropped, not rendered
       // Search results are plain posts - not feed entries - so the entry
       // metadata the shared type now carries is fixed here.
+      // A missing parent (deleted since the reply was written) renders the
+      // reply WITHOUT context rather than dropping it.
+      const parent = post.replyToId ? parents.get(post.replyToId) : undefined;
       items.push({
         post,
         author: profileOrPlaceholder(hit.authorId, profiles),
         reason: 'post',
         repostedBy: null,
+        replyToAuthor: parent ? profileOrPlaceholder(parent.authorId, profiles) : null,
       });
     }
     return items;

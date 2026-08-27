@@ -34,12 +34,17 @@ const entry = (overrides: Partial<FeedEntryRow> = {}): FeedEntryRow => {
   return merged;
 };
 
-const post = (id: string, authorId: string, createdAt: Date): Post => ({
+const post = (
+  id: string,
+  authorId: string,
+  createdAt: Date,
+  replyToId: string | null = null,
+): Post => ({
   id,
   authorId,
   text: `post ${id}`,
   media: [],
-  replyToId: null,
+  replyToId,
   repostOfId: null,
   counts: { replies: 0, likes: 0, reposts: 0 },
   createdAt: createdAt.toISOString(),
@@ -441,6 +446,74 @@ describe('FeedService.getFeed', () => {
     // Attribution comes from the entry, not the post's own author.
     expect(item.author.id).toBe(FOLLOWEE);
     expect(item.post.authorId).toBe(BLOCKED);
+  });
+
+  it('hydrates the reply-target author for replies, batched (#147)', async () => {
+    const { repo } = fakeRepo();
+    const hydrator = fakeHydrator();
+    const at = new Date('2026-08-18T13:00:00Z');
+    const parentAt = new Date('2026-08-18T11:00:00Z');
+    const replyId = '00000000-0000-4000-8000-000000000054';
+    const parentId = '00000000-0000-4000-8000-000000000055';
+    const topLevel = entry({
+      postId: '00000000-0000-4000-8000-000000000056',
+      postCreatedAt: new Date('2026-08-18T12:00:00Z'),
+    });
+    const reply = entry({ postId: replyId, postCreatedAt: at });
+    await repo.upsertEntries([reply, topLevel]);
+    hydrator.store.posts.set(parentId, post(parentId, BLOCKED, parentAt));
+    hydrator.store.posts.set(replyId, post(replyId, FOLLOWEE, at, parentId));
+    hydrator.store.posts.set(
+      topLevel.postId,
+      post(topLevel.postId, FOLLOWEE, topLevel.postCreatedAt),
+    );
+    hydrator.store.profiles.set(FOLLOWEE, profile(FOLLOWEE));
+    hydrator.store.profiles.set(BLOCKED, profile(BLOCKED));
+    const postsSpy = vi.spyOn(hydrator, 'posts');
+
+    const service = new FeedService(
+      repo,
+      hydrator,
+      spyRealtime(),
+      new CheckpointRepository(fakeCheckpointDb()),
+    );
+    const page = await service.getFeed(OWNER, { limit: 20 });
+
+    const hydratedReply = page.items.find((item) => item.post.id === replyId)!;
+    // The context line's author is the PARENT's author, not the reply's.
+    expect(hydratedReply.replyToAuthor?.id).toBe(BLOCKED);
+    expect(hydratedReply.replyToAuthor?.username).toBe('user');
+    expect(page.items.find((item) => item.post.id === topLevel.postId)!.replyToAuthor).toBeNull();
+    // Batched: one posts lookup for the entries, ONE more for their reply
+    // targets - never a lookup per entry.
+    expect(postsSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('renders replies without context when the parent post is gone (#147)', async () => {
+    const { repo } = fakeRepo();
+    const hydrator = fakeHydrator();
+    const at = new Date('2026-08-18T13:00:00Z');
+    const replyId = '00000000-0000-4000-8000-000000000057';
+    const reply = entry({ postId: replyId, postCreatedAt: at });
+    await repo.upsertEntries([reply]);
+    // Parent deleted since fanout: absent from the posts lookup.
+    hydrator.store.posts.set(
+      replyId,
+      post(replyId, FOLLOWEE, at, '00000000-0000-4000-8000-000000000058'),
+    );
+    hydrator.store.profiles.set(FOLLOWEE, profile(FOLLOWEE));
+
+    const service = new FeedService(
+      repo,
+      hydrator,
+      spyRealtime(),
+      new CheckpointRepository(fakeCheckpointDb()),
+    );
+    const page = await service.getFeed(OWNER, { limit: 20 });
+
+    // The reply still renders - minus the context line.
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0]!.replyToAuthor).toBeNull();
   });
 
   it('drops reposts whose ORIGINAL author the viewer blocked (hydration filter)', async () => {

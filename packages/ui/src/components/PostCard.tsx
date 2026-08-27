@@ -49,6 +49,8 @@ export interface PostCardProps {
   busyKinds?: PostCardInteractionKind[];
   /** Attribution line for reposts ("X reposted"). */
   repostedBy?: PostCardUser;
+  /** Reply context line ("Replying to @x") for replies rendered in lists (#147). */
+  replyingTo?: PostCardUser;
   /**
    * Detail-page link for the card's content (header/text/images). The action
    * row stays OUTSIDE the anchor - nested interactive controls are invalid
@@ -101,6 +103,7 @@ export function PostCard({
   onInteract,
   busyKinds = [],
   repostedBy,
+  replyingTo,
   href,
 }: PostCardProps) {
   const interactButton = (kind: PostCardInteractionKind, count: number | null, testId: string) => {
@@ -162,6 +165,12 @@ export function PostCard({
       {repostedBy ? (
         <Text size="xs" c="dimmed" mt={4} data-testid={`post-repost-attribution-${post.id}`}>
           {repostedBy.displayName} reposted
+        </Text>
+      ) : null}
+
+      {replyingTo ? (
+        <Text size="xs" c="dimmed" mt={4} data-testid={`post-reply-context-${post.id}`}>
+          Replying to @{replyingTo.username}
         </Text>
       ) : null}
 

@@ -1,8 +1,15 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MantineProvider, createTheme } from '@mantine/core';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { MEDIA_ALT_TEXT_MAX } from '@xitter/api-contracts';
 import { PostComposer } from './post-composer';
+
+// #148: the composer hands each successful result to the host surface; the
+// action itself is a seam - stub its result per test.
+const composerAction = vi.hoisted(() => ({ result: undefined as unknown }));
+vi.mock('@/lib/posts/actions', () => ({
+  createPostAction: vi.fn(async () => composerAction.result as never),
+}));
 
 // happy-dom ships no ResizeObserver (Mantine autosize) nor document.fonts
 // (the autosize font listener) - stub the pieces the composer needs.
@@ -38,6 +45,69 @@ function pick(file: File) {
   const input = screen.getByTestId('composer-file-input') as HTMLInputElement;
   fireEvent.change(input, { target: { files: [file] } });
 }
+
+describe('PostComposer onPosted (#148)', () => {
+  const created = {
+    id: '33333333-3333-4333-8333-333333333333',
+    authorId: 'v1',
+    text: 'hello fresh',
+    media: [],
+    replyToId: null,
+    repostOfId: null,
+    counts: { replies: 0, likes: 0, reposts: 0 },
+    createdAt: '2026-08-27T12:00:00.000Z',
+    deletedAt: null,
+  };
+  const author = { id: 'v1', username: 'viewer', displayName: 'Viewer' };
+
+  it('fires onPosted once with the created post after a successful submit', async () => {
+    composerAction.result = { ok: true, post: created, author };
+    const onPosted = vi.fn();
+    render(
+      <MantineProvider theme={createTheme({})}>
+        <PostComposer onPosted={onPosted} />
+      </MantineProvider>,
+    );
+
+    fireEvent.change(screen.getByTestId('composer-textarea'), {
+      target: { value: created.text },
+    });
+    fireEvent.submit(screen.getByTestId('composer-form'));
+
+    // runSubmit defers the real submission to a macrotask; the action result
+    // then lands in useActionState state, which the effect hands over.
+    await waitFor(() => {
+      expect(onPosted).toHaveBeenCalledTimes(1);
+    });
+    expect(onPosted).toHaveBeenCalledWith({ post: created, author });
+    // The draft cleared with the same success.
+    expect((screen.getByTestId('composer-textarea') as HTMLTextAreaElement).value).toBe('');
+  });
+
+  it('never fires onPosted for a failed submission', async () => {
+    composerAction.result = { error: 'Could not publish your post. Try again shortly.' };
+    const onPosted = vi.fn();
+    render(
+      <MantineProvider theme={createTheme({})}>
+        <PostComposer onPosted={onPosted} />
+      </MantineProvider>,
+    );
+
+    fireEvent.change(screen.getByTestId('composer-textarea'), {
+      target: { value: 'never lands' },
+    });
+    fireEvent.submit(screen.getByTestId('composer-form'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('composer-error').textContent).toContain('Could not publish');
+    });
+    expect(onPosted).not.toHaveBeenCalled();
+    // Failure keeps the draft (acceptance: draft preserved).
+    expect((screen.getByTestId('composer-textarea') as HTMLTextAreaElement).value).toBe(
+      'never lands',
+    );
+  });
+});
 
 describe('PostComposer alt text (#133)', () => {
   it('shows an alt input per staged attachment once an image is picked', async () => {

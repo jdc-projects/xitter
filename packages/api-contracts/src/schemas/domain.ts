@@ -210,6 +210,12 @@ export const hydratedFeedItemSchema = z.object({
   reason: feedEntryReasonSchema,
   /** Reposter profile for `reason: repost` entries (attribution); else null. */
   repostedBy: profileSchema.nullable(),
+  /**
+   * Author of the post this post replies to (#147) - rendered as the
+   * "Replying to @x" context line; null for top-level posts and for replies
+   * whose parent is gone (deleted posts are indistinguishable from absent).
+   */
+  replyToAuthor: profileSchema.nullable(),
 });
 
 export type HydratedFeedItem = z.infer<typeof hydratedFeedItemSchema>;

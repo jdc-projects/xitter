@@ -7,6 +7,10 @@ export interface TimelineEntry {
   author: { id: string; username: string; displayName: string };
   /** Repost entries (#8): the reposter renders an attribution line. */
   repostedBy?: { id: string; username: string; displayName: string };
+  /** Replies (#147): the reply-target author renders a "Replying to @x" line. */
+  replyToAuthor?: { id: string; username: string; displayName: string };
+  /** #148a: client-side optimistic entry - not yet confirmed by a fetch. */
+  pending?: boolean;
   /** The viewer's like/repost/bookmark flags for the post (best-effort). */
   viewer: { liked: boolean; reposted: boolean; bookmarked: boolean };
 }
@@ -19,7 +23,7 @@ export function toTimelineEntries(
   items: HydratedFeedItem[],
   flags: ReadonlyMap<string, { liked: boolean; reposted: boolean; bookmarked: boolean }>,
 ): TimelineEntry[] {
-  return items.map(({ post, author, repostedBy }) => ({
+  return items.map(({ post, author, repostedBy, replyToAuthor }) => ({
     post,
     author: { id: author.id, username: author.username, displayName: author.displayName },
     ...(repostedBy
@@ -28,6 +32,15 @@ export function toTimelineEntries(
             id: repostedBy.id,
             username: repostedBy.username,
             displayName: repostedBy.displayName,
+          },
+        }
+      : {}),
+    ...(replyToAuthor
+      ? {
+          replyToAuthor: {
+            id: replyToAuthor.id,
+            username: replyToAuthor.username,
+            displayName: replyToAuthor.displayName,
           },
         }
       : {}),

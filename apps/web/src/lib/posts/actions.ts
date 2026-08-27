@@ -3,12 +3,24 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError } from '@xitter/api-client';
-import { POST_MEDIA_MAX, POST_TEXT_MAX, type CreatePostRequest } from '@xitter/api-contracts';
+import {
+  POST_MEDIA_MAX,
+  POST_TEXT_MAX,
+  type CreatePostRequest,
+  type Post,
+} from '@xitter/api-contracts';
 import { postsForSession } from './server';
 
 export interface ComposerResult {
   error?: string;
   ok?: boolean;
+  /**
+   * The created post (#148) - rides a successful result so the feed can
+   * prepend it optimistically instead of waiting on the async fanout.
+   */
+  post?: Post;
+  /** Author snapshot for the optimistic card (the session's own profile). */
+  author?: { id: string; username: string; displayName: string };
 }
 
 /**
@@ -73,15 +85,32 @@ export async function createPostAction(
   const ctx = await postsForSession();
   if (!ctx) redirect('/login');
 
+  let created: Post;
   try {
-    await ctx.posts.createPost({ text, mediaIds, replyToId });
+    created = await ctx.posts.createPost({ text, mediaIds, replyToId });
   } catch (error) {
     return { error: composerErrorFor(error) };
   }
 
   revalidatePath('/feed');
   if (replyToId) revalidatePath(`/post/${replyToId}`);
-  return { ok: true };
+
+  // Best-effort author snapshot for the optimistic card (#148); the
+  // session handle stands in when the profile lookup fails.
+  const author = await ctx.social
+    .getProfile(ctx.session.subject)
+    .then((profile) => ({
+      id: profile.id,
+      username: profile.username,
+      displayName: profile.displayName,
+    }))
+    .catch(() => ({
+      id: ctx.session.subject,
+      username: ctx.session.username,
+      displayName: ctx.session.username,
+    }));
+
+  return { ok: true, post: created, author };
 }
 
 /**
