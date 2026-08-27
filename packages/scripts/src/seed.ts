@@ -14,7 +14,6 @@
  * is verified and skipped. Spec: docs/specs/data/02-seeding.md.
  */
 import { envInt, envString, loadRepoEnv } from '@xitter/config';
-import { createJwtCache } from '@xitter/auth';
 import { applyCmsContent } from './content.js';
 import {
   buildCorpus,

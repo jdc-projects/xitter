@@ -60,6 +60,21 @@ export interface AdminActor {
  * - events are best-effort after commit: a Kafka outage logs but never fails
  *   the mutation (at-least-once consumers must be idempotent anyway).
  */
+/** Flatten create-request media entries: ids plus per-asset alt text (#133). */
+function mediaEntries(entries: CreatePostRequest['mediaIds']): {
+  mediaIds: string[];
+  altTexts: Record<string, string>;
+} {
+  const mediaIds = entries.map((entry) => (typeof entry === 'string' ? entry : entry.mediaId));
+  const altTexts: Record<string, string> = {};
+  for (const entry of entries) {
+    if (typeof entry !== 'string' && entry.altText !== undefined) {
+      altTexts[entry.mediaId] = entry.altText;
+    }
+  }
+  return { mediaIds, altTexts };
+}
+
 @Injectable()
 export class PostsService {
   constructor(
@@ -93,16 +108,7 @@ export class PostsService {
     // at attach time - the snapshot taken here is what reads render. Entries
     // may carry per-asset alt text (#133); it rides the same lookup so
     // validation (trim/non-empty) and storage both happen in media.
-    const mediaIds = input.mediaIds.map((entry) =>
-      typeof entry === 'string' ? entry : entry.mediaId,
-    );
-    const altTexts: Record<string, string> = {};
-    for (const entry of input.mediaIds) {
-      if (typeof entry !== 'string' && entry.altText !== undefined) {
-        altTexts[entry.mediaId] = entry.altText;
-      }
-    }
-
+    const { mediaIds, altTexts } = mediaEntries(input.mediaIds);
     const requested = [...new Set(mediaIds)];
     const media =
       requested.length > 0 ? await this.requireAttachable(authorId, requested, altTexts) : [];

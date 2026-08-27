@@ -1,9 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import {
-  createPostRequestSchema,
-  POST_MEDIA_MAX,
-  POST_TEXT_MAX,
-} from '@xitter/api-contracts';
+import { createPostRequestSchema, POST_MEDIA_MAX, POST_TEXT_MAX } from '@xitter/api-contracts';
 import type { MediaAsset } from '@xitter/api-contracts';
 import { BACKDATE_WINDOW_MS, PostsService } from './posts.service.js';
 import { MediaServiceChecker, NullMediaChecker, type MediaChecker } from './media-checker.js';
@@ -602,9 +598,13 @@ describe('PostsService explicit createdAt (#150)', () => {
       },
     });
 
-    const post = await svc.create(AUTHOR, { text: 'last week', mediaIds: [], replyToId: null }, {
-      createdAt: threeDaysAgo,
-    });
+    const post = await svc.create(
+      AUTHOR,
+      { text: 'last week', mediaIds: [], replyToId: null },
+      {
+        createdAt: threeDaysAgo,
+      },
+    );
 
     expect(seen[0]!.toISOString()).toBe(threeDaysAgo);
     expect(post.createdAt).toBe(threeDaysAgo);
@@ -614,21 +614,33 @@ describe('PostsService explicit createdAt (#150)', () => {
   it('rejects future stamps (within skew) and beyond the backdate window', async () => {
     const { svc } = serviceWith();
     await expect(
-      svc.create(AUTHOR, { text: 'from tomorrow', mediaIds: [], replyToId: null }, {
-        createdAt: new Date(Date.now() + BACKDATE_WINDOW_MS).toISOString(),
-      }),
+      svc.create(
+        AUTHOR,
+        { text: 'from tomorrow', mediaIds: [], replyToId: null },
+        {
+          createdAt: new Date(Date.now() + BACKDATE_WINDOW_MS).toISOString(),
+        },
+      ),
     ).rejects.toMatchObject({ response: { error: { code: 'VALIDATION_ERROR' } } });
 
     await expect(
-      svc.create(AUTHOR, { text: 'too old', mediaIds: [], replyToId: null }, {
-        createdAt: new Date(Date.now() - BACKDATE_WINDOW_MS - 60_000).toISOString(),
-      }),
+      svc.create(
+        AUTHOR,
+        { text: 'too old', mediaIds: [], replyToId: null },
+        {
+          createdAt: new Date(Date.now() - BACKDATE_WINDOW_MS - 60_000).toISOString(),
+        },
+      ),
     ).rejects.toMatchObject({ response: { error: { code: 'VALIDATION_ERROR' } } });
 
     await expect(
-      svc.create(AUTHOR, { text: 'banana time', mediaIds: [], replyToId: null }, {
-        createdAt: 'not-a-date',
-      }),
+      svc.create(
+        AUTHOR,
+        { text: 'banana time', mediaIds: [], replyToId: null },
+        {
+          createdAt: 'not-a-date',
+        },
+      ),
     ).rejects.toMatchObject({ response: { error: { code: 'VALIDATION_ERROR' } } });
   });
 
@@ -636,9 +648,13 @@ describe('PostsService explicit createdAt (#150)', () => {
     const { svc } = serviceWith();
     // 30s ahead: inside the 60s skew allowance (seeder/service clock drift).
     await expect(
-      svc.create(AUTHOR, { text: 'edge skew', mediaIds: [], replyToId: null }, {
-        createdAt: new Date(Date.now() + 30_000).toISOString(),
-      }),
+      svc.create(
+        AUTHOR,
+        { text: 'edge skew', mediaIds: [], replyToId: null },
+        {
+          createdAt: new Date(Date.now() + 30_000).toISOString(),
+        },
+      ),
     ).resolves.toMatchObject({ text: 'edge skew' });
 
     const seen: Array<Date | undefined> = [];

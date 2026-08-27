@@ -60,7 +60,11 @@ export interface DemoImageSpec {
 }
 
 /** The historical single look (kept as the default for bare `demoPng(seed)` calls). */
-export const DEFAULT_DEMO_IMAGE_SPEC: DemoImageSpec = { pattern: 'gradient-h', width: 96, height: 64 };
+const DEFAULT_DEMO_IMAGE_SPEC: DemoImageSpec = {
+  pattern: 'gradient-h',
+  width: 96,
+  height: 64,
+};
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 

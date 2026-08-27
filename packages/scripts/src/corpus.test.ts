@@ -79,9 +79,9 @@ describe('buildCorpus', () => {
   it('varies the generated image looks across users (#150)', () => {
     const specs = corpus.posts.filter((p) => p.mediaCount > 0).map((p) => p.imageSpec!);
     // Every demo user owns exactly one image post.
-    expect(new Set(corpus.posts.filter((p) => p.mediaCount > 0).map((p) => p.authorIndex)).size).toBe(
-      10,
-    );
+    expect(
+      new Set(corpus.posts.filter((p) => p.mediaCount > 0).map((p) => p.authorIndex)).size,
+    ).toBe(10);
     // Not one grey rectangle: several patterns and several aspects appear.
     expect(new Set(specs.map((s) => s.pattern)).size).toBeGreaterThanOrEqual(3);
     expect(new Set(specs.map((s) => `${s.width}x${s.height}`)).size).toBeGreaterThanOrEqual(4);
@@ -272,9 +272,7 @@ describe('buildCorpus', () => {
   it('fingerprints the age offsets and image looks as corpus content (#150)', () => {
     const nudged: SeedCorpus = {
       ...corpus,
-      posts: corpus.posts.map((p, i) =>
-        i === 0 ? { ...p, ageMs: p.ageMs + 1 } : p,
-      ),
+      posts: corpus.posts.map((p, i) => (i === 0 ? { ...p, ageMs: p.ageMs + 1 } : p)),
       fingerprint: '',
     };
     expect(corpusFingerprint(nudged)).not.toBe(corpus.fingerprint);

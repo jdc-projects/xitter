@@ -142,6 +142,63 @@
         "required": ["items"],
         "additionalProperties": false
       },
+      "InternalCreatePostRequest": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "mediaIds": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "mediaId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "altText": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
+                  },
+                  "required": ["mediaId"],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "maxItems": 4,
+            "default": []
+          },
+          "replyToId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid",
+            "default": null,
+            "example": "b1c2d3e4-0000-4000-8000-000000000002"
+          },
+          "authorId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "b1c2d3e4-0000-4000-8000-000000000001"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["text", "authorId", "createdAt"],
+        "additionalProperties": false
+      },
       "AdminPostPage": {
         "type": "object",
         "properties": {
@@ -1644,6 +1701,216 @@
           },
           "400": {
             "description": "Validation error (bad or over-cap postIds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/posts": {
+      "post": {
+        "tags": ["internal"],
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "Create a post on behalf of a user with an explicit creation time (#150: the seed corpus is back-dated, ~7 days). Seeder-only: azp is scoped to svc-reset, and `createdAt` must be in the past within the service’s backdate window (30 days) - future stamps are a 400. Otherwise identical to POST /v1/posts (same validation, media checks, reply block rules, events).",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InternalCreatePostRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created post",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                    },
+                    "authorId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                    },
+                    "text": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    "media": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "ownerId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                          },
+                          "status": {
+                            "type": "string",
+                            "enum": ["pending", "ready", "failed"]
+                          },
+                          "variants": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": ["original", "thumb"]
+                                },
+                                "objectKey": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "mimeType": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "bytes": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "exclusiveMinimum": true
+                                },
+                                "width": {
+                                  "type": "integer",
+                                  "nullable": true,
+                                  "minimum": 0,
+                                  "exclusiveMinimum": true
+                                },
+                                "height": {
+                                  "type": "integer",
+                                  "nullable": true,
+                                  "minimum": 0,
+                                  "exclusiveMinimum": true
+                                },
+                                "url": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "objectKey",
+                                "mimeType",
+                                "bytes",
+                                "width",
+                                "height",
+                                "url"
+                              ]
+                            }
+                          },
+                          "altText": {
+                            "type": "string",
+                            "nullable": true,
+                            "maxLength": 200
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time"
+                          }
+                        },
+                        "required": ["id", "ownerId", "status", "variants", "createdAt"]
+                      }
+                    },
+                    "replyToId": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                    },
+                    "repostOfId": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                    },
+                    "counts": {
+                      "type": "object",
+                      "properties": {
+                        "replies": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "likes": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "reposts": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      },
+                      "required": ["replies", "likes", "reposts"]
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "deletedAt": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "date-time"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "authorId",
+                    "text",
+                    "media",
+                    "replyToId",
+                    "repostOfId",
+                    "counts",
+                    "createdAt",
+                    "deletedAt"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error (incl. out-of-window createdAt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Blocked from replying",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Reply target not found",
             "content": {
               "application/json": {
                 "schema": {

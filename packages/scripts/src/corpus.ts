@@ -153,6 +153,43 @@ export interface CorpusOptions {
   seed?: number;
 }
 
+/** Standalone posts (incl. image posts) in slot order; faker flows identically. */
+function standalonePosts(slots: SlotPlan, ages: Map<string, number>): CorpusPost[] {
+  const imageKeys = [...slots.imageKeys].sort();
+  return slots.standalone.map((slot) => {
+    const hashtag = faker.number.int({ min: 0, max: 3 }) === 1;
+    const text = sentence(faker.number.int({ min: 4, max: 16 }));
+    const isImage = slots.imageKeys.has(keyOf(slot));
+    const spec = isImage ? imageSpecFor(slot) : null;
+    return {
+      ...slot,
+      text: hashtag ? `${text} #${faker.lorem.word()}` : text,
+      mediaCount: isImage ? 1 : 0,
+      imageAlt: spec
+        ? `Demo pattern ${imageKeys.indexOf(keyOf(slot)) + 1} of ${imageKeys.length}: ${describeImage(spec)}`
+        : null,
+      imageSpec: spec,
+      replyTo: null,
+      ageMs: ages.get(keyOf(slot))!,
+    };
+  });
+}
+
+/** Thread replies (parents chain the thread; ages from the pure plan). */
+function threadReplyPosts(threads: SlotPlan['threads'], ages: Map<string, number>): CorpusPost[] {
+  return threads.flatMap((thread) =>
+    thread.replies.map((replySlot) => ({
+      ...replySlot,
+      text: sentence(faker.number.int({ min: 3, max: 10 })),
+      mediaCount: 0,
+      imageAlt: null,
+      imageSpec: null,
+      replyTo: replySlot.parent,
+      ageMs: ages.get(keyOf(replySlot))!,
+    })),
+  );
+}
+
 export function buildCorpus(options: CorpusOptions = {}): SeedCorpus {
   const userCount = options.userCount ?? DEFAULT_USER_COUNT;
   const postsPerUser = options.postsPerUser ?? DEFAULT_POSTS_PER_USER;
@@ -181,38 +218,7 @@ export function buildCorpus(options: CorpusOptions = {}): SeedCorpus {
   // 4. Texts, image looks and reply parents (faker consumed in slot order =>
   //    stable); ages come from pure slot hashes, not faker.
   const ages = assignAges(slots, userCount);
-  const imageKeys = [...slots.imageKeys].sort();
-  const posts: CorpusPost[] = [];
-  for (const slot of slots.standalone) {
-    const hashtag = faker.number.int({ min: 0, max: 3 }) === 1;
-    const text = sentence(faker.number.int({ min: 4, max: 16 }));
-    const isImage = slots.imageKeys.has(keyOf(slot));
-    const spec = isImage ? imageSpecFor(slot) : null;
-    posts.push({
-      ...slot,
-      text: hashtag ? `${text} #${faker.lorem.word()}` : text,
-      mediaCount: isImage ? 1 : 0,
-      imageAlt: spec
-        ? `Demo pattern ${imageKeys.indexOf(keyOf(slot)) + 1} of ${imageKeys.length}: ${describeImage(spec)}`
-        : null,
-      imageSpec: spec,
-      replyTo: null,
-      ageMs: ages.get(keyOf(slot))!,
-    });
-  }
-  for (const thread of slots.threads) {
-    for (const replySlot of thread.replies) {
-      posts.push({
-        ...replySlot,
-        text: sentence(faker.number.int({ min: 3, max: 10 })),
-        mediaCount: 0,
-        imageAlt: null,
-        imageSpec: null,
-        replyTo: replySlot.parent,
-        ageMs: ages.get(keyOf(replySlot))!,
-      });
-    }
-  }
+  const posts = [...standalonePosts(slots, ages), ...threadReplyPosts(slots.threads, ages)];
 
   // 5. Interactions: hot/cold likes, a few reposts, scattered bookmarks -
   //    capped per user so seeding never trips the mutation rate limit.
@@ -305,12 +311,10 @@ function slotRandom(slot: PostRef, salt: number): () => number {
 
 /** Which demo pattern + size an image slot renders (varied, #150). */
 function imageSpecFor(slot: PostRef): DemoImageSpec {
-  const pattern = DEMO_IMAGE_PATTERNS[
-    Math.floor(slotRandom(slot, SALT_PATTERN)() * DEMO_IMAGE_PATTERNS.length)
-  ]!;
-  const [width, height] = DEMO_IMAGE_SIZES[
-    Math.floor(slotRandom(slot, SALT_SIZE)() * DEMO_IMAGE_SIZES.length)
-  ]!;
+  const pattern =
+    DEMO_IMAGE_PATTERNS[Math.floor(slotRandom(slot, SALT_PATTERN)() * DEMO_IMAGE_PATTERNS.length)]!;
+  const [width, height] =
+    DEMO_IMAGE_SIZES[Math.floor(slotRandom(slot, SALT_SIZE)() * DEMO_IMAGE_SIZES.length)]!;
   return { pattern: pattern.id, width, height };
 }
 
@@ -350,7 +354,10 @@ function assignAges(plan: SlotPlan, userCount: number): Map<string, number> {
     const position = bump(slot.authorIndex, band);
     // Successive posts in one burst: 4-40 minutes apart.
     const gap = 4 * MINUTE_MS + Math.floor(slotRandom(slot, SALT_INTRA_GAP)() * 36 * MINUTE_MS);
-    ages.set(keyOf(slot), Math.min(MAX_POST_AGE_MS, anchors[slot.authorIndex]![band]! + position * gap));
+    ages.set(
+      keyOf(slot),
+      Math.min(MAX_POST_AGE_MS, anchors[slot.authorIndex]![band]! + position * gap),
+    );
   }
 
   for (const thread of plan.threads) {
@@ -457,7 +464,11 @@ function createSlotAllocator(userCount: number, postsPerUser: number): SlotAlloc
  * PNG at a derived ordinal - no longer just the first post of every other
  * user.
  */
-function planImageSlots(alloc: SlotAllocator, userCount: number, postsPerUser: number): Set<string> {
+function planImageSlots(
+  alloc: SlotAllocator,
+  userCount: number,
+  postsPerUser: number,
+): Set<string> {
   const imageKeys = new Set<string>();
   for (let u = 0; u < Math.min(userCount, IMAGE_MAX_USERS); u++) {
     const roll = slotRandom({ authorIndex: u, ordinal: -1 }, SALT_SIZE);

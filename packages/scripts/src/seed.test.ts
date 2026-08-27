@@ -198,7 +198,8 @@ describe('runSeed retry hardening (#85)', () => {
     /** May throw to simulate a network-level failure. */
     respond(
       url: URL,
-      body: { text?: string; mediaIds?: unknown; authorId?: string; createdAt?: string } | undefined,
+      body:
+        { text?: string; mediaIds?: unknown; authorId?: string; createdAt?: string } | undefined,
       outcome: unknown,
     ): unknown;
   }
