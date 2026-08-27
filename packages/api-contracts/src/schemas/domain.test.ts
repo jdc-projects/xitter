@@ -3,9 +3,13 @@ import {
   MEDIA_ALT_TEXT_MAX,
   POST_TEXT_MAX,
   hydratedFeedItemSchema,
+  THREAD_ANCESTORS_MAX,
+  THREAD_CHILDREN_PREVIEW,
+  THREAD_DEPTH_MAX,
   mediaAltTextInputSchema,
   mediaAssetSchema,
   postSchema,
+  threadNodeSchema,
   usernameSchema,
 } from './domain.js';
 import {
@@ -14,6 +18,7 @@ import {
   mediaLookupRequestSchema,
   searchCheckpointPutRequestSchema,
   searchIndexDocumentSchema,
+  threadResponseSchema,
   viewerStateQuerySchema,
 } from './http.js';
 
@@ -337,5 +342,67 @@ describe('feedCheckpointPutRequestSchema', () => {
         extra: true,
       }).success,
     ).toBe(false);
+  });
+});
+// #152: the thread read - recursive tree nodes and the composed response.
+const id = (n: number) => `9e8a7b6c-1234-4abc-9def-${String(n).padStart(12, '0')}`;
+const post = (n: number, replyTo: number | null = null) => ({
+  ...basePost,
+  id: id(n),
+  replyToId: replyTo === null ? null : id(replyTo),
+});
+
+describe('threadNodeSchema (#152)', () => {
+  it('round-trips nested nodes (z.lazy recursion)', () => {
+    const depth3 = { post: post(3), children: [], childrenTruncated: true };
+    const depth2 = { post: post(2), children: [depth3], childrenTruncated: false };
+    const root = { post: post(1), children: [depth2], childrenTruncated: true };
+
+    const parsed = threadNodeSchema.parse(root);
+    expect(parsed.children[0]?.children[0]?.post.id).toBe(id(3));
+    expect(parsed.children[0]?.children[0]?.childrenTruncated).toBe(true);
+  });
+
+  it('rejects nodes missing the truncation flag or carrying unknown keys', () => {
+    expect(threadNodeSchema.safeParse({ post: post(1), children: [] }).success).toBe(false);
+    expect(
+      threadNodeSchema.safeParse({ post: post(1), children: [], childrenTruncated: true, x: 1 })
+        .success,
+    ).toBe(false);
+  });
+});
+
+describe('threadResponseSchema (#152)', () => {
+  const thread = {
+    ancestors: [post(1), post(2, 1)],
+    ancestorsTruncated: false,
+    focus: post(3, 2),
+    replies: [{ post: post(4, 3), children: [], childrenTruncated: false }],
+    repliesCursor: null,
+  };
+
+  it('round-trips a full thread', () => {
+    const parsed = threadResponseSchema.parse(thread);
+    expect(parsed.ancestors.map((p) => p.id)).toEqual([id(1), id(2)]);
+    expect(parsed.focus.id).toBe(id(3));
+    expect(parsed.replies[0]?.post.id).toBe(id(4));
+    expect(parsed.repliesCursor).toBeNull();
+  });
+
+  it('is strict: unknown keys are rejected, not stripped', () => {
+    expect(threadResponseSchema.safeParse({ ...thread, surprise: true }).success).toBe(false);
+  });
+
+  it('rejects a missing cursor field (nullable, not optional)', () => {
+    const { repliesCursor: _omitted, ...withoutCursor } = thread;
+    expect(threadResponseSchema.safeParse(withoutCursor).success).toBe(false);
+  });
+
+  it('keeps the tunables at their product values', () => {
+    // Guards against accidental bumps that would silently change the API's
+    // payload bounds (clients and tests reason about these).
+    expect(THREAD_ANCESTORS_MAX).toBe(25);
+    expect(THREAD_DEPTH_MAX).toBe(3);
+    expect(THREAD_CHILDREN_PREVIEW).toBe(2);
   });
 });
