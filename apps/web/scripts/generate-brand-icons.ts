@@ -55,14 +55,14 @@ function markSvg(): string {
     `      <stop offset="1" stop-color="${TO}"/>`,
     `    </linearGradient>`,
     `  </defs>`,
-  `  <rect width="${size}" height="${size}" rx="${round2(RADIUS_RATIO * size)}" fill="url(#xitter-brand)"/>`,
-  `  <g stroke="${WHITE}" stroke-width="${round2(CROSS_THICKNESS_RATIO * size)}" stroke-linecap="round">`,
+    `  <rect width="${size}" height="${size}" rx="${round2(RADIUS_RATIO * size)}" fill="url(#xitter-brand)"/>`,
+    `  <g stroke="${WHITE}" stroke-width="${round2(CROSS_THICKNESS_RATIO * size)}" stroke-linecap="round">`,
     `    <line x1="${round2(arm)}" y1="${round2(arm)}" x2="${round2(tip)}" y2="${round2(tip)}"/>`,
     `    <line x1="${round2(tip)}" y1="${round2(arm)}" x2="${round2(arm)}" y2="${round2(tip)}"/>`,
-  `  </g>`,
-  `</svg>`,
-  ``,
-  ``,
+    `  </g>`,
+    `</svg>`,
+    ``,
+    ``,
   ].join('\n');
   return svg;
 }
@@ -126,14 +126,7 @@ function sdRoundedRect(px: number, py: number, half: number, radius: number): nu
   return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - radius;
 }
 
-function sdCapsule(
-  px: number,
-  py: number,
-  ax: number,
-  ay: number,
-  bx: number,
-  by: number,
-): number {
+function sdCapsule(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
   const pax = px - ax;
   const pay = py - ay;
   const bax = bx - ax;
@@ -176,10 +169,11 @@ function renderMark(size: number): Uint8Array {
           const tile = coverage(sdRoundedRect(px, py, 0.5, RADIUS_RATIO), feather);
           if (tile <= 0) continue;
           const t = Math.max(0, Math.min(1, 0.5 + (px * dirX + py * dirY) / (2 * dotExtent)));
-          const cross = Math.min(
-            sdCapsule(px, py, -armOffset, -armOffset, armOffset, armOffset),
-            sdCapsule(px, py, armOffset, -armOffset, -armOffset, armOffset),
-          ) - capRadius;
+          const cross =
+            Math.min(
+              sdCapsule(px, py, -armOffset, -armOffset, armOffset, armOffset),
+              sdCapsule(px, py, armOffset, -armOffset, -armOffset, armOffset),
+            ) - capRadius;
           const glyph = coverage(cross, feather) * tile;
           // gradient tile, over white ✕ (premultiplied)
           const r = FROM_RGB[0]! + (TO_RGB[0]! - FROM_RGB[0]!) * t;
