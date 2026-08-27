@@ -5,13 +5,24 @@ import { FaqContentPreview } from '@/components/cms/faq-content-preview';
 import { FaqList } from '@/components/cms/faq-list';
 import { PublicHeader } from '@/components/public-header';
 import { getSessionUsername } from '@/lib/auth/session';
-import { cmsEnv, loadFaq } from '@/lib/cms/content';
+import { cmsEnv, loadFaq, type FaqEntry } from '@/lib/cms/content';
 import { resolvePreviewId } from '@/lib/cms/preview';
 
 export const metadata = { title: 'About' };
 
 const demoAccounts = 'demo1 through demo10';
 const demoPassword = 'DemoPass123!';
+
+/**
+ * Code-owned FAQ entry (#144): what an unauthenticated visitor can see is a
+ * product fact, not site prose (spec 04 rule of thumb), so it rides after
+ * the CMS entries instead of living in the CMS.
+ */
+const VISIBILITY_FAQ: FaqEntry = {
+  slug: 'faq-unauthenticated-visibility',
+  question: 'What can I see without logging in?',
+  answer: 'Unauthenticated visitors cannot see posts or users - log in to look around.',
+};
 
 interface AboutPageProps {
   searchParams: Promise<{ preview?: string | string[] }>;
@@ -25,6 +36,7 @@ export default async function AboutPage({ searchParams }: AboutPageProps) {
   // Session-aware public header (#38); the page is already per-request.
   const username = await getSessionUsername();
   const faq = await loadFaq({ draft: previewId !== undefined });
+  const faqEntries = [...faq, VISIBILITY_FAQ];
 
   return (
     <>
@@ -105,20 +117,14 @@ export default async function AboutPage({ searchParams }: AboutPageProps) {
             </Title>
             {previewId !== undefined ? (
               <FaqContentPreview
-                entries={faq}
+                entries={faqEntries}
                 previewId={previewId}
                 serverURL={cmsEnv().publicUrl}
               />
             ) : (
-              <FaqList entries={faq} />
+              <FaqList entries={faqEntries} />
             )}
           </section>
-
-          <Divider />
-
-          <Text size="sm" c="dimmed">
-            Unauthenticated visitors cannot see posts or users - log in to look around.
-          </Text>
         </Stack>
       </Container>
     </>

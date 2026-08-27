@@ -41,7 +41,10 @@ describe('PublicHeader (#38 session-aware CTA)', () => {
     renderHeader({ username: 'demo1' });
 
     expect(screen.queryByTestId('public-login-link')).toBeNull();
-    expect(screen.getByTestId('public-profile-link').textContent).toContain('@demo1');
+    // Handle only - no avatar (#141): the session carries just the
+    // username, and an avatar would render its initial as if it were a
+    // display name.
+    expect(screen.getByTestId('public-profile-link').textContent).toBe('@demo1');
     expect(screen.getByTestId('public-profile-link').getAttribute('href')).toBe('/profile/demo1');
     expect(screen.getByTestId('public-feed-link').textContent).toBe('Back to the feed');
     expect(screen.getByTestId('public-feed-link').getAttribute('href')).toBe('/feed');

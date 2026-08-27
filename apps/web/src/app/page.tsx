@@ -1,11 +1,11 @@
 import { connection } from 'next/server';
-import { Container, Divider, Group, Stack, Text, Title } from '@mantine/core';
+import { Container, Divider, Stack, Text, Title } from '@mantine/core';
 import { ResetNotice } from '@xitter/ui';
 import { DemoCredentials } from '@/components/demo-credentials';
 import { LandingContentPreview } from '@/components/cms/landing-content-preview';
 import { LandingCopy } from '@/components/cms/landing-copy';
 import { PublicHeader } from '@/components/public-header';
-import { LandingAvatarMotif, StackStrip } from '@/components/stack-strip';
+import { StackStrip } from '@/components/stack-strip';
 import { getSessionUsername } from '@/lib/auth/session';
 import { cmsEnv, loadLandingContent } from '@/lib/cms/content';
 import { resolvePreviewId } from '@/lib/cms/preview';
@@ -15,9 +15,9 @@ interface LandingPageProps {
 }
 
 /**
- * The site's front door (#37): a hero that carries the demo - wordmark,
- * gradient-avatar motif, the CMS intro - plus the unmissable reset notice,
- * a demo-credentials entry point, and the under-the-hood stack strip. No
+ * The site's front door (#37): a hero that carries the demo - the gradient
+ * wordmark, the CMS intro - plus the unmissable reset notice, a
+ * demo-credentials entry point, and the under-the-hood stack strip. No
  * user-generated content renders pre-login (spec 02 §1.4).
  */
 export default async function LandingPage({ searchParams }: LandingPageProps) {
@@ -37,15 +37,13 @@ export default async function LandingPage({ searchParams }: LandingPageProps) {
       <PublicHeader username={username} />
       <Container size="sm" py="xl">
         <Stack gap="lg">
-          <Group gap="md" align="center" wrap="nowrap">
-            <LandingAvatarMotif />
-            <Title order={1}>
-              {/* Gradient wordmark ties into the avatar motif (#37). */}
-              <Text variant="gradient" gradient={{ from: 'indigo', to: 'cyan', deg: 135 }} inherit>
-                xitter
-              </Text>
-            </Title>
-          </Group>
+          <Title order={1}>
+            {/* Gradient wordmark (#37): the brand mark and favicons share the
+                indigo→cyan gradient (#143). */}
+            <Text variant="gradient" gradient={{ from: 'indigo', to: 'cyan', deg: 135 }} inherit>
+              xitter
+            </Text>
+          </Title>
 
           {previewId !== undefined ? (
             <LandingContentPreview

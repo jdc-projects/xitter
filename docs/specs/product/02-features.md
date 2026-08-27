@@ -11,21 +11,21 @@ Acceptance-style catalogue of every user-facing feature area. "Must" = required 
 | 1.3 | Links to the About page (which includes the FAQ section).                                                                                                                                                                                                                                             |
 | 1.4 | Provides a clear path to login. No user-generated content is visible.                                                                                                                                                                                                                                 |
 | 1.5 | Renders the shared **public header** (brand → home, About, Log in — or the signed-in visitor's handle and a _Back to the feed_ link when a session resolves); nav links mark the current page (`aria-current`). The authenticated shell renders its own nav instead and links back to the About page. |
-| 1.6 | Carries the demo: hero treatment of the CMS intro (wordmark, avatar-gradient motif) with the intro in larger type.                                                                                                                                                                                    |
+| 1.6 | Carries the demo: hero treatment of the CMS intro (gradient wordmark) with the intro in larger type.                                                                                                                                                                                                  |
 | 1.7 | Renders an **under-the-hood stack strip** — what the platform is and runs on (web app, services, workers, stores, IaC). Facts live in code; the CMS intro stays the editable prose.                                                                                                                   |
 | 1.8 | Shows a **demo-credentials entry point** (accounts + password, public by design) that links to login.                                                                                                                                                                                                 |
 
 ## 2. About page
 
-| #   | Acceptance criteria                                                                                                                             |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2.1 | Public. Always referred to as the "About page" in UI copy (it contains an FAQ section but is never called a "FAQ page").                        |
-| 2.2 | Explains what xitter is, why it exists, and how it works (microservices demo).                                                                  |
-| 2.3 | Documents the data reset, including the schedule (nightly, default 00:30 UTC) and that reseed may restore a fixed corpus.                       |
-| 2.4 | Lists demo credentials (`demo1`..`demo10` / `DemoPass123!`).                                                                                    |
-| 2.5 | Contains an FAQ section with entries managed in the CMS.                                                                                        |
-| 2.6 | Carries the PII warning: do not enter personal or sensitive data.                                                                               |
-| 2.7 | Reachable from the public header; carries no self-referential links (the reset notice's read-more link is suppressed on the About page itself). |
+| #   | Acceptance criteria                                                                                                                              |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2.1 | Public. Always referred to as the "About page" in UI copy (it contains an FAQ section but is never called a "FAQ page").                         |
+| 2.2 | Explains what xitter is, why it exists, and how it works (microservices demo).                                                                   |
+| 2.3 | Documents the data reset, including the schedule (nightly, default 00:30 UTC) and that reseed may restore a fixed corpus.                        |
+| 2.4 | Lists demo credentials (`demo1`..`demo10` / `DemoPass123!`).                                                                                     |
+| 2.5 | Contains an FAQ section with entries managed in the CMS, plus code-owned entries for product facts (e.g. what unauthenticated visitors can see). |     |
+| 2.6 | Carries the PII warning: do not enter personal or sensitive data.                                                                                |
+| 2.7 | Reachable from the public header; carries no self-referential links (the reset notice's read-more link is suppressed on the About page itself).  |
 
 ## 3. Auth
 
@@ -37,6 +37,7 @@ Acceptance-style catalogue of every user-facing feature area. "Must" = required 
 | 3.4 | Logout works from anywhere in the app and returns the visitor to the landing page.                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | 3.5 | Invalid credentials show a generic error without revealing whether username or password failed.                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | 3.6 | A signed-in visitor opening `/login` is redirected straight to the sanitized intended destination (default `/feed`) instead of the form; switching accounts goes through logout (end-session) first.                                                                                                                                                                                                                                                                                                                      |
+| 3.7 | The login page renders the shared **public header** (signed-out variant - a live session is redirected before render), so navigation parity holds across every public page.                                                                                                                                                                                                                                                                                                                                               |
 
 ## 4. Posts
 
@@ -166,3 +167,11 @@ their internal admin endpoints — the panel gate is UX, not the boundary).
 | 13.4 | Every cursor-paginated list (feed, search, bookmarks, profile posts and follow lists, reply threads) uses one shared Load more that appends pages in place - no full-page cursor navigation, one `load-more` affordance everywhere.           |
 | 13.5 | One labelled search input per page: the header box hides itself on /search, where the page's own box is the single input.                                                                                                                     |
 | 13.6 | Every 404 inside the app - unmatched routes, deleted or malformed posts/profiles - renders within the authenticated shell, so nav, search and logout stay available; signed-out visitors get the same branded 404 body, not a login redirect. |
+
+## 14. Branding
+
+| #    | Acceptance criteria                                                                                                                                                                                            |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 14.1 | The brand mark is a white ✕ on an indigo→cyan (135°) rounded square - the wordmark's gradient. Its geometry lives in one place, `apps/web/scripts/generate-brand-icons.ts`, so every size regenerates from it. |
+| 14.2 | The web app ships the mark via App Router conventions (`app/icon.svg` + `app/icon.png`, `app/apple-icon.png`) and a manifest with 192/512 icons; regenerate with `npm run icons` (workspace `web`).            |
+| 14.3 | Secondary surfaces reuse the same mark: the admin panel links `public/brand-mark.svg`, and the CMS admin panel's favicon points at its copy (basePath included, since the URL bypasses app-router resolution). |

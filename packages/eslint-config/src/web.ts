@@ -40,6 +40,26 @@ export const webConfig = tseslint.config(
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
+      // #141 guard: avatars must show the display name's initial, never the
+      // username's. Call sites with a profile pass its displayName; call
+      // sites without any display name (dormant accounts) omit the prop and
+      // take UserAvatar's documented username fallback. Passing a username
+      // (directly or off an object) is the bug this rule exists to catch.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "JSXOpeningElement[name.name='UserAvatar'] > JSXAttribute[name.name='displayName'][value.expression.type='Identifier'][value.expression.name='username']",
+          message:
+            'UserAvatar displayName must be a real display name, never the username itself (#141) - pass the profile displayName or omit the prop (username-initial fallback).',
+        },
+        {
+          selector:
+            "JSXOpeningElement[name.name='UserAvatar'] > JSXAttribute[name.name='displayName'][value.expression.property.name='username']",
+          message:
+            'UserAvatar displayName must be a real display name, never a username property (#141) - pass the profile displayName or omit the prop (username-initial fallback).',
+        },
+      ],
     },
   },
 );
