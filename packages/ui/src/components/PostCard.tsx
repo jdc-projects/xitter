@@ -281,7 +281,10 @@ export function PostCard({
           unstyled
           aria-label={`View post by @${author.username}`}
           data-testid={`post-link-${post.id}`}
-          style={{ position: 'absolute', inset: 0, zIndex: 1 }}
+          // display:block is load-bearing: an empty INLINE anchor ignores
+          // inset:0's stretch (inline-level abspos skips the width
+          // constraint) and renders at intrinsic size - axe measured 18px.
+          style={{ position: 'absolute', inset: 0, zIndex: 1, display: 'block' }}
         />
       ) : null}
       {content}
