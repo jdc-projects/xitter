@@ -132,6 +132,71 @@ test('/post/[postId] (detail with reply composer) has no serious axe violations'
   expect(serious, JSON.stringify(serious, null, 2)).toEqual([]);
 });
 
+test('/post/[postId] thread view (ancestors + nested reply tree) has no serious axe violations', async ({
+  page,
+}) => {
+  await loginViaKeycloak(page, 'demo1', 'DemoPass123!');
+  await page.waitForURL(/\/feed$/);
+
+  const scan = async () => {
+    const results = await new AxeBuilder({ page })
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+      .analyze();
+    const serious = results.violations.filter((v) =>
+      ['serious', 'critical'].includes(v.impact ?? ''),
+    );
+    expect(serious, JSON.stringify(serious, null, 2)).toEqual([]);
+  };
+
+  // Build root -> reply -> reply-to-reply through the real composers (the
+  // thread tests must not depend on #150's corpus nesting), then scan both
+  // shapes: the root page (nested indented tree) and the reply page
+  // (ancestor context cards above the focus).
+  const rootText = `a11y thread root ${crypto.randomUUID()}`;
+  await waitForComposerHydration(page);
+  await page.getByTestId('composer-textarea').fill(rootText);
+  await page.getByTestId('composer-submit').click();
+  const item = page.locator('[data-testid^="post-item-"]', { hasText: rootText }).first();
+  const deadline = Date.now() + 20_000;
+  while (!(await item.isVisible().catch(() => false))) {
+    if (Date.now() > deadline) break;
+    const show = page.getByTestId('feed-new-items').getByRole('button');
+    if (await show.isVisible().catch(() => false)) await show.click().catch(() => undefined);
+    await page.waitForTimeout(400);
+  }
+  await expect(item).toBeVisible();
+  const rootId = (await item.getAttribute('data-testid'))!.replace('post-item-', '');
+
+  const replyText = `a11y thread reply ${crypto.randomUUID()}`;
+  await page.goto(`/post/${rootId}`);
+  await waitForComposerHydration(page, 'reply-composer');
+  await page.getByTestId('reply-composer-textarea').fill(replyText);
+  await page.getByTestId('reply-composer-submit').click();
+  await expect(page.getByTestId('thread-tree')).toContainText(replyText);
+  const replyId = await page
+    .locator('[data-testid^="post-item-"]', { hasText: replyText })
+    .first()
+    .getAttribute('data-testid')
+    .then((testId) => testId!.replace('post-item-', ''));
+
+  const nestedText = `a11y thread nested ${crypto.randomUUID()}`;
+  await page.goto(`/post/${replyId}`);
+  await waitForComposerHydration(page, 'reply-composer');
+  await page.getByTestId('reply-composer-textarea').fill(nestedText);
+  await page.getByTestId('reply-composer-submit').click();
+  await expect(page.getByTestId('thread-tree')).toContainText(nestedText);
+
+  // Root page: focus card + composer + indented nested tree (guides).
+  await page.goto(`/post/${rootId}`);
+  await expect(page.getByTestId('thread-children-' + replyId)).toBeVisible();
+  await scan();
+
+  // Reply page: ancestor context cards above the focus.
+  await page.goto(`/post/${replyId}`);
+  await expect(page.getByTestId(`post-ancestor-${rootId}`)).toBeVisible();
+  await scan();
+});
+
 test('/bookmarks (own, with interactive post cards) has no serious axe violations', async ({
   page,
 }) => {
