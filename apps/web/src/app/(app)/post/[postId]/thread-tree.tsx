@@ -26,7 +26,7 @@ export interface ThreadTreeProps {
 }
 
 /**
- * Nested reply tree below the focus post (#152). Server embeds three
+ * Nested reply tree below the focus post (#152). The server embeds three
  * levels; deeper conversation is reached by navigation ("Show this
  * thread" - the tapped reply becomes the focus of its own page), and
  * wider branches expand in place through the existing /replies keyset,
@@ -72,14 +72,41 @@ interface ThreadBranchProps {
 }
 
 function ThreadBranch({ node, depth, focusId }: ThreadBranchProps) {
+  const reveal = useNodeReveal(node);
+  const atDepthCap = depth >= THREAD_DEPTH_MAX;
+
+  return (
+    <Stack gap="xs" data-testid={`thread-node-${node.post.id}`}>
+      <PostListItem
+        post={node.post}
+        author={node.author}
+        viewer={node.viewer}
+        canDelete={node.canDelete}
+        username={node.username}
+        // Nested deletes land back on the thread (a same-page re-navigation
+        // to fresh server data); only the focus delete leaves for /feed.
+        goTo={`/post/${focusId}`}
+      />
+
+      <NodeChildren nodeId={node.post.id} nodes={reveal.children} depth={depth} focusId={focusId} />
+
+      <RevealControls node={node} atDepthCap={atDepthCap} reveal={reveal} />
+    </Stack>
+  );
+}
+
+/**
+ * Reveal state for one branch: children grow from the embedded previews
+ * through client-side /replies fetches. The server re-render resets state
+ * during render (same pattern as every cursor list on the page).
+ */
+function useNodeReveal(node: ThreadNodeItem) {
   const [children, setChildren] = useState<ThreadNodeItem[]>(node.children);
   const [cursor, setCursor] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Server revalidation re-renders the embedded subtree - sync the reset
-  // during render (same pattern as every cursor list on the page).
   const [synced, setSynced] = useState(node.children);
   if (node.children !== synced) {
     setSynced(node.children);
@@ -88,15 +115,12 @@ function ThreadBranch({ node, depth, focusId }: ThreadBranchProps) {
     setExpanded(false);
   }
 
-  // Before any expansion the server's truncation flag is the truth; after
-  // it, the fetched page's own keyset cursor is (it can run to null).
-  const more = expanded ? cursor !== null : node.childrenTruncated;
-  const atDepthCap = depth >= THREAD_DEPTH_MAX;
-
   async function showReplies() {
     if (loading) return;
     setLoading(true);
     setError(null);
+    // No try/finally: the React Compiler doesn't support it in component
+    // code (same trade-off as use-cursor-pages' loadMore).
     const page = await repliesPageAction(node.post.id, cursor ?? undefined);
     if (page.error) {
       setError(page.error);
@@ -114,67 +138,85 @@ function ThreadBranch({ node, depth, focusId }: ThreadBranchProps) {
     setLoading(false);
   }
 
+  // Before any expansion the server's truncation flag is the truth; after
+  // it, the fetched page's own keyset cursor is (it can run to null).
+  const more = expanded ? cursor !== null : node.childrenTruncated;
+  return { children, more, expanded, loading, error, showReplies };
+}
+
+interface NodeChildrenProps {
+  nodeId: string;
+  nodes: ThreadNodeItem[];
+  depth: number;
+  focusId: string;
+}
+
+/** The indented sub-branch: one guide level deeper than its parent. */
+function NodeChildren({ nodeId, nodes, depth, focusId }: NodeChildrenProps) {
+  if (nodes.length === 0) return null;
   return (
-    <Stack gap="xs" data-testid={`thread-node-${node.post.id}`}>
-      <PostListItem
-        post={node.post}
-        author={node.author}
-        viewer={node.viewer}
-        canDelete={node.canDelete}
-        username={node.username}
-        // Nested deletes land back on the thread (a same-page re-navigation
-        // to fresh server data); only the focus delete leaves for /feed.
-        goTo={`/post/${focusId}`}
-      />
+    <Box
+      pl="lg"
+      style={{ borderLeft: '2px solid var(--mantine-color-default-border)' }}
+      data-testid={`thread-children-${nodeId}`}
+    >
+      <Stack gap="md">
+        {nodes.map((child) => (
+          <ThreadBranch key={child.post.id} node={child} depth={depth + 1} focusId={focusId} />
+        ))}
+      </Stack>
+    </Box>
+  );
+}
 
-      {children.length > 0 ? (
-        <Box
-          pl="lg"
-          style={{ borderLeft: '2px solid var(--mantine-color-default-border)' }}
-          data-testid={`thread-children-${node.post.id}`}
-        >
-          <Stack gap="md">
-            {children.map((child) => (
-              <ThreadBranch key={child.post.id} node={child} depth={depth + 1} focusId={focusId} />
-            ))}
-          </Stack>
-        </Box>
-      ) : null}
+interface RevealControlsProps {
+  node: ThreadNodeItem;
+  atDepthCap: boolean;
+  reveal: ReturnType<typeof useNodeReveal>;
+}
 
-      {more && atDepthCap ? (
-        // Depth cap: navigation, not inline expansion - the tapped reply
-        // becomes the focus post of its own thread page.
-        <Anchor
-          href={`/post/${node.post.id}`}
-          size="sm"
-          ml="lg"
-          data-testid={`show-thread-${node.post.id}`}
-        >
-          Show this thread
-        </Anchor>
-      ) : null}
+/**
+ * The "more behind this node" affordance: below the depth cap it expands
+ * in place; AT the cap it navigates - the tapped reply becomes the focus
+ * post of its own thread page.
+ */
+function RevealControls({ node, atDepthCap, reveal }: RevealControlsProps) {
+  if (!reveal.more) return null;
 
-      {more && !atDepthCap ? (
-        <UnstyledButton
-          size="sm"
-          c="dimmed"
-          disabled={loading}
-          onClick={() => void showReplies()}
-          data-testid={`show-replies-${node.post.id}`}
-        >
-          {loading
-            ? 'Loading…'
-            : expanded
-              ? 'Show more replies'
-              : `Show ${node.post.counts.replies} ${node.post.counts.replies === 1 ? 'reply' : 'replies'}`}
-        </UnstyledButton>
-      ) : null}
+  if (atDepthCap) {
+    return (
+      <Anchor
+        href={`/post/${node.post.id}`}
+        size="sm"
+        ml="lg"
+        data-testid={`show-thread-${node.post.id}`}
+      >
+        Show this thread
+      </Anchor>
+    );
+  }
 
-      {error ? (
+  const count = node.post.counts.replies;
+  return (
+    <>
+      <UnstyledButton
+        size="sm"
+        c="dimmed"
+        disabled={reveal.loading}
+        onClick={() => void reveal.showReplies()}
+        data-testid={`show-replies-${node.post.id}`}
+      >
+        {reveal.loading
+          ? 'Loading…'
+          : reveal.expanded
+            ? 'Show more replies'
+            : `Show ${count} ${count === 1 ? 'reply' : 'replies'}`}
+      </UnstyledButton>
+      {reveal.error ? (
         <Alert color="red" py={4} px="sm" data-testid={`show-replies-error-${node.post.id}`}>
-          {error}
+          {reveal.error}
         </Alert>
       ) : null}
-    </Stack>
+    </>
   );
 }

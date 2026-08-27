@@ -48,18 +48,17 @@ export default async function PostDetailPage({ params }: { params: Promise<{ pos
   }
 
   const treePosts = threadTreePosts(thread.replies);
-  const authors = await profilesByAuthorIds(social, [
-    thread.focus.authorId,
-    ...thread.ancestors.map((ancestor) => ancestor.authorId),
-    ...treePosts.map((post) => post.authorId),
-  ]);
-
-  // Interaction flags for the detail card + the visible tree nodes (#8).
-  // The focus post rides first so the batch cap always covers it; deeper
-  // nodes past the cap render with default-false flags (a tap reconciles).
-  const states = await viewerStateByPostId(posts, [
-    thread.focus.id,
-    ...treePosts.map((post) => post.id),
+  // Author + viewer hydration are independent - run them together.
+  const [authors, states] = await Promise.all([
+    profilesByAuthorIds(social, [
+      thread.focus.authorId,
+      ...thread.ancestors.map((ancestor) => ancestor.authorId),
+      ...treePosts.map((post) => post.authorId),
+    ]),
+    // Interaction flags for the detail card + the visible tree nodes (#8).
+    // The focus post rides first so the batch cap always covers it; deeper
+    // nodes past the cap render with default-false flags (a tap reconciles).
+    viewerStateByPostId(posts, [thread.focus.id, ...treePosts.map((post) => post.id)]),
   ]);
   const flagsOf = (id: string) => {
     const state = states.get(id);
