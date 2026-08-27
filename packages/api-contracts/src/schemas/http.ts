@@ -19,6 +19,7 @@ import {
   postViewerStateSchema,
   profileSchema,
   profileWithCountsSchema,
+  threadNodeSchema,
   userIdSchema,
   usernameSchema,
 } from './domain.js';
@@ -269,6 +270,30 @@ export type ProfileLookupResponse = z.infer<typeof profileLookupResponseSchema>;
 export const postPageSchema = cursorPagination(postSchema).openapi('PostPage');
 
 export const profilePageSchema = cursorPagination(profileSchema).openapi('ProfilePage');
+
+/**
+ * `GET /v1/posts/:postId/thread` (#152): the composed Twitter-shaped read -
+ * ancestor chain above the focus post, the focus itself, and a depth-capped
+ * nested reply tree below it. Bare posts only: authors and viewer state are
+ * hydrated by callers exactly as for every other posts read (storage
+ * ownership).
+ */
+export const threadResponseSchema = z
+  .object({
+    /** Root → … → direct parent (a soft-deleted ancestor ends the chain). */
+    ancestors: z.array(postSchema),
+    /** The visible ancestor chain continues past `THREAD_ANCESTORS_MAX`. */
+    ancestorsTruncated: z.boolean(),
+    focus: postSchema,
+    /** Direct replies (oldest first) with bounded preview subtrees. */
+    replies: z.array(threadNodeSchema),
+    /** Keyset cursor for more top-level replies (the `/replies` page shape). */
+    repliesCursor: z.string().nullable(),
+  })
+  .strict()
+  .openapi('ThreadResponse');
+
+export type ThreadResponse = z.infer<typeof threadResponseSchema>;
 
 export const feedPageSchema = cursorPagination(hydratedFeedItemSchema).openapi('FeedPage');
 
