@@ -21,6 +21,8 @@ export interface PostInteractionsProps {
   viewer: PostCardViewer;
   /** Repost attribution (feed repost entries). */
   repostedBy?: PostCardUser;
+  /** Reply context ("Replying to @x") for replies rendered in lists (#147). */
+  replyToAuthor?: PostCardUser;
   /** Card images variant: thumbs in lists, originals on the detail page. */
   variant?: 'thumb' | 'original';
   /** Detail-page link (the action row stays outside the anchor for a11y). */
@@ -39,6 +41,7 @@ export function PostInteractions({
   author,
   viewer,
   repostedBy,
+  replyToAuthor,
   variant = 'thumb',
   href,
 }: PostInteractionsProps) {
@@ -85,6 +88,7 @@ export function PostInteractions({
         busyKinds={busy}
         onInteract={onInteract}
         repostedBy={repostedBy}
+        replyingTo={replyToAuthor}
         href={href}
       />
       {error ? (

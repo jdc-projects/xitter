@@ -1,7 +1,8 @@
 'use client';
 
 import { Alert, Button, Group, Stack, Text } from '@mantine/core';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { PostComposer } from '@/components/post-composer';
 import { PostListItem } from '@/components/post-list-item';
 import { feedPageAction } from './actions';
 import type { TimelineEntry } from './load-feed';
@@ -16,9 +17,11 @@ export interface FeedViewProps {
 }
 
 /**
- * The materialised timeline: server-rendered page 1 + client-side cursor
- * pagination (Load more) + the ws-driven new-items banner (spec 03: the
- * notification is a refetch hint, never a data push).
+ * The materialised timeline: composer + server-rendered page 1 +
+ * client-side cursor pagination (Load more) + the ws-driven new-items banner
+ * (spec 03: the notification is a refetch hint, never a data push). Fresh
+ * own posts prepend optimistically (#148a) and a closed socket falls back
+ * to polling (#148b).
  */
 /**
  * Feed pagination state machine: page 1 (server-rendered, reset on
@@ -85,20 +88,70 @@ function useFeedPages(initialEntries: TimelineEntry[], initialCursor: string | n
   };
 }
 
+/** #148b: poll cadence while the ws is down (banner is at-most-once). */
+const POLL_WHEN_CLOSED_MS = 15_000;
+
 export function FeedView({ initialEntries, initialCursor, viewerId }: FeedViewProps) {
   const { pages, cursor, loading, error, failedMode, loadMore, refresh } = useFeedPages(
     initialEntries,
     initialCursor,
   );
   const [newCount, setNewCount] = useState(0);
+  // #148a: own posts created this session, client-side only until a real
+  // fetch includes them.
+  const [pending, setPending] = useState<TimelineEntry[]>([]);
 
   // ws notify hint → count, refetched on Show (spec 03: never a data push).
-  useFeedUpdates((count) => setNewCount((current) => current + count));
+  const socketStatus = useFeedUpdates((count) => setNewCount((current) => current + count));
 
-  const entries = pages.flat();
+  // #148b: the socket is at-most-once with no delivery guarantee - while it
+  // is closed, poll page 1 so a missed banner cannot silently mean a stale
+  // feed. A hidden tab skips the fetch (the timer keeps its schedule).
+  const refreshRef = useRef(refresh);
+  useEffect(() => {
+    refreshRef.current = refresh;
+  });
+  useEffect(() => {
+    if (socketStatus !== 'closed') return;
+    const id = setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      setNewCount(0);
+      void refreshRef.current();
+    }, POLL_WHEN_CLOSED_MS);
+    return () => clearInterval(id);
+  }, [socketStatus]);
+
+  const serverEntries = pages.flat();
+  // The optimistic copy lives exactly until the server knows the post too -
+  // then the fetched entry (with server counts/flags) takes over.
+  const serverPostIds = new Set(serverEntries.map((entry) => entry.post.id));
+  const entries = [
+    ...pending.filter((entry) => !serverPostIds.has(entry.post.id)),
+    ...serverEntries,
+  ];
+
+  function prependPending({
+    post,
+    author,
+  }: {
+    post: TimelineEntry['post'];
+    author: TimelineEntry['author'];
+  }) {
+    setPending((current) => [
+      {
+        post,
+        author,
+        viewer: { liked: false, reposted: false, bookmarked: false },
+        pending: true,
+      },
+      ...current.filter((entry) => entry.post.id !== post.id),
+    ]);
+  }
 
   return (
     <>
+      <PostComposer onPosted={prependPending} />
+
       {newCount > 0 ? (
         <Alert color="blue" py={6} data-testid="feed-new-items">
           <Group justify="space-between">
@@ -124,7 +177,7 @@ export function FeedView({ initialEntries, initialCursor, viewerId }: FeedViewPr
       ) : (
         <>
           <Stack gap="md" data-testid="feed-timeline">
-            {entries.map(({ post, author, repostedBy, viewer }) => (
+            {entries.map(({ post, author, repostedBy, replyToAuthor, viewer, pending }) => (
               <PostListItem
                 // The same post can appear twice in one feed (as itself and
                 // as a repost) - keying on post.id alone duplicates React
@@ -135,7 +188,9 @@ export function FeedView({ initialEntries, initialCursor, viewerId }: FeedViewPr
                 author={author}
                 viewer={viewer}
                 repostedBy={repostedBy}
+                replyToAuthor={replyToAuthor}
                 canDelete={post.authorId === viewerId}
+                pending={pending}
               />
             ))}
           </Stack>

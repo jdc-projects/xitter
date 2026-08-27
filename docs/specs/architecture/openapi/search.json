@@ -249,9 +249,41 @@
                     }
                   },
                   "required": ["id", "username", "displayName", "bio", "createdAt"]
+                },
+                "replyToAuthor": {
+                  "type": "object",
+                  "nullable": true,
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                    },
+                    "username": {
+                      "type": "string",
+                      "minLength": 3,
+                      "maxLength": 20,
+                      "pattern": "^[a-z0-9_]+$"
+                    },
+                    "displayName": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 50
+                    },
+                    "bio": {
+                      "type": "string",
+                      "nullable": true,
+                      "maxLength": 200
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": ["id", "username", "displayName", "bio", "createdAt"]
                 }
               },
-              "required": ["post", "author", "reason", "repostedBy"]
+              "required": ["post", "author", "reason", "repostedBy", "replyToAuthor"]
             }
           },
           "nextCursor": {

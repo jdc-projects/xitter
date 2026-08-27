@@ -7,6 +7,7 @@ const item = (
   authorId: string,
   username: string,
   reposted?: HydratedFeedItem['repostedBy'],
+  replyToAuthor: HydratedFeedItem['replyToAuthor'] = null,
 ): HydratedFeedItem => ({
   post: {
     id: postId,
@@ -28,6 +29,7 @@ const item = (
   },
   reason: reposted ? 'repost' : 'post',
   repostedBy: reposted ?? null,
+  replyToAuthor,
 });
 
 const noFlags = new Map<string, { liked: boolean; reposted: boolean; bookmarked: boolean }>();
@@ -67,6 +69,24 @@ describe('toTimelineEntries', () => {
 
     expect(entries[0]!.repostedBy).toBeUndefined();
     expect(entries[1]!.repostedBy).toMatchObject({ id: 'a3', username: 'reposter' });
+  });
+
+  it('carries reply context only on reply entries (#147)', () => {
+    const reply = {
+      ...item('p3', 'a2', 'followed'),
+      post: { ...item('p3', 'a2', 'followed').post, replyToId: 'p1' },
+      replyToAuthor: {
+        id: 'a1',
+        username: 'me',
+        displayName: 'Display me',
+        bio: null,
+        createdAt: '2026-08-01T00:00:00Z',
+      },
+    };
+    const entries = toTimelineEntries([item('p1', 'a1', 'me'), reply], noFlags);
+
+    expect(entries[0]!.replyToAuthor).toBeUndefined();
+    expect(entries[1]!.replyToAuthor).toMatchObject({ id: 'a1', username: 'me' });
   });
 
   it('attaches viewer flags per post and defaults empty', () => {

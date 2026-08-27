@@ -43,11 +43,12 @@ function ResultBody({
     );
   }
   // Plain search result: no repost context (component omits the attribution
-  // when undefined).
-  const items: PostCardItem[] = result.entries.map(({ post, author, viewer }) => ({
+  // when undefined); replies keep their "Replying to @x" context (#147).
+  const items: PostCardItem[] = result.entries.map(({ post, author, viewer, replyToAuthor }) => ({
     post,
     author,
     viewer,
+    ...(replyToAuthor ? { replyToAuthor } : {}),
     canDelete: post.authorId === viewerId,
   }));
   return <SearchResults query={query} initialItems={items} initialCursor={result.nextCursor} />;

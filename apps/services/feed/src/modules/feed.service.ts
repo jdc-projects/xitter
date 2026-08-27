@@ -3,6 +3,7 @@ import type {
   FeedCheckpointPosition,
   FeedEntryInput,
   HydratedFeedItem,
+  Post,
 } from '@xitter/api-contracts';
 import { assertValidCursor, profileOrPlaceholder } from '@xitter/service-kit';
 import { CheckpointRepository, type CheckpointInput } from './checkpoint.repository.js';
@@ -42,7 +43,8 @@ export class FeedService {
    * Newest-first page. Soft-deleted posts drop out during hydration; the
    * bounded refill keeps walking so a burst of deletions cannot shrink the
    * page below the requested size while older entries exist. Repost entries
-   * hydrate with the reposter's profile (`repostedBy`) for attribution.
+   * hydrate with the reposter's profile (`repostedBy`) for attribution;
+   * replies carry their target's author (`replyToAuthor`) for context.
    */
   async getFeed(userId: string, page: FeedPageRequest): Promise<FeedPage> {
     assertValidCursor(page.cursor);
@@ -131,10 +133,19 @@ export class FeedService {
   ): Promise<HydratedFeedItem[]> {
     if (entries.length === 0) return [];
     const posts = await this.content.posts([...new Set(entries.map((entry) => entry.postId))]);
+    // Reply context (#147): resolve the reply-target posts in ONE batched
+    // lookup so their authors can ride the profile batch - never per-entry.
+    const replyToIds = [
+      ...new Set([...posts.values()].flatMap((post) => (post.replyToId ? [post.replyToId] : []))),
+    ];
+    const parents = replyToIds.length
+      ? await this.content.posts(replyToIds)
+      : new Map<string, Post>();
     const authorIds = [
-      ...new Set(
-        entries.flatMap((entry) => [entry.authorId, entry.repostedById ?? entry.authorId]),
-      ),
+      ...new Set([
+        ...entries.flatMap((entry) => [entry.authorId, entry.repostedById ?? entry.authorId]),
+        ...[...parents.values()].map((parent) => parent.authorId),
+      ]),
     ];
     const profiles = await this.content.profiles(authorIds);
     const blocked = new Set(blockedAuthorIds);
@@ -148,6 +159,10 @@ export class FeedService {
       // (product 7.6: blocked content hidden where feasible).
       if (blocked.has(post.authorId)) continue;
       const repostedBy = entry.repostedById ? profiles.get(entry.repostedById) : undefined;
+      // A missing parent (deleted since the reply was written) renders the
+      // reply WITHOUT context rather than dropping it - it is still a
+      // visible post server-side.
+      const parent = post.replyToId ? parents.get(post.replyToId) : undefined;
       items.push({
         post,
         author: profileOrPlaceholder(entry.authorId, profiles),
@@ -155,6 +170,7 @@ export class FeedService {
         repostedBy: entry.repostedById
           ? (repostedBy ?? profileOrPlaceholder(entry.repostedById, profiles))
           : null,
+        replyToAuthor: parent ? profileOrPlaceholder(parent.authorId, profiles) : null,
       });
     }
     return items;

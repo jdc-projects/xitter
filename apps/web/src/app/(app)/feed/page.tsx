@@ -15,15 +15,19 @@ export default async function FeedPage() {
     <Container size="sm" py="xl">
       <Stack gap="md">
         <Title order={1}>Feed</Title>
-        <PostComposer />
 
         {initial === null ? (
-          <Alert color="red" data-testid="feed-error">
-            <Group justify="space-between" gap="sm">
-              <span>The feed could not load right now. Try again shortly.</span>
-              <RetryRefreshButton />
-            </Group>
-          </Alert>
+          // No timeline to prepend into (#148) - the composer renders
+          // standalone above the failure notice.
+          <>
+            <PostComposer />
+            <Alert color="red" data-testid="feed-error">
+              <Group justify="space-between" gap="sm">
+                <span>The feed could not load right now. Try again shortly.</span>
+                <RetryRefreshButton />
+              </Group>
+            </Alert>
+          </>
         ) : (
           <FeedView
             initialEntries={initial.entries}

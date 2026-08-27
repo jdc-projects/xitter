@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   MEDIA_ALT_TEXT_MAX,
   POST_TEXT_MAX,
+  hydratedFeedItemSchema,
   mediaAltTextInputSchema,
   mediaAssetSchema,
   postSchema,
@@ -192,6 +193,43 @@ describe('mediaLookupRequestSchema altTexts (#133)', () => {
         altTexts: { [mediaId]: '' },
       }).success,
     ).toBe(false);
+  });
+});
+
+// #147: reply context on hydrated feed items - the reply-target author
+// renders as "Replying to @x"; null for top-level posts and gone parents.
+describe('hydratedFeedItemSchema replyToAuthor (#147)', () => {
+  const parentAuthor = {
+    id: '9e8a7b6c-1234-4abc-9def-001122334477',
+    username: 'parent',
+    displayName: 'Parent Author',
+    bio: null,
+    createdAt: '2026-08-01T00:00:00.000Z',
+  };
+  const item = (replyToAuthor: unknown) => ({
+    post: basePost,
+    author: {
+      id: basePost.authorId,
+      username: 'author',
+      displayName: 'Author',
+      bio: null,
+      createdAt: '2026-08-01T00:00:00.000Z',
+    },
+    reason: 'post',
+    repostedBy: null,
+    replyToAuthor,
+  });
+
+  it('accepts a reply-target author profile', () => {
+    expect(hydratedFeedItemSchema.parse(item(parentAuthor)).replyToAuthor).toEqual(parentAuthor);
+  });
+
+  it('accepts null for top-level posts and gone parents', () => {
+    expect(hydratedFeedItemSchema.parse(item(null)).replyToAuthor).toBeNull();
+  });
+
+  it('rejects a non-profile replyToAuthor', () => {
+    expect(hydratedFeedItemSchema.safeParse(item({ id: 'nope' })).success).toBe(false);
   });
 });
 
