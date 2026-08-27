@@ -5,7 +5,16 @@ import { loginViaKeycloak, waitForComposerHydration } from './helpers';
 /**
  * Accessibility smoke checks (WCAG 2.2 AA via axe-core). Each new page adds a
  * case here as it lands - see docs/specs/testing for the full strategy.
- * `/no-such-page` covers the shared 404 surface (unauthenticated render).
+ * `/login` is scanned signed-out - a signed-in visit redirects to the feed
+ * (#40), so no authenticated login DOM exists. `/no-such-page` covers the
+ * shared 404 surface in both renders: unauthenticated below, and the
+ * app-shell render (#135) plus the malformed-id guard route (#131) after it.
+ *
+ * Deliberately not scanned here: the dormant-profile shell (#36) needs a
+ * wiped-but-NOT-reseeded stack - the e2e wrapper reseeds before the probe
+ * port opens, so every demo profile is live (first-run.spec.ts documents
+ * the same limitation). Its colocated unit test is the coverage until a
+ * no-reseed harness exists.
  */
 const pages = ['/', '/about', '/login', '/no-such-page'];
 
@@ -21,6 +30,46 @@ for (const path of pages) {
     expect(serious, JSON.stringify(serious, null, 2)).toEqual([]);
   });
 }
+
+test('/no-such-page (404 in the app shell, authenticated) has no serious axe violations', async ({
+  page,
+}) => {
+  await loginViaKeycloak(page, 'demo1', 'DemoPass123!');
+  await page.waitForURL(/\/feed$/);
+  await page.goto('/no-such-page');
+
+  // Scan the shell-wrapped render (#135), not the bare signed-out one.
+  await expect(page.getByTestId('not-found')).toBeVisible();
+  await expect(page.getByTestId('app-nav')).toBeVisible();
+
+  const results = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+    .analyze();
+  const serious = results.violations.filter((v) =>
+    ['serious', 'critical'].includes(v.impact ?? ''),
+  );
+  expect(serious, JSON.stringify(serious, null, 2)).toEqual([]);
+});
+
+test('/post/not-a-uuid (guard 404 in the app shell) has no serious axe violations', async ({
+  page,
+}) => {
+  await loginViaKeycloak(page, 'demo1', 'DemoPass123!');
+  await page.waitForURL(/\/feed$/);
+  await page.goto('/post/not-a-uuid');
+
+  // Deterministic 404 via the #131 contract-shape guard - no service call.
+  await expect(page.getByTestId('not-found')).toBeVisible();
+  await expect(page.getByTestId('app-nav')).toBeVisible();
+
+  const results = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+    .analyze();
+  const serious = results.violations.filter((v) =>
+    ['serious', 'critical'].includes(v.impact ?? ''),
+  );
+  expect(serious, JSON.stringify(serious, null, 2)).toEqual([]);
+});
 
 test('/profile/[username] (own, authenticated) has no serious axe violations', async ({ page }) => {
   await loginViaKeycloak(page, 'demo1', 'DemoPass123!');
