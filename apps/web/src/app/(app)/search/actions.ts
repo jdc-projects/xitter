@@ -27,10 +27,11 @@ export async function searchPageAction(
     };
   }
   return {
-    items: page.entries.map(({ post, author, viewer }) => ({
+    items: page.entries.map(({ post, author, viewer, replyToAuthor }) => ({
       post,
       author,
       viewer,
+      ...(replyToAuthor ? { replyToAuthor } : {}),
       canDelete: post.authorId === session.subject,
     })),
     nextCursor: page.nextCursor,
