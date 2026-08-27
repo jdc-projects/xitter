@@ -610,3 +610,220 @@ describe('PostsService rules', () => {
     ).resolves.toMatchObject({ text: 'still works' });
   });
 });
+
+// #152: the composed thread read - ancestor walk and bounded reply tree.
+describe('PostsService.getThread (#152)', () => {
+  const uid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+
+  /**
+   * fakeRepo + a replies() that understands the reply graph: visible
+   * children of the node, oldest first, limited like the real keyset page.
+   * Reply creation also bumps the parent's replyCount like the real
+   * transactional write, so counts-driven flags behave as in production.
+   */
+  function threadRepo() {
+    const base = fakeRepo();
+    const childrenOf = (postId: string) =>
+      [...base.posts.values()]
+        .filter((p) => p.replyToId === postId && !p.deletedAt)
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    (base.repo.createPost as (input: {
+      authorId: string;
+      text: string;
+      mediaIds: string[];
+      replyToId: string | null;
+    }) => Promise<PostRow>) = (input) => {
+      const created = row({ id: crypto.randomUUID(), ...input });
+      base.posts.set(created.id, created);
+      if (input.replyToId) {
+        const parent = base.posts.get(input.replyToId);
+        if (parent) base.posts.set(parent.id, { ...parent, replyCount: parent.replyCount + 1 });
+      }
+      return Promise.resolve(created);
+    };
+    (base.repo.replies as (
+      postId: string,
+      cursor: string | undefined,
+      limit: number,
+    ) => Promise<{ items: PostRow[]; nextCursor: string | null }>) = (postId, _cursor, limit) => {
+      const all = childrenOf(postId);
+      const items = all.slice(0, limit);
+      const last = items.at(-1);
+      return Promise.resolve({
+        items,
+        nextCursor: all.length > items.length && last ? `cursor:${last.id}` : null,
+      });
+    };
+    return base;
+  }
+
+  const makeService = (repo: ReturnType<typeof threadRepo>['repo']) =>
+    new PostsService(repo, spyEvents(), allowAll, new NullMediaChecker(), new NullInteractionRealtime());
+
+  /** Chain p1 ← p2 ← … ← pn, created in order so createdAt ascends. */
+  async function chain(service: PostsService, length: number, start = 900) {
+    let parent: string | null = null;
+    const ids: string[] = [];
+    for (let i = 0; i < length; i++) {
+      const created = await service.create(uid(start + i), {
+        text: `chain ${i}`,
+        mediaIds: [],
+        replyToId: parent,
+      });
+      ids.push(created.id);
+      parent = created.id;
+    }
+    return ids; // [root, ..., newest]
+  }
+
+  it('404s for missing or deleted focus posts (same semantics as getPost)', async () => {
+    const base = threadRepo();
+    const service = makeService(base.repo);
+    await expect(service.getThread(uid(999), { limit: 20 })).rejects.toMatchObject({
+      response: { error: { code: 'NOT_FOUND' } },
+    });
+
+    const created = await service.create(uid(901), { text: 'x', mediaIds: [], replyToId: null });
+    base.posts.set(created.id, { ...base.posts.get(created.id)!, deletedAt: new Date() });
+    await expect(service.getThread(created.id, { limit: 20 })).rejects.toMatchObject({
+      response: { error: { code: 'NOT_FOUND' } },
+    });
+  });
+
+  it('a root focus has no ancestors; replies embed the bounded subtree', async () => {
+    const base = threadRepo();
+    const service = makeService(base.repo);
+    const [root] = await chain(service, 1);
+
+    const r1 = await service.create(uid(910), {
+      text: 'first reply',
+      mediaIds: [],
+      replyToId: root,
+    });
+    // r1 has two children of its own, the first with a grandchild.
+    const r1a = await service.create(uid(911), {
+      text: 'nested',
+      mediaIds: [],
+      replyToId: r1.id,
+    });
+    await service.create(uid(912), { text: 'nested 2', mediaIds: [], replyToId: r1.id });
+    await service.create(uid(913), { text: 'deep', mediaIds: [], replyToId: r1a.id });
+
+    const thread = await service.getThread(root, { limit: 20 });
+
+    expect(thread.ancestors).toEqual([]);
+    expect(thread.ancestorsTruncated).toBe(false);
+    expect(thread.focus.id).toBe(root);
+    expect(thread.replies.map((node) => node.post.id)).toEqual([r1.id]);
+    expect(thread.replies[0]?.children.map((node) => node.post.text)).toEqual(['nested', 'nested 2']);
+    expect(thread.replies[0]?.children[0]?.children).toHaveLength(1); // depth 3 embedded
+    expect(thread.replies[0]?.childrenTruncated).toBe(false); // counts match embedded
+    expect(thread.repliesCursor).toBeNull();
+  });
+
+  it('ancestors come back root → parent for a reply focus', async () => {
+    const base = threadRepo();
+    const service = makeService(base.repo);
+    const [root, mid, leaf] = await chain(service, 3);
+
+    const thread = await service.getThread(leaf, { limit: 20 });
+
+    expect(thread.ancestors.map((p) => p.id)).toEqual([root, mid]);
+    expect(thread.focus.id).toBe(leaf);
+    expect(thread.replies).toEqual([]);
+  });
+
+  it('a soft-deleted ancestor ends the walk (descendants see the gap, not older posts)', async () => {
+    const base = threadRepo();
+    const service = makeService(base.repo);
+    const [root, mid, leaf] = await chain(service, 3);
+    base.posts.set(mid, { ...base.posts.get(mid)!, deletedAt: new Date() });
+
+    const thread = await service.getThread(leaf, { limit: 20 });
+
+    expect(thread.ancestors).toEqual([]); // root is unreachable across the gap
+    expect(thread.ancestorsTruncated).toBe(false);
+  });
+
+  it('a corrupt replyToId cycle terminates instead of looping', async () => {
+    const base = threadRepo();
+    const service = makeService(base.repo);
+    const a = row({ id: uid(930), replyToId: uid(931) });
+    const b = row({ id: uid(931), replyToId: uid(930) });
+    base.posts.set(a.id, a);
+    base.posts.set(b.id, b);
+
+    const thread = await service.getThread(b.id, { limit: 20 });
+    expect(thread.ancestors.map((p) => p.id)).toEqual([a.id]);
+  });
+
+  it('caps ancestors at 25 and flags truncation only while the visible chain continues', async () => {
+    const base = threadRepo();
+    const service = makeService(base.repo);
+    // 26 posts = focus + exactly 25 ancestors: no truncation.
+    const exact = await chain(service, 26, 940);
+    const notTruncated = await service.getThread(exact.at(-1)!, { limit: 20 });
+    expect(notTruncated.ancestors).toHaveLength(25);
+    expect(notTruncated.ancestors[0]?.id).toBe(exact[0]); // root-most included
+    expect(notTruncated.ancestorsTruncated).toBe(false);
+
+    // One more hop: the 26th ancestor exists visibly - flag it.
+    const longer = await chain(service, 27, 970);
+    const truncated = await service.getThread(longer.at(-1)!, { limit: 20 });
+    expect(truncated.ancestors).toHaveLength(25);
+    expect(truncated.ancestors[0]?.id).toBe(longer[1]); // the true root fell off
+    expect(truncated.ancestorsTruncated).toBe(true);
+
+    // A deleted 26th ancestor is a gap, not a truncation.
+    base.posts.set(longer[0]!, { ...base.posts.get(longer[0]!)!, deletedAt: new Date() });
+    const gapped = await service.getThread(longer.at(-1)!, { limit: 20 });
+    expect(gapped.ancestorsTruncated).toBe(false);
+  });
+
+  it('previews 2 children per node and flags nodes with more (childrenTruncated)', async () => {
+    const base = threadRepo();
+    const service = makeService(base.repo);
+    const [root] = await chain(service, 1, 990);
+    const busy = await service.create(uid(991), { text: 'busy', mediaIds: [], replyToId: root });
+    for (let i = 0; i < 3; i++) {
+      await service.create(uid(992 + i), { text: `kid ${i}`, mediaIds: [], replyToId: busy.id });
+    }
+
+    const thread = await service.getThread(root, { limit: 20 });
+    const node = thread.replies.find((n) => n.post.id === busy.id)!;
+
+    expect(node.children).toHaveLength(2); // THREAD_CHILDREN_PREVIEW
+    expect(node.children.map((n) => n.post.text)).toEqual(['kid 0', 'kid 1']); // oldest first
+    expect(node.childrenTruncated).toBe(true); // counts.replies(3) > embedded(2)
+  });
+
+  it('depth-3 nodes embed no children but flag whether the conversation continues', async () => {
+    const base = threadRepo();
+    const service = makeService(base.repo);
+    const [root] = await chain(service, 1, 800);
+    const d1 = await service.create(uid(801), { text: 'd1', mediaIds: [], replyToId: root });
+    const d2 = await service.create(uid(802), { text: 'd2', mediaIds: [], replyToId: d1.id });
+    const d3 = await service.create(uid(803), { text: 'd3', mediaIds: [], replyToId: d2.id });
+    await service.create(uid(804), { text: 'd4', mediaIds: [], replyToId: d3.id });
+
+    const thread = await service.getThread(root, { limit: 20 });
+    const depth3 = thread.replies[0]?.children[0]?.children[0]!;
+
+    expect(depth3.post.id).toBe(d3.id);
+    expect(depth3.children).toEqual([]); // cap reached - no embedding
+    expect(depth3.childrenTruncated).toBe(true); // d4 exists below the cap
+  });
+
+  it('respects the top-level limit and surfaces the keyset cursor', async () => {
+    const base = threadRepo();
+    const service = makeService(base.repo);
+    const [root] = await chain(service, 1, 810);
+    for (let i = 0; i < 3; i++) {
+      await service.create(uid(811 + i), { text: `reply ${i}`, mediaIds: [], replyToId: root });
+    }
+
+    const thread = await service.getThread(root, { limit: 2 });
+    expect(thread.replies.map((n) => n.post.text)).toEqual(['reply 0', 'reply 1']);
+    expect(thread.repliesCursor).toMatch(/^cursor:/); // more top-level pages exist
+  });
+});

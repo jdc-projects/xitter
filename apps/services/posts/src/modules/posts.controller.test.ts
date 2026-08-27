@@ -197,6 +197,25 @@ describe('posts HTTP wiring', () => {
     expect(replies.statusCode).toBe(200);
     expect(replies.json()).toEqual({ items: [], nextCursor: null });
 
+    const thread = await app.inject({
+      method: 'GET',
+      url: `/api/posts/v1/posts/${POST_ID}/thread`,
+    });
+    expect(thread.statusCode).toBe(200);
+    expect(thread.json()).toEqual({
+      ancestors: [],
+      ancestorsTruncated: false,
+      focus: expect.objectContaining({ id: POST_ID }),
+      replies: [],
+      repliesCursor: null,
+    });
+
+    const badThreadParam = await app.inject({
+      method: 'GET',
+      url: '/api/posts/v1/posts/not-a-uuid/thread',
+    });
+    expect(badThreadParam.statusCode).toBe(400);
+
     const badCursor = await app.inject({
       method: 'GET',
       url: `/api/posts/v1/users/${CALLER}/posts?cursor=${encodeURIComponent('%00zz-not-base64')}`,

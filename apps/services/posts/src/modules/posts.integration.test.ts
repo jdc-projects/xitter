@@ -311,4 +311,109 @@ describe.skipIf(!hasGeneratedClient)('posts integration (testcontainers)', () =>
     expect(await db.post.count()).toBe(0);
     expect(await db.interaction.count()).toBe(0);
   });
+
+  // #152: the composed thread read against real keyset pagination.
+  it('thread composes ancestors (root→parent), focus, and the nested reply tree', async () => {
+    const service = makeService();
+    const root = await service.create(uid('g1'), {
+      text: 'root',
+      mediaIds: [],
+      replyToId: null,
+    });
+    const mid = await service.create(uid('g2'), {
+      text: 'mid',
+      mediaIds: [],
+      replyToId: root.id,
+    });
+    const leaf = await service.create(uid('g3'), {
+      text: 'leaf',
+      mediaIds: [],
+      replyToId: mid.id,
+    });
+    // leaf's subtree: a direct reply with its own child (depth 2 below leaf).
+    const leafReply = await service.create(uid('g4'), {
+      text: 'leaf reply',
+      mediaIds: [],
+      replyToId: leaf.id,
+    });
+    await service.create(uid('g5'), {
+      text: 'leaf grandreply',
+      mediaIds: [],
+      replyToId: leafReply.id,
+    });
+
+    const thread = await service.getThread(leaf.id, { limit: 20 });
+
+    expect(thread.ancestors.map((p) => p.id)).toEqual([root.id, mid.id]);
+    expect(thread.ancestorsTruncated).toBe(false);
+    expect(thread.focus.id).toBe(leaf.id);
+    expect(thread.replies.map((n) => n.post.id)).toEqual([leafReply.id]);
+    expect(thread.replies[0]?.children.map((n) => n.post.text)).toEqual(['leaf grandreply']);
+    expect(thread.replies[0]?.children[0]?.children).toEqual([]); // depth cap
+    expect(thread.replies[0]?.children[0]?.childrenTruncated).toBe(false);
+    expect(thread.repliesCursor).toBeNull();
+  });
+
+  it('thread: deleted ancestor ends the walk; deleted focus and forged cursors 404/400', async () => {
+    const service = makeService();
+    const root = await service.create(uid('g6'), {
+      text: 'root',
+      mediaIds: [],
+      replyToId: null,
+    });
+    const mid = await service.create(uid('g7'), {
+      text: 'mid',
+      mediaIds: [],
+      replyToId: root.id,
+    });
+    const leaf = await service.create(uid('g8'), {
+      text: 'leaf',
+      mediaIds: [],
+      replyToId: mid.id,
+    });
+
+    await service.remove(uid('g7'), mid.id);
+    const thread = await service.getThread(leaf.id, { limit: 20 });
+    expect(thread.ancestors).toEqual([]); // root is behind the gap
+    expect(thread.ancestorsTruncated).toBe(false);
+
+    await service.remove(uid('g8'), leaf.id);
+    await expect(service.getThread(leaf.id, { limit: 20 })).rejects.toMatchObject({
+      response: { error: { code: 'NOT_FOUND' } },
+    });
+
+    const forged = Buffer.from(JSON.stringify({ createdAt: 'banana', id: 'x' }), 'utf8').toString(
+      'base64url',
+    );
+    await expect(
+      service.getThread(root.id, { cursor: forged, limit: 20 }),
+    ).rejects.toMatchObject({ response: { error: { code: 'VALIDATION_ERROR' } } });
+  });
+
+  it('thread paginates top-level replies and walks the cursor to completeness', async () => {
+    const service = makeService();
+    const root = await service.create(uid('g9'), {
+      text: 'root',
+      mediaIds: [],
+      replyToId: null,
+    });
+    for (let n = 0; n < 5; n++) {
+      await service.create(uid('ga'), { text: `reply ${n}`, mediaIds: [], replyToId: root.id });
+      await new Promise((r) => setTimeout(r, 5)); // distinct keyset positions
+    }
+
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    for (;;) {
+      const thread = await service.getThread(root.id, { cursor, limit: 2 });
+      seen.push(...thread.replies.map((n) => n.post.id));
+      if (!thread.repliesCursor) break;
+      cursor = thread.repliesCursor;
+    }
+    expect(seen).toHaveLength(5);
+    expect(new Set(seen).size).toBe(5);
+    // The thread cursor is the /replies keyset: both surfaces interoperate.
+    const replies = await service.postReplies(root.id, { limit: 5 });
+    expect(seen).toEqual(replies.items.map((p) => p.id));
+  });
 });
