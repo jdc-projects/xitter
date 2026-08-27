@@ -35,7 +35,7 @@ Per-suite detail. For philosophy and ownership see [01-strategy.md](01-strategy.
 | Runs     | `npm run test:e2e`; a11y specs via `npm run test:a11y` (`@a11y` tag)                                                                 |
 
 - Runs against **seeded known state** (deterministic seed), so flows assert on expected users/posts.
-- Accessibility: axe-core scans in journey pages; tags `wcag2a`, `wcag2aa`, `wcag21aa`, `wcag22aa`; **no serious or critical violations allowed**.
+- Accessibility: axe-core scans in journey pages - public surfaces (incl. `/login` and the 404 in both signed-out and app-shell renders), authenticated app pages, and the admin panel; tags `wcag2a`, `wcag2aa`, `wcag21aa`, `wcag22aa`; **no serious or critical violations allowed**. The dormant-profile shell is out of reach on the reseeded stack (documented in the spec header; unit-tested instead).
 
 ## Artillery — load
 
