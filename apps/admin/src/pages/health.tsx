@@ -2,13 +2,14 @@ import { Alert, Badge, Button, Card, Space, Table, Tag, Typography } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useState } from 'react';
 import type { AdminHealth } from '@xitter/api-contracts';
-import { fetchAllServiceHealth, WORKER_METRICS, workerMetricsPorts } from '../data/health.js';
+import { fetchAllServiceHealth, workerScrapeTargets } from '../data/health.js';
 
 /**
  * System health dashboard: live per-service Terminus detail (each service is
- * its own authority), worker metrics links (workers expose scrapes, not
- * APIs), and the last-reset tile - which stays "pending" until the reset
- * status feed lands with #13.
+ * its own authority), worker metrics pointers (workers expose scrapes, not
+ * APIs - and their ports are cluster-local, so they are named, not linked),
+ * and the last-reset tile - which stays "pending" until the reset status
+ * feed lands with #13.
  */
 export function HealthPage() {
   const [services, setServices] = useState<AdminHealth[] | null>(null);
@@ -101,18 +102,24 @@ export function HealthPage() {
         ]}
       />
 
-      <Card size="small" title="Workers (metrics endpoints)" data-testid="health-workers">
-        <Space wrap>
-          {WORKER_METRICS.map((worker) => (
-            <Typography.Link
-              key={worker.name}
-              href={`http://localhost:${workerMetricsPorts[worker.name]}/metrics`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {worker.name} metrics
-            </Typography.Link>
-          ))}
+      <Card size="small" title="Workers (metrics)" data-testid="health-workers">
+        <Space direction="vertical" size="small" style={{ width: '100%' }}>
+          {/* Copy, not links: the scrape ports are cluster-local (PodMonitors,
+              no edge route - spec 06/07), so a link would 404 from any browser
+              that is not the operator's own machine (#132). */}
+          <Typography.Text type="secondary">
+            Workers expose Prometheus metrics on cluster-local scrape ports — deliberately not
+            routable through the edge. When deployed, read them in Grafana (Kafka consumer lag /
+            Feed freshness dashboards); in local dev, scrape the ports below on the machine running
+            the workers.
+          </Typography.Text>
+          <Space wrap>
+            {workerScrapeTargets().map((worker) => (
+              <Typography.Text key={worker.name} code>
+                {worker.name}: {worker.localUrl}
+              </Typography.Text>
+            ))}
+          </Space>
         </Space>
       </Card>
 

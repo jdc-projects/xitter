@@ -33,8 +33,14 @@ test('admin can log in and sees the health dashboard', async ({ page }) => {
   await expect(table).toContainText('search');
   await expect(page.getByText('All services healthy')).toBeVisible();
 
-  // Workers surface as metrics links; reset tile stays pending until #13.
-  await expect(page.getByTestId('health-workers')).toContainText('fanout');
+  // Workers surface as metrics pointers - cluster-local scrape ports, so the
+  // section names them (plus Grafana for deployed viewing) and never renders
+  // links, which would be dead through the edge (#132). Reset tile stays
+  // pending until #13.
+  const workers = page.getByTestId('health-workers');
+  await expect(workers).toContainText('fanout');
+  await expect(workers).toContainText('Grafana');
+  await expect(workers.locator('a')).toHaveCount(0);
   await expect(page.getByTestId('reset-status-pending')).toBeVisible();
 });
 
