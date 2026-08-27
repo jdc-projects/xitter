@@ -85,6 +85,8 @@ describe('PostCard actions slot (#146)', () => {
 
   it('renders the repost attribution line (the reposter, not the author)', () => {
     renderCard({ repostedBy: { id: 'r1', username: 'riko', displayName: 'Riko' } });
-    expect(screen.getByTestId('post-repost-attribution-p1').textContent).toContain('Riko reposted');
+    expect(screen.getByTestId('post-repost-attribution-p1').textContent).toContain(
+      'Riko (@riko) reposted',
+    );
   });
 });

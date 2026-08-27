@@ -149,8 +149,9 @@ test('reposts appear in followers feeds with attribution and undo removes them',
   await expect(repost).toHaveAttribute('aria-pressed', 'true');
   await expect(repost).toHaveText(/1/);
 
-  // The reposter's own feed shows the post attributed to them (displayName
-  // line + the reposter as the card's surface author).
+  // The reposter's own feed shows the ORIGINAL author's byline (@demo9)
+  // with the reposter on the attribution line - #145's semantics: a reposted
+  // card never wears the reposter's identity, it credits them.
   await demo10.goto('/feed');
   const item = demo10.locator('[data-testid^="post-item-"]', { hasText: rootText });
   const deadline = Date.now() + 20_000;
@@ -161,7 +162,8 @@ test('reposts appear in followers feeds with attribution and undo removes them',
   }
   await expect(item).toBeVisible();
   await expect(demo10.getByTestId(`post-repost-attribution-${postId}`)).toContainText('reposted');
-  await expect(demo10.getByTestId(`post-${postId}`)).toContainText('@demo10');
+  await expect(demo10.getByTestId(`post-repost-attribution-${postId}`)).toContainText('@demo10');
+  await expect(demo10.getByTestId(`post-${postId}`)).toContainText('@demo9');
   await expect(demo10.getByTestId(`post-${postId}`).getByTestId('count-reposts')).toHaveText(/1/);
 
   // The author got a ws ping for the repost of their post (hint only - no

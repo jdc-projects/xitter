@@ -44,7 +44,7 @@ describe('PostListItem (#145 rendering + #146 delete)', () => {
     renderItem();
     const row = screen.getByTestId(`post-item-${post.id}-repost-${reposter.id}`);
     expect(row.textContent).toContain('@me');
-    expect(row.textContent).toContain('Riko reposted');
+    expect(row.textContent).toContain('Riko (@riko) reposted');
   });
 
   it("renders no overflow menu on someone else's card", () => {

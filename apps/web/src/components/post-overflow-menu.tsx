@@ -30,10 +30,11 @@ export function PostOverflowMenu({ postId, username, goTo }: PostOverflowMenuPro
           <ActionIcon
             variant="subtle"
             color="gray"
+            size={24}
             aria-label="Post options"
             data-testid={`post-overflow-${postId}`}
           >
-            <IconDots size={18} stroke={1.5} aria-hidden />
+            <IconDots size={16} stroke={1.5} aria-hidden />
           </ActionIcon>
         </Menu.Target>
         <Menu.Dropdown>
