@@ -7,13 +7,20 @@ import {
   Group,
   Image,
   SimpleGrid,
+  Stack,
   Text,
   Textarea,
+  TextInput,
   Tooltip,
 } from '@mantine/core';
 import { IconPhoto, IconX } from '@tabler/icons-react';
 import { useActionState, useEffect, useRef, useState } from 'react';
-import { MEDIA_MAX_BYTES, POST_MEDIA_MAX, POST_TEXT_MAX } from '@xitter/api-contracts';
+import {
+  MEDIA_ALT_TEXT_MAX,
+  MEDIA_MAX_BYTES,
+  POST_MEDIA_MAX,
+  POST_TEXT_MAX,
+} from '@xitter/api-contracts';
 import { completeUploadAction, mediaStatusAction, requestUploadAction } from '@/lib/media/actions';
 import { createPostAction, type ComposerResult } from '@/lib/posts/actions';
 
@@ -38,7 +45,12 @@ interface Attachment {
   previewUrl: string;
   mediaId?: string;
   status: AttachmentStatus;
+  /** Author-supplied alt text (#133); empty means none was written. */
+  altText: string;
 }
+
+/** One staged attachment as the hidden input serialises it for submit. */
+type MediaEntry = string | { mediaId: string; altText: string };
 
 const ACCEPTED_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 
@@ -125,6 +137,7 @@ function planPickedFiles(
       file,
       previewUrl: URL.createObjectURL(file),
       status: 'new',
+      altText: '',
     });
     count += 1;
   }
@@ -203,8 +216,15 @@ export function PostComposer({
   }
 
   const overLimit = text.length > POST_TEXT_MAX;
-  const readyMediaIds = attachments.flatMap((attachment) =>
-    attachment.status === 'ready' && attachment.mediaId ? [attachment.mediaId] : [],
+  /** Bare ids when no alt was written, `{mediaId, altText}` entries when it was. */
+  const mediaEntries: MediaEntry[] = attachments.flatMap((attachment) =>
+    attachment.status === 'ready' && attachment.mediaId
+      ? [
+          attachment.altText
+            ? { mediaId: attachment.mediaId, altText: attachment.altText }
+            : attachment.mediaId,
+        ]
+      : [],
   );
 
   function pickFiles(files: FileList | null) {
@@ -219,6 +239,11 @@ export function PostComposer({
     setAttachments((current) =>
       current.map((item) => (item.clientId === clientId ? { ...item, ...patch } : item)),
     );
+  }
+
+  function updateAltText(clientId: string, altText: string) {
+    // The contract rejects over-limit text; never let the draft exceed it.
+    updateAttachment(clientId, { altText: altText.slice(0, MEDIA_ALT_TEXT_MAX) });
   }
 
   function removeAttachment(clientId: string) {
@@ -236,8 +261,14 @@ export function PostComposer({
     if (uploading || pending) return;
 
     const notReady = attachments.filter((attachment) => attachment.status !== 'ready');
-    const alreadyReady = attachments.flatMap((attachment) =>
-      attachment.status === 'ready' && attachment.mediaId ? [attachment.mediaId] : [],
+    const alreadyReady: MediaEntry[] = attachments.flatMap((attachment) =>
+      attachment.status === 'ready' && attachment.mediaId
+        ? [
+            attachment.altText
+              ? { mediaId: attachment.mediaId, altText: attachment.altText }
+              : attachment.mediaId,
+          ]
+        : [],
     );
     const uploaded = notReady.length
       ? await submitPendingUploads(notReady, {
@@ -249,9 +280,14 @@ export function PostComposer({
     if (!uploaded) return;
     // requestSubmit serialises the CURRENT DOM, which may not have re-rendered
     // with the freshly-ready ids yet - set the hidden input imperatively so
-    // the post references the media that was just uploaded.
-    const mediaIds = [...alreadyReady, ...uploaded];
-    if (mediaIdsInput.current) mediaIdsInput.current.value = JSON.stringify(mediaIds);
+    // the post references the media that was just uploaded (paired with the
+    // alt text captured at pick time, in the same order).
+    const fresh: MediaEntry[] = notReady.map((attachment, index) => {
+      const mediaId = uploaded[index]!;
+      return attachment.altText ? { mediaId, altText: attachment.altText } : mediaId;
+    });
+    const entries = [...alreadyReady, ...fresh];
+    if (mediaIdsInput.current) mediaIdsInput.current.value = JSON.stringify(entries);
     bypassSubmit.current = true;
     // requestSubmit() from inside the submit-event dispatch is treated as a
     // nested submission and dropped by some Chromium builds - always defer
@@ -281,7 +317,7 @@ export function PostComposer({
         ref={mediaIdsInput}
         type="hidden"
         name="mediaIds"
-        value={JSON.stringify(readyMediaIds)}
+        value={JSON.stringify(mediaEntries)}
         data-testid={`${testId}-media-ids`}
       />
       <Textarea
@@ -304,33 +340,45 @@ export function PostComposer({
         data-testid={`${testId}-textarea`}
       />
       {attachments.length > 0 ? (
-        <SimpleGrid cols={4} mt="xs" data-testid={`${testId}-previews`}>
+        <SimpleGrid cols={2} mt="xs" data-testid={`${testId}-previews`}>
           {attachments.map((attachment) => (
-            <Group
+            <Stack
               key={attachment.clientId}
               gap={4}
-              wrap="nowrap"
               data-testid={`${testId}-attachment-${attachment.status}`}
             >
-              <Image
-                src={attachment.previewUrl}
-                alt={attachment.file.name}
-                radius="sm"
-                fit="cover"
-                h={64}
-                maw={96}
-              />
-              <ActionIcon
-                variant="subtle"
-                color="gray"
+              <Group gap={4} wrap="nowrap">
+                <Image
+                  src={attachment.previewUrl}
+                  alt={attachment.file.name}
+                  radius="sm"
+                  fit="cover"
+                  h={64}
+                  maw={96}
+                />
+                <ActionIcon
+                  variant="subtle"
+                  color="gray"
+                  size="xs"
+                  aria-label={`Remove ${attachment.file.name}`}
+                  onClick={() => removeAttachment(attachment.clientId)}
+                  data-testid={`${testId}-remove`}
+                >
+                  <IconX {...closeIconProps} />
+                </ActionIcon>
+              </Group>
+              {/* Optional per-image alt text (#133) - shown after picking. */}
+              <TextInput
+                value={attachment.altText}
+                onChange={(event) => updateAltText(attachment.clientId, event.currentTarget.value)}
+                placeholder="Describe this image"
+                aria-label={`Describe ${attachment.file.name} for screen readers`}
                 size="xs"
-                aria-label={`Remove ${attachment.file.name}`}
-                onClick={() => removeAttachment(attachment.clientId)}
-                data-testid={`${testId}-remove`}
-              >
-                <IconX {...closeIconProps} />
-              </ActionIcon>
-            </Group>
+                maxLength={MEDIA_ALT_TEXT_MAX}
+                disabled={attachment.status === 'uploading'}
+                data-testid={`${testId}-alt-input`}
+              />
+            </Stack>
           ))}
         </SimpleGrid>
       ) : null}
@@ -350,6 +398,9 @@ export function PostComposer({
           <Text size="xs" c="orange.7" style={{ flex: 1 }} data-testid={`${testId}-pii-reminder`}>
             Demo site: do not enter personal or sensitive data. Anyone can read it and nothing is
             retained - everything is wiped nightly.
+            {attachments.length > 0
+              ? ' Describing your images (alt text) helps people using screen readers.'
+              : ''}
           </Text>
         </Group>
         <Text

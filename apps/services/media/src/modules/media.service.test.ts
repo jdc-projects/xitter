@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MEDIA_MAX_BYTES } from '@xitter/api-contracts';
+import { MEDIA_MAX_BYTES, mediaAssetSchema } from '@xitter/api-contracts';
 import { MAX_PROCESS_ATTEMPTS, MediaService } from './media.service.js';
 import type { MediaEvents } from './media-events.js';
 import type { MediaRepository, MediaRow, MediaVariantRecord } from './media.repository.js';
@@ -19,6 +19,7 @@ const row = (overrides: Partial<MediaRow> = {}): MediaRow => ({
   variants: [],
   attempts: 0,
   uploadedAt: null,
+  altText: null,
   createdAt: new Date('2026-08-18T00:00:00Z'),
   ...overrides,
 });
@@ -37,6 +38,15 @@ function makeDeps(
     find: (id: string) => Promise.resolve(rows.get(id) ?? null),
     findByIds: (ids: string[]) =>
       Promise.resolve(ids.flatMap((id) => (rows.get(id) ? [rows.get(id)!] : []))),
+    applyAltTexts: (altTexts: Record<string, string>) => {
+      const updated: MediaRow[] = [];
+      for (const [id, altText] of Object.entries(altTexts)) {
+        const row = { ...rows.get(id)!, altText };
+        rows.set(id, row);
+        updated.push(row);
+      }
+      return Promise.resolve(updated);
+    },
     create: (input: Parameters<MediaRepository['create']>[0]) => {
       const created = row({ ...input });
       rows.set(created.id, created);
@@ -495,6 +505,43 @@ describe('lookup + reseed (internal)', () => {
     ]);
 
     expect(found.map((asset) => asset.id)).toEqual([mine.mediaId]);
+  });
+
+  it('persists author alt text onto owned assets and returns it (#133)', async () => {
+    const { service, rows } = makeDeps();
+    const slot = await service.createUpload(OWNER, { mimeType: 'image/png', bytes: 10 });
+
+    const found = await service.lookup(OWNER, [slot.mediaId], {
+      [slot.mediaId]: 'A kite over the pier',
+    });
+
+    expect(found).toEqual([
+      expect.objectContaining({ id: slot.mediaId, altText: 'A kite over the pier' }),
+    ]);
+    expect(rows.get(slot.mediaId)).toMatchObject({ altText: 'A kite over the pier' });
+  });
+
+  it("never writes alt text onto another user's asset (#133 ownership)", async () => {
+    const { service, rows } = makeDeps();
+    const theirs = await service.createUpload(OTHER, { mimeType: 'image/png', bytes: 10 });
+
+    const found = await service.lookup(OWNER, [theirs.mediaId], {
+      [theirs.mediaId]: 'stolen alt text',
+    });
+
+    expect(found).toEqual([]); // not owned - filtered before any write
+    expect(rows.get(theirs.mediaId)).toMatchObject({ altText: null });
+  });
+
+  it('omits altText from the asset view when the asset never got text (#133)', async () => {
+    const { service } = makeDeps();
+    const slot = await service.createUpload(OWNER, { mimeType: 'image/png', bytes: 10 });
+
+    const found = await service.lookup(OWNER, [slot.mediaId]);
+
+    expect(found[0]).not.toHaveProperty('altText');
+    // Legacy snapshot shape (pre-#133 rows) also parses and renders generic.
+    expect(mediaAssetSchema.safeParse({ ...found[0], altText: null }).success).toBe(true);
   });
 
   it('reseed wipes metadata', async () => {

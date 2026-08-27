@@ -64,8 +64,28 @@
           "mediaIds": {
             "type": "array",
             "items": {
-              "type": "string",
-              "format": "uuid"
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "mediaId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "altText": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
+                  },
+                  "required": ["mediaId"],
+                  "additionalProperties": false
+                }
+              ]
             },
             "maxItems": 4,
             "default": []
@@ -212,6 +232,11 @@
                             "url"
                           ]
                         }
+                      },
+                      "altText": {
+                        "type": "string",
+                        "nullable": true,
+                        "maxLength": 200
                       },
                       "createdAt": {
                         "type": "string",
@@ -446,6 +471,11 @@
                                 "url"
                               ]
                             }
+                          },
+                          "altText": {
+                            "type": "string",
+                            "nullable": true,
+                            "maxLength": 200
                           },
                           "createdAt": {
                             "type": "string",
@@ -700,6 +730,11 @@
                               ]
                             }
                           },
+                          "altText": {
+                            "type": "string",
+                            "nullable": true,
+                            "maxLength": 200
+                          },
                           "createdAt": {
                             "type": "string",
                             "format": "date-time"
@@ -913,6 +948,11 @@
                                     ]
                                   }
                                 },
+                                "altText": {
+                                  "type": "string",
+                                  "nullable": true,
+                                  "maxLength": 200
+                                },
                                 "createdAt": {
                                   "type": "string",
                                   "format": "date-time"
@@ -1123,6 +1163,11 @@
                                       "url"
                                     ]
                                   }
+                                },
+                                "altText": {
+                                  "type": "string",
+                                  "nullable": true,
+                                  "maxLength": 200
                                 },
                                 "createdAt": {
                                   "type": "string",
@@ -1487,6 +1532,11 @@
                                     ]
                                   }
                                 },
+                                "altText": {
+                                  "type": "string",
+                                  "nullable": true,
+                                  "maxLength": 200
+                                },
                                 "createdAt": {
                                   "type": "string",
                                   "format": "date-time"
@@ -1732,6 +1782,11 @@
                                       "url"
                                     ]
                                   }
+                                },
+                                "altText": {
+                                  "type": "string",
+                                  "nullable": true,
+                                  "maxLength": 200
                                 },
                                 "createdAt": {
                                   "type": "string",
@@ -2035,6 +2090,11 @@
                               ]
                             }
                           },
+                          "altText": {
+                            "type": "string",
+                            "nullable": true,
+                            "maxLength": 200
+                          },
                           "createdAt": {
                             "type": "string",
                             "format": "date-time"
@@ -2274,6 +2334,11 @@
                                 "url"
                               ]
                             }
+                          },
+                          "altText": {
+                            "type": "string",
+                            "nullable": true,
+                            "maxLength": 200
                           },
                           "createdAt": {
                             "type": "string",

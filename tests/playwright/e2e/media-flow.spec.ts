@@ -71,6 +71,62 @@ test('attach image: post shows thumb in feed, original on detail, served from /m
   expect(await original.evaluate((el) => (el as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
 });
 
+test('alt text: described images render their description, undescribed keep the generic fallback', async ({
+  page,
+}) => {
+  await login(page, 'demo9');
+  await waitForComposerHydration(page);
+  const altText = 'A single grey pixel on a white background';
+
+  // Described: the composer's alt input rides the upload into the snapshot.
+  const described = `t5 e2e alt described ${crypto.randomUUID()}`;
+  await page.getByTestId('composer-textarea').fill(described);
+  await page
+    .getByTestId('composer-file-input')
+    .setInputFiles([{ name: 'alt.png', mimeType: 'image/png', buffer: PNG }]);
+  await expect(page.getByTestId('composer-attachment-new')).toHaveCount(1);
+  await page.getByTestId('composer-alt-input').fill(altText);
+  await page.getByTestId('composer-submit').click();
+
+  const describedItem = page.locator('[data-testid^="post-item-"]', { hasText: described }).first();
+  const deadline = Date.now() + 45_000;
+  while (!(await describedItem.isVisible().catch(() => false))) {
+    if (Date.now() > deadline) break;
+    const show = page.getByTestId('feed-new-items').getByRole('button');
+    if (await show.isVisible().catch(() => false)) await show.click().catch(() => undefined);
+    await page.waitForTimeout(400);
+  }
+  await expect(describedItem).toBeVisible();
+  const describedId = (await describedItem.getAttribute('data-testid'))!.replace('post-item-', '');
+  await expect(page.locator(`[data-testid="post-image-${describedId}"]`).first()).toHaveAttribute(
+    'alt',
+    altText,
+  );
+
+  // Undescribed: no alt written -> the generic fallback string renders.
+  const plain = `t5 e2e alt plain ${crypto.randomUUID()}`;
+  await page.getByTestId('composer-textarea').fill(plain);
+  await page
+    .getByTestId('composer-file-input')
+    .setInputFiles([{ name: 'plain.png', mimeType: 'image/png', buffer: PNG }]);
+  await expect(page.getByTestId('composer-attachment-new')).toHaveCount(1);
+  await page.getByTestId('composer-submit').click();
+
+  const plainItem = page.locator('[data-testid^="post-item-"]', { hasText: plain }).first();
+  while (!(await plainItem.isVisible().catch(() => false))) {
+    if (Date.now() > deadline) break;
+    const show = page.getByTestId('feed-new-items').getByRole('button');
+    if (await show.isVisible().catch(() => false)) await show.click().catch(() => undefined);
+    await page.waitForTimeout(400);
+  }
+  await expect(plainItem).toBeVisible();
+  const plainId = (await plainItem.getAttribute('data-testid'))!.replace('post-item-', '');
+  await expect(page.locator(`[data-testid="post-image-${plainId}"]`).first()).toHaveAttribute(
+    'alt',
+    'Image attached to post',
+  );
+});
+
 test('Enter-key submission uploads attachments too (the button is not the only path)', async ({
   page,
 }) => {

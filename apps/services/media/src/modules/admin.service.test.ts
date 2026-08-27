@@ -13,6 +13,7 @@ const row = (overrides: Partial<MediaRow> = {}): MediaRow => ({
   objectKey: `${OWNER}/00000000-0000-4000-8000-0000000000c1/original.png`,
   mimeType: 'image/png',
   bytes: 1024,
+  altText: null,
   variants: [
     {
       kind: 'thumb',

@@ -19,6 +19,9 @@ model MediaAsset {
   variants   Json     @default("[]")
   attempts   Int      @default(0)
   uploadedAt DateTime?
+  // Author-supplied alt text (#133), set when the owning post is created;
+  // null until then (readers fall back to a generic description).
+  altText    String?
   createdAt  DateTime  @default(now())
 
   @@index([ownerId])

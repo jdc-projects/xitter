@@ -10,6 +10,7 @@ import {
   hydratedFeedItemSchema,
   interactionKindSchema,
   internalMediaAssetSchema,
+  mediaAltTextInputSchema,
   mediaAssetSchema,
   mediaIdSchema,
   mediaVariantCoreSchema,
@@ -40,10 +41,23 @@ export const errorSchema = z
 
 // strict: unknown keys must 400, not silently strip (mediaIds are validated
 // for shape only - uuid, max 4 - until #6 adds existence/status checks).
+//
+// Attachment entries (#133): a bare media id (the historical shape, still
+// accepted) or an object carrying optional alt text for that asset.
+const postMediaAttachmentSchema = z.union([
+  mediaIdSchema,
+  z
+    .object({
+      mediaId: mediaIdSchema,
+      altText: mediaAltTextInputSchema.optional(),
+    })
+    .strict(),
+]);
+
 export const createPostRequestSchema = z
   .object({
     text: z.string().min(1).max(POST_TEXT_MAX),
-    mediaIds: z.array(mediaIdSchema).max(POST_MEDIA_MAX).default([]),
+    mediaIds: z.array(postMediaAttachmentSchema).max(POST_MEDIA_MAX).default([]),
     replyToId: postIdSchema.nullable().default(null),
   })
   .strict()
@@ -153,13 +167,21 @@ export const reportMediaFailureRequestSchema = z
   .strict();
 
 // Internal (posts → media): resolve assets for post attachment - existence,
-// ownership and ready-status checks happen against this response.
+// ownership and ready-status checks happen against this response. Optional
+// altTexts (#133): author-supplied alt text persisted onto the owned assets
+// (keys must be a subset of mediaIds - one asset, one text, no orphans).
 export const mediaLookupRequestSchema = z
   .object({
     ownerId: userIdSchema,
     mediaIds: z.array(mediaIdSchema).min(1).max(POST_MEDIA_MAX),
+    altTexts: z.record(mediaIdSchema, mediaAltTextInputSchema).optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    ({ mediaIds, altTexts }) =>
+      !altTexts || Object.keys(altTexts).every((id) => mediaIds.includes(id)),
+    { message: 'altTexts keys must be a subset of mediaIds' },
+  );
 
 export const mediaLookupResponseSchema = z
   .object({

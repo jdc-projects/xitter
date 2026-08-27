@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { CreateBucketCommand, S3Client } from '@aws-sdk/client-s3';
@@ -41,13 +41,16 @@ describe.skipIf(!hasGeneratedClient)('media integration (testcontainers rustfs +
     const generated = await import('../generated/prisma/client.js');
     [postgres, rustfs] = await Promise.all([startPostgres('media-test'), startRustfs()]);
 
-    const migration = readFileSync(
-      join(process.cwd(), 'prisma/migrations/20260818000000_init/migration.sql'),
-      'utf8',
-    );
     pool = new Pool({ connectionString: postgres.connectionString });
-    for (const statement of migration.split(/;\s*\n/).filter((s) => s.trim().length > 0)) {
-      await pool.query(statement);
+    // Apply every migration in lexical order: the test DB must match the
+    // schema the generated client was built from, and later migrations add
+    // columns the client writes (e.g. MediaAsset.altText, #133).
+    const migrationsDir = join(process.cwd(), 'prisma', 'migrations');
+    for (const migrationDir of readdirSync(migrationsDir).sort()) {
+      const sql = readFileSync(join(migrationsDir, migrationDir, 'migration.sql'), 'utf8');
+      for (const statement of sql.split(/;\s*\n/).filter((s) => s.trim().length > 0)) {
+        await pool.query(statement);
+      }
     }
 
     db = new generated.PrismaClient({
@@ -215,5 +218,22 @@ describe.skipIf(!hasGeneratedClient)('media integration (testcontainers rustfs +
     expect(await service.lookup('00000000-0000-4000-8000-000000000902', [slot.mediaId])).toEqual(
       [],
     );
+  });
+
+  it('lookup persists author alt text and serves it on every asset read (#133)', async () => {
+    const slot = await service.createUpload(OWNER, { mimeType: 'image/png', bytes: 10 });
+
+    const viaLookup = await service.lookup(OWNER, [slot.mediaId], {
+      [slot.mediaId]: 'A red kite over a grey pier',
+    });
+    expect(viaLookup[0]).toMatchObject({ altText: 'A red kite over a grey pier' });
+
+    // Persisted: the plain public read (upload polling) sees it too, and a
+    // later lookup without altTexts does not wipe it.
+    await expect(service.getMedia(slot.mediaId)).resolves.toMatchObject({
+      altText: 'A red kite over a grey pier',
+    });
+    const again = await service.lookup(OWNER, [slot.mediaId]);
+    expect(again[0]).toMatchObject({ altText: 'A red kite over a grey pier' });
   });
 });

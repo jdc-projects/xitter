@@ -221,12 +221,16 @@ async function seedPosts(
       throw new Error(`reply target missing for ${author.username}/post-${post.ordinal}`);
     }
     const mediaIds = mediaBySlot.has(slotKey(post)) ? [mediaBySlot.get(slotKey(post))!] : [];
+    // Alt text (#133) rides the mediaIds entry for this post's image.
+    const media = post.imageAlt
+      ? mediaIds.map((mediaId) => ({ mediaId, altText: post.imageAlt! }))
+      : mediaIds;
     // The guard above threw when a reply's parent was missing, so the null
     // fallback here is unreachable for replies by construction.
     const createdPost = await createPost(
       ctx,
       author,
-      { text: post.text, mediaIds, replyToId: replyToId ?? null },
+      { text: post.text, mediaIds: media, replyToId: replyToId ?? null },
       token,
     );
     idBySlot.set(slotKey(post), createdPost.id);
@@ -248,7 +252,11 @@ async function seedPosts(
 async function createPost(
   ctx: SeedContext,
   author: CorpusUser,
-  body: { text: string; mediaIds: string[]; replyToId: string | null },
+  body: {
+    text: string;
+    mediaIds: (string | { mediaId: string; altText: string })[];
+    replyToId: string | null;
+  },
   token: string,
 ): Promise<{ id: string }> {
   const create = () =>

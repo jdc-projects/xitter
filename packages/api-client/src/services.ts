@@ -479,8 +479,18 @@ export class MediaClient extends ServiceClient {
   }
 
   /** Internal (posts): owned assets among the ids (attach validation). */
-  internalLookup(ownerId: string, mediaIds: string[]): Promise<{ items: MediaAsset[] }> {
-    return this.post(`${V1}/media/internal/media/lookup`, { ownerId, mediaIds }).then(
+  internalLookup(
+    ownerId: string,
+    mediaIds: string[],
+    altTexts?: Record<string, string>,
+  ): Promise<{ items: MediaAsset[] }> {
+    // altTexts only ride the wire when at least one is set - a bare lookup
+    // stays byte-identical to the historical shape.
+    const body =
+      altTexts && Object.keys(altTexts).length > 0
+        ? { ownerId, mediaIds, altTexts }
+        : { ownerId, mediaIds };
+    return this.post(`${V1}/media/internal/media/lookup`, body).then(
       mediaLookupResponseSchema.parse,
     );
   }

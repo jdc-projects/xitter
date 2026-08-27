@@ -46,6 +46,22 @@ export class MediaRepository {
     return this.db.mediaAsset.findMany({ where: { id: { in: mediaIds } } });
   }
 
+  /**
+   * Internal (posts, #133): persist author-supplied alt text onto assets.
+   * Callers resolve ownership first and only pass ids that were just read,
+   * so every update targets an existing row (a miss would throw P2025 and
+   * fail the lookup loudly rather than silently dropping the text).
+   */
+  applyAltTexts(altTexts: Record<string, string>): Promise<MediaRow[]> {
+    const entries = Object.entries(altTexts);
+    if (entries.length === 0) return Promise.resolve([]);
+    return this.db.$transaction(
+      entries.map(([id, altText]) =>
+        this.db.mediaAsset.update({ where: { id }, data: { altText } }),
+      ),
+    );
+  }
+
   create(input: {
     id: string;
     ownerId: string;

@@ -62,9 +62,12 @@ export class InternalController {
     body: {
       ownerId: string;
       mediaIds: string[];
+      altTexts?: Record<string, string>;
     },
   ): Promise<{ items: MediaAsset[] }> {
-    return this.media.lookup(body.ownerId, body.mediaIds).then((items) => ({ items }));
+    return this.media
+      .lookup(body.ownerId, body.mediaIds, body.altTexts)
+      .then((items) => ({ items }));
   }
 
   @Post('reseed')

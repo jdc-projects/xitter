@@ -50,6 +50,8 @@ export interface CorpusPost extends PostRef {
   text: string;
   /** 1 = attach a generated demo image (media pipeline). */
   mediaCount: number;
+  /** Descriptive alt text for the attached image (#133); null when none. */
+  imageAlt: string | null;
   /** Set for replies: the post this one answers. */
   replyTo: PostRef | null;
 }
@@ -124,6 +126,7 @@ export function buildCorpus(options: CorpusOptions = {}): SeedCorpus {
       ...slot,
       text: hashtag ? `${text} #${faker.lorem.word()}` : text,
       mediaCount: slots.imageKeys.has(keyOf(slot)) ? 1 : 0,
+      imageAlt: imageAltForSlot(slots.imageKeys, slot),
       replyTo: null,
     });
   }
@@ -133,6 +136,7 @@ export function buildCorpus(options: CorpusOptions = {}): SeedCorpus {
         ...replySlot,
         text: sentence(faker.number.int({ min: 3, max: 10 })),
         mediaCount: 0,
+        imageAlt: null,
         replyTo: thread.root,
       });
     }
@@ -181,6 +185,7 @@ export function corpusFingerprint(corpus: Omit<SeedCorpus, 'fingerprint'>): stri
       p.ordinal,
       p.text,
       p.mediaCount,
+      p.imageAlt,
       p.replyTo ? [p.replyTo.authorIndex, p.replyTo.ordinal] : null,
     ]),
     interactions: corpus.interactions
@@ -194,6 +199,17 @@ export function corpusFingerprint(corpus: Omit<SeedCorpus, 'fingerprint'>): stri
       ),
   };
   return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+}
+
+/**
+ * Honest description of the generated demo pattern (lib/images.ts) for one
+ * image slot, one per author so the per-asset alt mapping is observable
+ * (#133); null for slots without an image.
+ */
+function imageAltForSlot(imageKeys: Set<string>, slot: PostRef): string | null {
+  return imageKeys.has(keyOf(slot))
+    ? `Demo pattern ${slot.authorIndex + 1}: a left-to-right color gradient with fine noise`
+    : null;
 }
 
 // ---------------------------------------------------------------------------
