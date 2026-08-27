@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { ApiError, PostsClient, SocialClient, localServiceUrls } from '@xitter/api-client';
-import type { Post } from '@xitter/api-contracts';
+import { usernameSchema, type Post } from '@xitter/api-contracts';
 import type { PersonItem } from '@/components/paginated-people-list';
 import type { PostCardItem } from '@/components/paginated-post-list';
 import { profileViewState } from '@/lib/social/view-model';
@@ -21,6 +21,16 @@ const DEMO_USERNAME = /^demo(?:10|[1-9])$/;
  */
 export function isDemoUsername(username: string): boolean {
   return DEMO_USERNAME.test(username);
+}
+
+/**
+ * Contract-shaped username? Malformed values (too short/long, bad chars)
+ * never reach the social API - its Zod param validation answers 400, which
+ * the page's 404 mapping would otherwise turn into a 500 error boundary
+ * (audit #32). Shape-invalid usernames are just not-found pages.
+ */
+export function isValidUsername(username: string): boolean {
+  return usernameSchema.safeParse(username).success;
 }
 
 export interface DormantProfileView {
@@ -123,6 +133,10 @@ export async function loadProfileView(
     baseUrl: localServiceUrls().social,
     token: session.accessToken,
   });
+
+  // Malformed usernames (audit #32): 404 instead of the social API's 400
+  // bubbling up as a 500 error boundary.
+  if (!isValidUsername(username)) notFound();
 
   let profile;
   try {

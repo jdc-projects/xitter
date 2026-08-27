@@ -21,9 +21,6 @@ export default async function BookmarksPage() {
         <Title order={1} size="h3" data-testid="bookmarks-title">
           Bookmarks
         </Title>
-        <Text size="sm" c="dimmed">
-          Only you can see your bookmarks.
-        </Text>
 
         {page.items.length === 0 ? (
           <Text size="sm" c="dimmed" data-testid="bookmarks-empty">
@@ -33,8 +30,10 @@ export default async function BookmarksPage() {
           <BookmarksList initialItems={page.items} initialCursor={page.nextCursor} />
         )}
 
+        {/* One privacy note (audit #32): the old sub-line + alert pair said
+            the same thing twice back to back. */}
         <Alert color="blue" variant="light" data-testid="bookmarks-privacy-note">
-          Bookmarks are private to your account.
+          Bookmarks are private to your account - only you can see them.
         </Alert>
       </Stack>
     </Container>

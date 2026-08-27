@@ -20,6 +20,10 @@ import type { ReactNode } from 'react';
 import { usePathname } from 'next/navigation';
 import { HeaderSearch } from './header-search';
 
+// Decorative glyphs: the NavLink label / aria-label carries the meaning;
+// without aria-hidden each svg surfaces as an unnamed img (audit #32).
+const navIconProps = { size: 18, stroke: 1.75, 'aria-hidden': true } as const;
+
 export interface AppShellFrameProps {
   /** Signed-in username; null renders the shell without user bits. */
   username: string | null;
@@ -54,7 +58,7 @@ function navLink(item: NavItem, pathname: string | null, variant: 'header' | 'dr
       component="a"
       href={item.href}
       label={item.label}
-      leftSection={<item.icon size={18} stroke={1.75} />}
+      leftSection={<item.icon {...navIconProps} />}
       active={active}
       aria-current={active ? 'page' : undefined}
       data-testid={`${variant}-nav-${item.label.toLowerCase()}`}
@@ -108,7 +112,7 @@ export function AppShellFrame({ username, children }: AppShellFrameProps) {
                 hiddenFrom="xs"
                 data-testid="mobile-search-link"
               >
-                <IconSearch size={18} stroke={1.75} />
+                <IconSearch {...navIconProps} />
               </ActionIcon>
               {username ? (
                 <>
@@ -153,7 +157,7 @@ export function AppShellFrame({ username, children }: AppShellFrameProps) {
             component="a"
             href="/search"
             label="Search"
-            leftSection={<IconSearch size={18} stroke={1.75} />}
+            leftSection={<IconSearch {...navIconProps} />}
             active={searchActive}
             aria-current={searchActive ? 'page' : undefined}
             data-testid="drawer-nav-search"

@@ -1,7 +1,7 @@
 import { Anchor, Container, Divider, Stack, Text, Title } from '@mantine/core';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import type { Post } from '@xitter/api-contracts';
+import { postIdSchema, type Post } from '@xitter/api-contracts';
 import { ApiError } from '@xitter/api-client';
 import { requireSession } from '@/lib/auth/session';
 import { PostComposer } from '@/components/post-composer';
@@ -27,6 +27,11 @@ const cardAuthor = (profile: { username: string; displayName: string } | undefin
 export default async function PostDetailPage({ params }: { params: Promise<{ postId: string }> }) {
   const { postId } = await params;
   const session = await requireSession(`/post/${postId}`);
+
+  // Malformed ids (audit #32): 404 instead of the posts API's Zod 400
+  // bubbling up as a 500 error boundary.
+  if (!postIdSchema.safeParse(postId).success) notFound();
+
   const { posts, social } = clientsForSession(session);
 
   let post: Post;

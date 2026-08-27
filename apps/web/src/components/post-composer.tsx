@@ -17,6 +17,10 @@ import { MEDIA_MAX_BYTES, POST_MEDIA_MAX, POST_TEXT_MAX } from '@xitter/api-cont
 import { completeUploadAction, mediaStatusAction, requestUploadAction } from '@/lib/media/actions';
 import { createPostAction, type ComposerResult } from '@/lib/posts/actions';
 
+// Decorative glyphs (audit #32): the adjacent aria-labels carry the meaning.
+const iconProps = { size: 18, stroke: 1.5, 'aria-hidden': true } as const;
+const closeIconProps = { size: 14, 'aria-hidden': true } as const;
+
 export interface PostComposerProps {
   /** Set when composing a reply inline on a post detail page. */
   replyToId?: string;
@@ -324,7 +328,7 @@ export function PostComposer({
                 onClick={() => removeAttachment(attachment.clientId)}
                 data-testid={`${testId}-remove`}
               >
-                <IconX size={14} />
+                <IconX {...closeIconProps} />
               </ActionIcon>
             </Group>
           ))}
@@ -340,7 +344,7 @@ export function PostComposer({
               disabled={attachments.length >= POST_MEDIA_MAX}
               data-testid={`${testId}-attach`}
             >
-              <IconPhoto size={18} />
+              <IconPhoto {...iconProps} />
             </ActionIcon>
           </Tooltip>
           <Text size="xs" c="orange.7" style={{ flex: 1 }} data-testid={`${testId}-pii-reminder`}>
