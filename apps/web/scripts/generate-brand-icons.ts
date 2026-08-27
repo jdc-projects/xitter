@@ -140,60 +140,92 @@ function coverage(sd: number, feather: number): number {
   return Math.max(0, Math.min(1, 0.5 - sd / feather));
 }
 
+// 135°: gradient line direction in screen coordinates (y down).
+const GRADIENT_RAD = (GRADIENT_DEG * Math.PI) / 180;
+const GRADIENT_DIR_X = Math.sin(GRADIENT_RAD);
+const GRADIENT_DIR_Y = -Math.cos(GRADIENT_RAD);
+const GRADIENT_DOT_EXTENT = (Math.abs(GRADIENT_DIR_X) + Math.abs(GRADIENT_DIR_Y)) / 2;
+
+const CROSS_ARM_OFFSET = (CROSS_SPAN_RATIO / 2) * Math.SQRT1_2;
+const CROSS_CAP_RADIUS = CROSS_THICKNESS_RATIO / 2;
+
+/** Gradient stop for a point on the unit tile (0 = indigo, 1 = cyan). */
+function gradientT(px: number, py: number): number {
+  const dot = px * GRADIENT_DIR_X + py * GRADIENT_DIR_Y;
+  return Math.max(0, Math.min(1, 0.5 + dot / (2 * GRADIENT_DOT_EXTENT)));
+}
+
+/** White ✕ coverage: the closer capsule of the two ±45° arms, rounded ends. */
+function crossCoverage(px: number, py: number, feather: number): number {
+  const cross =
+    Math.min(
+      sdCapsule(px, py, -CROSS_ARM_OFFSET, -CROSS_ARM_OFFSET, CROSS_ARM_OFFSET, CROSS_ARM_OFFSET),
+      sdCapsule(px, py, CROSS_ARM_OFFSET, -CROSS_ARM_OFFSET, -CROSS_ARM_OFFSET, CROSS_ARM_OFFSET),
+    ) - CROSS_CAP_RADIUS;
+  return coverage(cross, feather);
+}
+
+/**
+ * One supersample in premultiplied RGBA: the gradient tile, with the white
+ * ✕ composited over it. Points outside the rounded square are transparent.
+ */
+function sampleMark(u: number, v: number, feather: number): [number, number, number, number] {
+  const px = u - 0.5;
+  const py = v - 0.5;
+  const tile = coverage(sdRoundedRect(px, py, 0.5, RADIUS_RATIO), feather);
+  if (tile <= 0) return [0, 0, 0, 0];
+  const glyph = crossCoverage(px, py, feather) * tile;
+  const t = gradientT(px, py);
+  const channel = (from: number, to: number) => {
+    const gradient = from + (to - from) * t;
+    return gradient * (1 - glyph) * tile + WHITE_RGB[0]! * glyph * tile;
+  };
+  return [
+    channel(FROM_RGB[0]!, TO_RGB[0]!),
+    channel(FROM_RGB[1]!, TO_RGB[1]!),
+    channel(FROM_RGB[2]!, TO_RGB[2]!),
+    tile,
+  ];
+}
+
+/** Averaged straight RGBA of one pixel, from its supersamples. */
+function pixelColour(
+  x: number,
+  y: number,
+  size: number,
+  supersample: number,
+): [number, number, number, number] {
+  const feather = 1 / (size * supersample);
+  let pr = 0;
+  let pg = 0;
+  let pb = 0;
+  let pa = 0; // premultiplied accumulation
+  for (let sy = 0; sy < supersample; sy += 1) {
+    for (let sx = 0; sx < supersample; sx += 1) {
+      const u = (x + (sx + 0.5) / supersample) / size;
+      const v = (y + (sy + 0.5) / supersample) / size;
+      const [r, g, b, a] = sampleMark(u, v, feather);
+      pr += r;
+      pg += g;
+      pb += b;
+      pa += a;
+    }
+  }
+  if (pa <= 0) return [0, 0, 0, 0];
+  return [
+    Math.round(pr / pa),
+    Math.round(pg / pa),
+    Math.round(pb / pa),
+    Math.round((pa / (supersample * supersample)) * 255),
+  ];
+}
+
 function renderMark(size: number): Uint8Array {
   const supersample = 4; // 16 samples per pixel edge
-  const samples = supersample * supersample;
-  const feather = 1 / (size * supersample);
-  const halfSpan = CROSS_SPAN_RATIO / 2;
-  const armOffset = halfSpan * Math.SQRT1_2;
-  const capRadius = CROSS_THICKNESS_RATIO / 2;
-  // 135°: gradient line direction in screen coordinates (y down).
-  const rad = (GRADIENT_DEG * Math.PI) / 180;
-  const dirX = Math.sin(rad);
-  const dirY = -Math.cos(rad);
-  const dotExtent = (Math.abs(dirX) + Math.abs(dirY)) / 2; // |dot| max over the unit tile
-
   const rgba = new Uint8Array(size * size * 4);
   for (let y = 0; y < size; y += 1) {
     for (let x = 0; x < size; x += 1) {
-      let pr = 0;
-      let pg = 0;
-      let pb = 0;
-      let pa = 0; // premultiplied accumulation
-      for (let sy = 0; sy < supersample; sy += 1) {
-        for (let sx = 0; sx < supersample; sx += 1) {
-          const u = (x + (sx + 0.5) / supersample) / size;
-          const v = (y + (sy + 0.5) / supersample) / size;
-          const px = u - 0.5;
-          const py = v - 0.5;
-          const tile = coverage(sdRoundedRect(px, py, 0.5, RADIUS_RATIO), feather);
-          if (tile <= 0) continue;
-          const t = Math.max(0, Math.min(1, 0.5 + (px * dirX + py * dirY) / (2 * dotExtent)));
-          const cross =
-            Math.min(
-              sdCapsule(px, py, -armOffset, -armOffset, armOffset, armOffset),
-              sdCapsule(px, py, armOffset, -armOffset, -armOffset, armOffset),
-            ) - capRadius;
-          const glyph = coverage(cross, feather) * tile;
-          // gradient tile, over white ✕ (premultiplied)
-          const r = FROM_RGB[0]! + (TO_RGB[0]! - FROM_RGB[0]!) * t;
-          const g = FROM_RGB[1]! + (TO_RGB[1]! - FROM_RGB[1]!) * t;
-          const b = FROM_RGB[2]! + (TO_RGB[2]! - FROM_RGB[2]!) * t;
-          const mixR = r * (1 - glyph) + WHITE_RGB[0]! * glyph;
-          const mixG = g * (1 - glyph) + WHITE_RGB[1]! * glyph;
-          const mixB = b * (1 - glyph) + WHITE_RGB[2]! * glyph;
-          pr += mixR * tile;
-          pg += mixG * tile;
-          pb += mixB * tile;
-          pa += tile;
-        }
-      }
-      const alpha = pa / samples;
-      const i = (y * size + x) * 4;
-      rgba[i] = pa > 0 ? Math.round(pr / pa) : 0;
-      rgba[i + 1] = pa > 0 ? Math.round(pg / pa) : 0;
-      rgba[i + 2] = pa > 0 ? Math.round(pb / pa) : 0;
-      rgba[i + 3] = Math.round(alpha * 255);
+      rgba.set(pixelColour(x, y, size, supersample), (y * size + x) * 4);
     }
   }
   return rgba;
