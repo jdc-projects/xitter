@@ -156,7 +156,9 @@ export function PostCard({
         data-testid={testId}
         // Above the stretched overlay link (#142): a positioned element so
         // clicks reach the button, not the card's navigation link.
-        style={{ position: 'relative', zIndex: 2 }}
+        // min-width/height are load-bearing: WCAG 2.5.8 / axe target-size
+        // floor is 24x24 - the compact sm button renders ~18px otherwise.
+        style={{ position: 'relative', zIndex: 2, minWidth: 24, minHeight: 24 }}
         onClick={() => onInteract(kind, Boolean(active))}
       >
         {body}
