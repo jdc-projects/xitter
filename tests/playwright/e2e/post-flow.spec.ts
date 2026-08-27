@@ -182,7 +182,10 @@ test('thread view walks ancestors, nesting, and depth-cap navigation', async ({ 
   // r2 node, and it lives within the single top-level node.
   await expect(topLevel.getByTestId(`thread-node-${r2Id}`)).toHaveCount(1);
   await expect(
-    page.getByTestId('thread-tree').locator(':scope > [data-testid^="thread-node-"]').getByTestId(`thread-node-${r2Id}`),
+    page
+      .getByTestId('thread-tree')
+      .locator(':scope > [data-testid^="thread-node-"]')
+      .getByTestId(`thread-node-${r2Id}`),
   ).toHaveCount(1);
 
   // r3 is at the embedded depth cap (3 below the focus) with r4 below it:
