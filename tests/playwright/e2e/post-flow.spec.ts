@@ -162,7 +162,7 @@ test('thread view walks ancestors, nesting, and depth-cap navigation', async ({ 
   await expect(ancestors.locator('[data-testid^="post-ancestor-"]')).toHaveCount(2);
 
   // Exactly one composer per page, anchored at the focus.
-  await expect(page.getByTestId('reply-composer')).toBeVisible();
+  await expect(page.getByTestId('reply-composer-form')).toBeVisible();
 
   // Clicking an ancestor navigates to its own thread page.
   await ancestors.getByTestId(`post-ancestor-${rootId}`).getByRole('link').first().click();
