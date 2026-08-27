@@ -2,6 +2,8 @@ import { OpenAPIRegistry, extendZodWithOpenApi } from '@asteasolutions/zod-to-op
 import { z } from 'zod';
 import {
   errorSchema,
+  feedCheckpointListResponseSchema,
+  feedCheckpointPutRequestSchema,
   hydratedFeedItemSchema,
   pageQuerySchema,
   postIdSchema,
@@ -126,10 +128,36 @@ feedApi.registerPath({
 
 feedApi.registerPath({
   method: 'post',
+  path: '/internal/feed/checkpoint',
+  tags: ['internal'],
+  security: [{ serviceToken: [] }],
+  description:
+    "Persist the fanout worker's last processed Kafka position (durable resume cursor, #149) - a restart outside a reset resumes exactly there instead of at the log end.",
+  request: {
+    body: { content: { 'application/json': { schema: feedCheckpointPutRequestSchema } } },
+  },
+  responses: { 204: { description: 'Stored' } },
+});
+
+feedApi.registerPath({
+  method: 'get',
+  path: '/internal/feed/checkpoint',
+  tags: ['internal'],
+  security: [{ serviceToken: [] }],
+  description: 'Fanout resume positions for one consumer (worker boot, #149).',
+  request: { query: z.object({ consumerKey: z.string().min(1).max(100) }) },
+  responses: {
+    200: jsonResponse('Positions by topic-partition', feedCheckpointListResponseSchema),
+  },
+});
+
+feedApi.registerPath({
+  method: 'post',
   path: '/internal/reseed',
   tags: ['internal'],
   security: [{ serviceToken: [] }],
-  description: 'Truncate feed entries (reset job); the timeline rebuilds from events.',
+  description:
+    'Truncate feed entries and resume checkpoints (reset job); the timeline rebuilds from events after the reset.',
   responses: { 200: jsonResponse('Acknowledged', z.object({ ok: z.boolean() })) },
 });
 

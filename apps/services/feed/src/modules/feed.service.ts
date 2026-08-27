@@ -1,6 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { FeedEntryInput, HydratedFeedItem } from '@xitter/api-contracts';
+import type {
+  FeedCheckpointPosition,
+  FeedEntryInput,
+  HydratedFeedItem,
+} from '@xitter/api-contracts';
 import { assertValidCursor, profileOrPlaceholder } from '@xitter/service-kit';
+import { CheckpointRepository, type CheckpointInput } from './checkpoint.repository.js';
 import { CONTENT_HYDRATOR, type ContentHydrator } from './content-hydrator.js';
 import { FEED_REALTIME, type FeedRealtime } from './feed-realtime.js';
 import { FeedRepository, type FeedEntryRow } from './feed.repository.js';
@@ -30,6 +35,7 @@ export class FeedService {
     private readonly repo: FeedRepository,
     @Inject(CONTENT_HYDRATOR) private readonly content: ContentHydrator,
     @Inject(FEED_REALTIME) private readonly realtime: FeedRealtime,
+    private readonly checkpoints: CheckpointRepository,
   ) {}
 
   /**
@@ -97,9 +103,26 @@ export class FeedService {
     return this.repo.deleteByUser(userId).then((deleted) => ({ deleted }));
   }
 
-  /** Internal (reset job): the materialised feed is fully disposable. */
+  /** Internal (fanout worker): persist the processed position. */
+  reportCheckpoint(input: CheckpointInput): Promise<void> {
+    return this.checkpoints.report(input);
+  }
+
+  /** Internal (fanout worker boot): resume positions. */
+  checkpointPositions(consumerKey: string): Promise<FeedCheckpointPosition[]> {
+    return this.checkpoints.positions(consumerKey);
+  }
+
+  /**
+   * Internal (reset job): the materialised feed is fully disposable - and
+   * so are the resume checkpoints that index into it (a fresh feed must
+   * not resume into a log position that predates the wipe; the reset gate
+   * re-seeks the worker to the log end instead).
+   */
   reseed(): Promise<{ deleted: number }> {
-    return this.repo.truncate().then((deleted) => ({ deleted }));
+    return Promise.all([this.repo.truncate(), this.checkpoints.truncate()]).then(
+      ([entries, checkpoints]) => ({ deleted: entries + checkpoints }),
+    );
   }
 
   private async hydrate(

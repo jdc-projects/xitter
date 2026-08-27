@@ -22,10 +22,13 @@ import {
   profileWithCountsSchema,
   relationshipSchema,
   searchCheckpointPositionSchema,
+  feedCheckpointPositionSchema,
   viewerStateResponseSchema,
   type createPostRequestSchema,
   type createProfileRequestSchema,
   type updateProfileRequestSchema,
+  type FeedCheckpointPosition,
+  type FeedCheckpointPutRequest,
   type FeedEntryInput,
   type HydratedFeedItem,
   type InteractionKind,
@@ -376,6 +379,20 @@ export class FeedClient extends ServiceClient {
   internalResetUser(userId: string): Promise<{ deleted: number }> {
     return this.delete(`${V1}/feed/internal/feed/users/${userId}`).then((r) =>
       z.object({ deleted: z.number().int() }).parse(r),
+    );
+  }
+
+  /** Internal (fanout worker): persist the last processed position (#149). */
+  // fallow-ignore-next-line unused-class-member -- consumed via the fanout worker's FeedApi seam (apps/workers/fanout/src/handlers.ts)
+  internalPutCheckpoint(body: FeedCheckpointPutRequest): Promise<void> {
+    return this.post(`${V1}/feed/internal/feed/checkpoint`, body);
+  }
+
+  /** Internal (fanout worker boot): resume positions for a consumer (#149). */
+  // fallow-ignore-next-line unused-class-member -- consumed via the fanout worker's boot path (apps/workers/fanout/src/main.ts)
+  internalGetCheckpoints(consumerKey: string): Promise<{ positions: FeedCheckpointPosition[] }> {
+    return this.get(`${V1}/feed/internal/feed/checkpoint`, { consumerKey }).then((r) =>
+      z.object({ positions: z.array(feedCheckpointPositionSchema) }).parse(r),
     );
   }
 }

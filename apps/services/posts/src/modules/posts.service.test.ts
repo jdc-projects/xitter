@@ -8,6 +8,17 @@ import type { PostsEvents } from './posts-events.js';
 import type { PostsRepository, PostRow } from './posts.repository.js';
 import type { RelationshipChecker } from './relationship-checker.js';
 
+// Capture the service's structured logs without pino's stdout transport, so
+// the LOUD emit-failure path (#149) can assert on the logged post id.
+const loggerError = vi.hoisted(() => vi.fn());
+vi.mock('@xitter/observability', async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return {
+    ...actual,
+    createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: loggerError }),
+  };
+});
+
 const AUTHOR = '00000000-0000-4000-8000-000000000a1';
 const OTHER = '00000000-0000-4000-8000-0000000000b2';
 
@@ -502,6 +513,39 @@ describe('PostsService rules', () => {
       service.create(AUTHOR, { text: 'self thread', mediaIds: [], replyToId: parent.id }),
     ).resolves.toMatchObject({ replyToId: parent.id });
     expect(calls).toHaveLength(1);
+  });
+
+  it('logs a loud structured error with the post id when the Kafka emit fails, without failing the mutation (#149)', async () => {
+    loggerError.mockClear();
+    const { repo } = fakeRepo();
+    const events: PostsEvents = {
+      emit: vi.fn(() => Promise.reject(new Error('kafka down'))),
+      shutdown: () => Promise.resolve(),
+    };
+    const service = new PostsService(
+      repo,
+      events,
+      allowAll,
+      new NullMediaChecker(),
+      new NullInteractionRealtime(),
+    );
+
+    const post = await service.create(AUTHOR, {
+      text: 'lost event',
+      mediaIds: [],
+      replyToId: null,
+    });
+
+    // The write already committed: the user's action must still succeed.
+    expect(post.deletedAt).toBeNull();
+    expect((await service.getPost(post.id)).id).toBe(post.id);
+    // And the swallow is LOUD: structured context carries the post id, so a
+    // missing feed/search item is traceable from the posts logs alone.
+    expect(loggerError).toHaveBeenCalledTimes(1);
+    const [entry, message] = loggerError.mock.calls[0]! as [Record<string, unknown>, string];
+    expect(message).toContain('Kafka event emission failed');
+    expect(entry).toMatchObject({ eventType: 'posts.post.created', postId: post.id });
+    expect((entry.err as Error).message).toBe('kafka down');
   });
 
   it('soft-deletes own posts, hides them from reads, and emits once', async () => {

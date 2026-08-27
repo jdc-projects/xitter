@@ -335,11 +335,14 @@ export const refreshSearchAuthorsRequestSchema = z
 
 export type RefreshSearchAuthorsRequest = z.infer<typeof refreshSearchAuthorsRequestSchema>;
 
-// Internal (search-index worker → search): report the last processed Kafka
+// Internal (worker → owning service): report the last processed Kafka
 // position so a worker restart (or a wiped consumer group) resumes exactly
-// there - SearchCheckpoint is the durable resume cursor, not Kafka's group
-// offsets (deleted by the nightly reset).
-export const searchCheckpointPutRequestSchema = z
+// there - the durable resume cursor, not Kafka's group offsets (deleted by
+// the nightly reset). One definition behind the per-service exports below
+// (search-index → SearchCheckpoint, fanout → FeedCheckpoint) so the two
+// stores cannot drift apart; the service-prefixed names keep each
+// registry/controller import self-describing.
+const checkpointPutRequestSchema = z
   .object({
     consumerKey: z.string().min(1).max(100),
     /** `topic:partition`, e.g. `xitter.posts.v1:0`. */
@@ -350,9 +353,17 @@ export const searchCheckpointPutRequestSchema = z
   })
   .strict();
 
-export type SearchCheckpointPutRequest = z.infer<typeof searchCheckpointPutRequestSchema>;
+export type CheckpointPutRequest = z.infer<typeof checkpointPutRequestSchema>;
 
-export const searchCheckpointPositionSchema = z
+/** Search-index worker → search (SearchCheckpoint, spec 05). */
+export const searchCheckpointPutRequestSchema = checkpointPutRequestSchema;
+export type SearchCheckpointPutRequest = CheckpointPutRequest;
+
+/** Fanout worker → feed (FeedCheckpoint, #149). */
+export const feedCheckpointPutRequestSchema = checkpointPutRequestSchema;
+export type FeedCheckpointPutRequest = CheckpointPutRequest;
+
+const checkpointPositionSchema = z
   .object({
     topicPartition: z.string(),
     offset: z.number().int().nonnegative(),
@@ -361,13 +372,25 @@ export const searchCheckpointPositionSchema = z
   })
   .strict();
 
-export const searchCheckpointListResponseSchema = z
+export type CheckpointPosition = z.infer<typeof checkpointPositionSchema>;
+
+export const searchCheckpointPositionSchema = checkpointPositionSchema;
+export type SearchCheckpointPosition = CheckpointPosition;
+
+export const feedCheckpointPositionSchema = checkpointPositionSchema;
+export type FeedCheckpointPosition = CheckpointPosition;
+
+const checkpointListResponseSchema = z
   .object({
-    positions: z.array(searchCheckpointPositionSchema),
+    positions: z.array(checkpointPositionSchema),
   })
   .strict();
 
-export type SearchCheckpointPosition = z.infer<typeof searchCheckpointPositionSchema>;
+export const searchCheckpointListResponseSchema = checkpointListResponseSchema;
+export type SearchCheckpointListResponse = z.infer<typeof searchCheckpointListResponseSchema>;
+
+export const feedCheckpointListResponseSchema = checkpointListResponseSchema;
+export type FeedCheckpointListResponse = z.infer<typeof feedCheckpointListResponseSchema>;
 
 export const idParam = (name: 'userId' | 'postId' | 'mediaId' | 'username') =>
   ({

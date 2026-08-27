@@ -408,7 +408,20 @@ export class PostsService {
     } catch (err) {
       // The DB write already committed; a missed event degrades downstream
       // views until the nightly reset rather than failing the user's action.
-      logger.error({ err, eventType }, 'event emission failed');
+      // LOUD on purpose (#149): the aggregate id rides the structured log so
+      // a silently-missing feed/search item is traceable from the posts logs
+      // alone - this is the known failure mode behind "new post never
+      // appears in the feed".
+      logger.error(
+        {
+          err,
+          eventType,
+          postId: payload.postId,
+          key,
+          downstream: 'feed/search will miss this until the nightly reset',
+        },
+        'Kafka event emission failed',
+      );
     }
   }
 }

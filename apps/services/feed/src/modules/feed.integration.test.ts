@@ -6,6 +6,7 @@ import { Pool } from 'pg';
 import { startPostgres } from '@xitter/testing';
 import type { FeedEntryInput, Post, Profile } from '@xitter/api-contracts';
 import { FeedService } from './feed.service.js';
+import { CheckpointRepository } from './checkpoint.repository.js';
 import { FeedRepository, type FeedPrismaClient } from './feed.repository.js';
 import type { ContentHydrator } from './content-hydrator.js';
 import type { FeedRealtime } from './feed-realtime.js';
@@ -88,7 +89,7 @@ describe.skipIf(!hasGeneratedClient)('feed integration (testcontainers postgres)
         return Promise.resolve();
       },
     };
-    service = new FeedService(repo, hydrator, realtime);
+    service = new FeedService(repo, hydrator, realtime, new CheckpointRepository(db));
   }, 120_000);
 
   afterAll(async () => {
@@ -316,5 +317,35 @@ describe.skipIf(!hasGeneratedClient)('feed integration (testcontainers postgres)
     const result = await service.resetUser(OWNER);
     expect(result.deleted).toBeGreaterThan(0);
     expect(await db.feedEntry.count({ where: { userId: OWNER } })).toBe(0);
+  });
+
+  it('persists fanout resume positions against the real schema and reseeds them away (#149)', async () => {
+    const input = (offset: number, topicPartition = 'xitter.posts.v1:0') => ({
+      consumerKey: 'xitter-fanout-worker-it',
+      topicPartition,
+      offset,
+      eventId: `e-${offset}`,
+      eventAt: at(7).toISOString(),
+    });
+
+    await service.reportCheckpoint(input(10));
+    await service.reportCheckpoint(input(42)); // redelivery advances the same row
+    await service.reportCheckpoint(input(7, 'xitter.social.v1:1'));
+
+    const positions = await service.checkpointPositions('xitter-fanout-worker-it');
+    expect(positions.map((p) => p.topicPartition).sort()).toEqual([
+      'xitter.posts.v1:0',
+      'xitter.social.v1:1',
+    ]);
+    expect(positions.find((p) => p.topicPartition === 'xitter.posts.v1:0')).toMatchObject({
+      offset: 42,
+      eventId: 'e-42',
+    });
+
+    // The nightly reset wipes both stores: entries and the cursor into them.
+    const reseed = await service.reseed();
+    expect(reseed.deleted).toBeGreaterThanOrEqual(2); // at least the checkpoint rows
+    await expect(service.checkpointPositions('xitter-fanout-worker-it')).resolves.toEqual([]);
+    expect(await db.feedEntry.count()).toBe(0);
   });
 });

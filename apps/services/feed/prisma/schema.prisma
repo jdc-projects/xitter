@@ -37,3 +37,22 @@ model FeedEntry {
   @@index([postId])
   @@index([userId, authorId])
 }
+
+/// Durable resume cursor for the fanout worker (#149): one row per
+/// (consumer, topic-partition), the feed-owned twin of search's
+/// SearchCheckpoint. Fanout materialises feed's store, so feed owns its
+/// worker's resume positions: a restart outside a reset resumes exactly
+/// after the last processed event instead of seeking to the log end and
+/// permanently skipping the downtime gap. Wiped by the nightly reseed
+/// (checkpoints are disposable - the reset gate re-seeks to the log end).
+model FeedCheckpoint {
+  id             String    @id @default(uuid())
+  consumerKey    String
+  topicPartition String
+  lastOffset     BigInt
+  lastEventId    String?
+  lastEventAt    DateTime?
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([consumerKey, topicPartition])
+}

@@ -1,3 +1,4 @@
+import type { EachMessagePayload } from 'kafkajs';
 import type { FeedEntryInput, Post, PostCreated } from '@xitter/api-contracts';
 import { eventSchemas, EVENT_TYPES, type DomainEvent } from '@xitter/events';
 import { createLogger } from '@xitter/observability';
@@ -40,12 +41,21 @@ export interface FeedApi {
   internalDeletePostEntries(postId: string): Promise<{ deleted: number }>;
   internalDeleteAuthorEntries(userId: string, authorId: string): Promise<{ deleted: number }>;
   internalDeleteRepostEntries(postId: string, repostedById: string): Promise<{ deleted: number }>;
+  internalPutCheckpoint(input: {
+    consumerKey: string;
+    topicPartition: string;
+    offset: number;
+    eventId: string;
+    eventAt: string;
+  }): Promise<void>;
 }
 
 export interface HandlerDeps {
   social: SocialApi;
   posts: PostsApi;
   feed: FeedApi;
+  /** Checkpoint identity - the consumer group id (#149). */
+  consumerKey: string;
 }
 
 /**
@@ -137,6 +147,34 @@ export async function handleEvent(envelope: unknown, deps: HandlerDeps): Promise
     default:
       return; // like/bookmark interactions, blocks, profiles: not feed concerns
   }
+}
+
+/**
+ * Message-mode entry (#149): run the dispatch, then checkpoint the consumed
+ * position once its side effects have landed. The checkpoint advances past
+ * EVERY consumed event - including ones fanout ignores - so a restart
+ * outside a reset resumes after, not before, already-classified work,
+ * instead of the reset gate's fresh-boot seek-to-end permanently skipping
+ * the downtime gap. A failure propagates: Kafka redelivers, the idempotent
+ * upserts converge, and the checkpoint never points past unprocessed work.
+ * `raw` is absent for context-free (unit) calls - side effects run,
+ * nothing checkpoints.
+ */
+export async function handleConsumedEvent(
+  envelope: unknown,
+  raw: EachMessagePayload | undefined,
+  deps: HandlerDeps,
+): Promise<void> {
+  await handleEvent(envelope, deps);
+  if (!raw) return;
+  const { eventId, occurredAt } = envelope as { eventId: string; occurredAt: string };
+  await deps.feed.internalPutCheckpoint({
+    consumerKey: deps.consumerKey,
+    topicPartition: `${raw.topic}:${raw.partition}`,
+    offset: Number(raw.message.offset),
+    eventId,
+    eventAt: occurredAt,
+  });
 }
 
 /** Boundary validation: unparseable payloads log + skip (poison-safe). */

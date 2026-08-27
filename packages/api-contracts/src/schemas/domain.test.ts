@@ -9,6 +9,7 @@ import {
 } from './domain.js';
 import {
   createPostRequestSchema,
+  feedCheckpointPutRequestSchema,
   mediaLookupRequestSchema,
   searchCheckpointPutRequestSchema,
   searchIndexDocumentSchema,
@@ -270,6 +271,32 @@ describe('searchCheckpointPutRequestSchema', () => {
         offset: -1,
         eventId: crypto.randomUUID(),
         eventAt: '2026-08-19T09:00:00.000Z',
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('feedCheckpointPutRequestSchema', () => {
+  it('accepts a fanout resume position (same shape as search, #149)', () => {
+    const parsed = feedCheckpointPutRequestSchema.parse({
+      consumerKey: 'xitter-fanout-worker',
+      topicPartition: 'xitter.social.v1:0',
+      offset: 7,
+      eventId: crypto.randomUUID(),
+      eventAt: '2026-08-27T09:00:00.000Z',
+    });
+    expect(parsed.topicPartition).toBe('xitter.social.v1:0');
+  });
+
+  it('rejects unknown keys (strict contract)', () => {
+    expect(
+      feedCheckpointPutRequestSchema.safeParse({
+        consumerKey: 'xitter-fanout-worker',
+        topicPartition: 'xitter.posts.v1:0',
+        offset: 1,
+        eventId: crypto.randomUUID(),
+        eventAt: '2026-08-27T09:00:00.000Z',
+        extra: true,
       }).success,
     ).toBe(false);
   });

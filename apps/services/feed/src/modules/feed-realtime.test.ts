@@ -1,9 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { feedUpdatesChannel, type FeedEntryInput } from '@xitter/api-contracts';
 import { FeedService } from './feed.service.js';
+import { CheckpointRepository, type FeedCheckpointDb } from './checkpoint.repository.js';
 import type { ContentHydrator } from './content-hydrator.js';
 import type { FeedRepository } from './feed.repository.js';
 import { ValkeyFeedRealtime, feedChannel } from './feed-realtime.js';
+
+// Never exercised in this suite (checkpoint behaviour lives with the fanout
+// wiring); a quiet null delegate keeps the FeedService seam satisfied.
+const quietCheckpoints = new CheckpointRepository({
+  feedCheckpoint: {
+    upsert: async () => ({}),
+    findMany: async () => [],
+    deleteMany: async () => ({ count: 0 }),
+  },
+} as unknown as FeedCheckpointDb);
 
 const OWNER = '00000000-0000-4000-8000-000000000001';
 const FOLLOWEE = '00000000-0000-4000-8000-000000000002';
@@ -243,7 +254,7 @@ describe('fanout write path survives a Valkey outage (best-effort end to end)', 
       profiles: () => Promise.resolve(new Map()),
       blockedAuthorIds: () => Promise.resolve([]),
     } as unknown as ContentHydrator;
-    const service = new FeedService(repo, hydrator, realtime);
+    const service = new FeedService(repo, hydrator, realtime, quietCheckpoints);
 
     const input = (userId: string): FeedEntryInput => ({
       userId,

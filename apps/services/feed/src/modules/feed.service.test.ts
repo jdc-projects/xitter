@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { FeedEntryInput, HydratedFeedItem, Post, Profile } from '@xitter/api-contracts';
 import { FeedService, FEED_PAGE_MAX } from './feed.service.js';
+import {
+  CheckpointRepository,
+  type CheckpointInput,
+  type FeedCheckpointDb,
+} from './checkpoint.repository.js';
 import type { ContentHydrator } from './content-hydrator.js';
 import type { FeedRealtime } from './feed-realtime.js';
 import type { FeedEntryRow, FeedRepository } from './feed.repository.js';
@@ -188,6 +193,44 @@ function spyRealtime(): FeedRealtime & { calls: string[][] } {
   };
 }
 
+interface CheckpointRow {
+  consumerKey: string;
+  topicPartition: string;
+  lastOffset: bigint;
+  lastEventId: string;
+  lastEventAt: Date;
+}
+
+/**
+ * In-memory Prisma stand-in for the FeedCheckpoint delegate (upsert/
+ * findMany/deleteMany - exactly the surface CheckpointRepository touches).
+ * The real repository runs against it, so the service's pass-throughs are
+ * exercised down to persisted rows (#149).
+ */
+function fakeCheckpointDb(): FeedCheckpointDb {
+  const rows = new Map<string, CheckpointRow>();
+  const db = {
+    feedCheckpoint: {
+      upsert: async (args: {
+        where: { consumerKey_topicPartition: { consumerKey: string; topicPartition: string } };
+        create: CheckpointRow;
+      }) => {
+        const { consumerKey, topicPartition } = args.where.consumerKey_topicPartition;
+        rows.set(`${consumerKey}/${topicPartition}`, { ...args.create });
+        return {};
+      },
+      findMany: async (args: { where: { consumerKey: string } }) =>
+        [...rows.values()].filter((row) => row.consumerKey === args.where.consumerKey),
+      deleteMany: async () => {
+        const count = rows.size;
+        rows.clear();
+        return { count };
+      },
+    },
+  };
+  return db as unknown as FeedCheckpointDb;
+}
+
 describe('FeedService.getFeed', () => {
   it('returns entries newest-first with hydrated post + author', async () => {
     const { repo } = fakeRepo();
@@ -208,7 +251,12 @@ describe('FeedService.getFeed', () => {
     hydrator.store.profiles.set(FOLLOWEE, profile(FOLLOWEE));
     hydrator.store.profiles.set(OWNER, profile(OWNER));
 
-    const service = new FeedService(repo, hydrator, spyRealtime());
+    const service = new FeedService(
+      repo,
+      hydrator,
+      spyRealtime(),
+      new CheckpointRepository(fakeCheckpointDb()),
+    );
     const page = await service.getFeed(OWNER, { limit: 20 });
 
     expect(page.items.map((item) => item.post.id)).toEqual([newer.postId, older.postId]);
@@ -233,7 +281,12 @@ describe('FeedService.getFeed', () => {
       hydrator.store.profiles.set(e.authorId, profile(e.authorId));
     }
 
-    const service = new FeedService(repo, hydrator, spyRealtime());
+    const service = new FeedService(
+      repo,
+      hydrator,
+      spyRealtime(),
+      new CheckpointRepository(fakeCheckpointDb()),
+    );
     const page = await service.getFeed(OWNER, { limit: 20 });
 
     expect(page.items.map((item) => item.post.id)).toEqual([fineEntry.postId]);
@@ -258,7 +311,12 @@ describe('FeedService.getFeed', () => {
     );
     hydrator.store.profiles.set(FOLLOWEE, profile(FOLLOWEE));
 
-    const service = new FeedService(repo, hydrator, spyRealtime());
+    const service = new FeedService(
+      repo,
+      hydrator,
+      spyRealtime(),
+      new CheckpointRepository(fakeCheckpointDb()),
+    );
     const page = await service.getFeed(OWNER, { limit: 2 });
 
     // The deleted newest entry is skipped and the page still fills.
@@ -281,7 +339,12 @@ describe('FeedService.getFeed', () => {
       hydrator.store.profiles.set(e.authorId, profile(e.authorId));
     }
 
-    const service = new FeedService(repo, hydrator, spyRealtime());
+    const service = new FeedService(
+      repo,
+      hydrator,
+      spyRealtime(),
+      new CheckpointRepository(fakeCheckpointDb()),
+    );
     const first = await service.getFeed(OWNER, { limit: 2 });
     expect(first.items).toHaveLength(2);
     expect(first.nextCursor).toBeTypeOf('string');
@@ -296,7 +359,12 @@ describe('FeedService.getFeed', () => {
     const { repo } = fakeRepo();
     const hydrator = fakeHydrator();
     const spyPage = vi.spyOn(repo, 'page');
-    const service = new FeedService(repo, hydrator, spyRealtime());
+    const service = new FeedService(
+      repo,
+      hydrator,
+      spyRealtime(),
+      new CheckpointRepository(fakeCheckpointDb()),
+    );
 
     await service.getFeed(OWNER, { limit: 500 });
 
@@ -305,7 +373,12 @@ describe('FeedService.getFeed', () => {
 
   it('rejects malformed cursors with 400 instead of restarting the page', async () => {
     const { repo } = fakeRepo();
-    const service = new FeedService(repo, fakeHydrator(), spyRealtime());
+    const service = new FeedService(
+      repo,
+      fakeHydrator(),
+      spyRealtime(),
+      new CheckpointRepository(fakeCheckpointDb()),
+    );
 
     await expect(
       service.getFeed(OWNER, { limit: 20, cursor: 'not-a-cursor' }),
@@ -321,7 +394,12 @@ describe('FeedService.getFeed', () => {
     await repo.upsertEntries([e]);
     hydrator.store.posts.set(e.postId, post(e.postId, FOLLOWEE, e.postCreatedAt));
 
-    const service = new FeedService(repo, hydrator, spyRealtime());
+    const service = new FeedService(
+      repo,
+      hydrator,
+      spyRealtime(),
+      new CheckpointRepository(fakeCheckpointDb()),
+    );
     const page = await service.getFeed(OWNER, { limit: 20 });
 
     const item: HydratedFeedItem = page.items[0]!;
@@ -349,7 +427,12 @@ describe('FeedService.getFeed', () => {
     hydrator.store.posts.set(repost.postId, post(repost.postId, BLOCKED, at));
     hydrator.store.profiles.set(FOLLOWEE, profile(FOLLOWEE));
 
-    const service = new FeedService(repo, hydrator, spyRealtime());
+    const service = new FeedService(
+      repo,
+      hydrator,
+      spyRealtime(),
+      new CheckpointRepository(fakeCheckpointDb()),
+    );
     const page = await service.getFeed(OWNER, { limit: 20 });
 
     const item = page.items[0]!;
@@ -376,7 +459,12 @@ describe('FeedService.getFeed', () => {
     await repo.upsertEntries([repost]);
     hydrator.store.posts.set(repost.postId, post(repost.postId, BLOCKED, at)); // original author blocked
 
-    const service = new FeedService(repo, hydrator, spyRealtime());
+    const service = new FeedService(
+      repo,
+      hydrator,
+      spyRealtime(),
+      new CheckpointRepository(fakeCheckpointDb()),
+    );
     const page = await service.getFeed(OWNER, { limit: 20 });
 
     expect(page.items).toHaveLength(0);
@@ -387,7 +475,12 @@ describe('FeedService.upsertEntries', () => {
   it('inserts entries and notifies affected users once each', async () => {
     const { repo } = fakeRepo();
     const realtime = spyRealtime();
-    const service = new FeedService(repo, fakeHydrator(), realtime);
+    const service = new FeedService(
+      repo,
+      fakeHydrator(),
+      realtime,
+      new CheckpointRepository(fakeCheckpointDb()),
+    );
 
     const input = (userId: string): FeedEntryInput => ({
       userId,
@@ -406,7 +499,12 @@ describe('FeedService.upsertEntries', () => {
 
   it('keeps entry derivation idempotent on the natural key', async () => {
     const { repo } = fakeRepo();
-    const service = new FeedService(repo, fakeHydrator(), spyRealtime());
+    const service = new FeedService(
+      repo,
+      fakeHydrator(),
+      spyRealtime(),
+      new CheckpointRepository(fakeCheckpointDb()),
+    );
     const input: FeedEntryInput = {
       userId: OWNER,
       postId: '00000000-0000-4000-8000-000000000071',
@@ -426,7 +524,12 @@ describe('FeedService.upsertEntries', () => {
 
   it('keeps two different reposters of the same post distinct (#8 key)', async () => {
     const { repo } = fakeRepo();
-    const service = new FeedService(repo, fakeHydrator(), spyRealtime());
+    const service = new FeedService(
+      repo,
+      fakeHydrator(),
+      spyRealtime(),
+      new CheckpointRepository(fakeCheckpointDb()),
+    );
     const postId = '00000000-0000-4000-8000-000000000072';
     const repost = (reposter: string): FeedEntryInput => ({
       userId: OWNER,
@@ -448,7 +551,12 @@ describe('FeedService.upsertEntries', () => {
 
   it('replays the same repost idempotently', async () => {
     const { repo } = fakeRepo();
-    const service = new FeedService(repo, fakeHydrator(), spyRealtime());
+    const service = new FeedService(
+      repo,
+      fakeHydrator(),
+      spyRealtime(),
+      new CheckpointRepository(fakeCheckpointDb()),
+    );
     const input: FeedEntryInput = {
       userId: OWNER,
       postId: '00000000-0000-4000-8000-000000000073',
@@ -475,7 +583,12 @@ describe('FeedService deletes', () => {
       entry({ postId: '00000000-0000-4000-8000-000000000081', userId: FOLLOWEE }),
     ]);
 
-    const service = new FeedService(repo, fakeHydrator(), spyRealtime());
+    const service = new FeedService(
+      repo,
+      fakeHydrator(),
+      spyRealtime(),
+      new CheckpointRepository(fakeCheckpointDb()),
+    );
     await expect(
       service.deletePostEntries('00000000-0000-4000-8000-000000000081'),
     ).resolves.toEqual({ deleted: 2 });
@@ -500,7 +613,12 @@ describe('FeedService deletes', () => {
       entry({ userId: OWNER, postId, reason: 'repost', repostedById: BLOCKED, authorId: BLOCKED }),
     ]);
 
-    const service = new FeedService(repo, fakeHydrator(), spyRealtime());
+    const service = new FeedService(
+      repo,
+      fakeHydrator(),
+      spyRealtime(),
+      new CheckpointRepository(fakeCheckpointDb()),
+    );
     await expect(service.deleteRepostEntries(postId, FOLLOWEE)).resolves.toEqual({ deleted: 1 });
     expect(repo.all()).toHaveLength(2);
     expect(repo.all().some((r) => r.repostedById === FOLLOWEE)).toBe(false);
@@ -518,7 +636,12 @@ describe('FeedService deletes', () => {
       }),
     ]);
 
-    const service = new FeedService(repo, fakeHydrator(), spyRealtime());
+    const service = new FeedService(
+      repo,
+      fakeHydrator(),
+      spyRealtime(),
+      new CheckpointRepository(fakeCheckpointDb()),
+    );
     await expect(service.deleteAuthorEntries(OWNER, BLOCKED)).resolves.toEqual({ deleted: 1 });
     expect(repo.all().map((r) => r.postId)).not.toContain('00000000-0000-4000-8000-000000000091');
     expect(repo.all()).toHaveLength(2);
@@ -531,8 +654,65 @@ describe('FeedService deletes', () => {
       entry({ userId: FOLLOWEE, postId: '00000000-0000-4000-8000-0000000000a2' }),
     ]);
 
-    const service = new FeedService(repo, fakeHydrator(), spyRealtime());
+    const service = new FeedService(
+      repo,
+      fakeHydrator(),
+      spyRealtime(),
+      new CheckpointRepository(fakeCheckpointDb()),
+    );
     await expect(service.resetUser(OWNER)).resolves.toEqual({ deleted: 1 });
     expect(repo.all()).toHaveLength(1);
+  });
+});
+
+describe('FeedService fanout checkpoints (#149)', () => {
+  const at = (h: number) => `2026-08-27T${String(h).padStart(2, '0')}:00:00.000Z`;
+  const input = (offset: number, topicPartition = 'xitter.posts.v1:0'): CheckpointInput => ({
+    consumerKey: 'xitter-fanout-worker',
+    topicPartition,
+    offset,
+    eventId: `e-${topicPartition}-${offset}`,
+    eventAt: at(2),
+  });
+
+  it('persists worker checkpoints and reads the resume positions back', async () => {
+    const { repo } = fakeRepo();
+    const checkpoints = new CheckpointRepository(fakeCheckpointDb());
+    const service = new FeedService(repo, fakeHydrator(), spyRealtime(), checkpoints);
+
+    await service.reportCheckpoint(input(10));
+    await service.reportCheckpoint(input(42)); // redelivery advances the same row
+    await service.reportCheckpoint(input(7, 'xitter.social.v1:1'));
+
+    await expect(service.checkpointPositions('xitter-fanout-worker')).resolves.toEqual([
+      {
+        topicPartition: 'xitter.posts.v1:0',
+        offset: 42,
+        eventId: 'e-xitter.posts.v1:0-42',
+        eventAt: at(2),
+      },
+      {
+        topicPartition: 'xitter.social.v1:1',
+        offset: 7,
+        eventId: 'e-xitter.social.v1:1-7',
+        eventAt: at(2),
+      },
+    ]);
+    // Consumer isolation: another worker's cursor is invisible.
+    await expect(service.checkpointPositions('xitter-other-worker')).resolves.toEqual([]);
+  });
+
+  it('reseed wipes entries AND checkpoints (a fresh feed must not resume into a stale log)', async () => {
+    const { repo } = fakeRepo();
+    const checkpoints = new CheckpointRepository(fakeCheckpointDb());
+    const service = new FeedService(repo, fakeHydrator(), spyRealtime(), checkpoints);
+    await repo.upsertEntries([entry({ userId: OWNER })]);
+    await service.reportCheckpoint(input(10));
+    await service.reportCheckpoint(input(7, 'xitter.social.v1:1'));
+
+    await expect(service.reseed()).resolves.toEqual({ deleted: 2 }); // both checkpoint rows
+
+    await expect(service.checkpointPositions('xitter-fanout-worker')).resolves.toEqual([]);
+    expect(repo.all()).toHaveLength(0);
   });
 });
