@@ -1,0 +1,115 @@
+meta {
+  name: Get thread
+  seq: 10
+}
+
+docs {
+  The composed thread read (#152): ancestors (root -> parent), focus, and a
+  depth-capped nested reply tree. Creates its own chain first (root, reply,
+  reply-to-reply) so the request is deterministic standalone, then reads the
+  thread from the middle node - the leaf is both its child and a nested
+  grandchild probe, exercising the tree shape end to end.
+}
+
+script:pre-request {
+  const tokenUrl = `${bru.getEnvVar("keycloak")}/realms/${bru.getEnvVar("realm")}/protocol/openid-connect/token`;
+
+  async function login(username) {
+    const form =
+      "grant_type=password&client_id=web" +
+      "&username=" + encodeURIComponent(username) +
+      "&password=" + encodeURIComponent(bru.getEnvVar("password") || "DemoPass123!");
+    const res = await bru.sendRequest({
+      method: "POST",
+      url: tokenUrl,
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      data: form,
+    });
+    const raw =
+      typeof res.data === "string"
+        ? res.data
+        : res.data && typeof res.data === "object" && "byteLength" in res.data
+          ? new TextDecoder().decode(res.data)
+          : typeof res.data === "object" && res.data !== null
+            ? JSON.stringify(res.data)
+            : String(res.data ?? "");
+    return JSON.parse(raw).access_token;
+  }
+
+  function parse(res) {
+    const raw =
+      typeof res.data === "string"
+        ? res.data
+        : res.data && typeof res.data === "object" && "byteLength" in res.data
+          ? new TextDecoder().decode(res.data)
+          : typeof res.data === "object" && res.data !== null
+            ? JSON.stringify(res.data)
+            : String(res.data ?? "");
+    return JSON.parse(raw);
+  }
+
+  const token = await login(bru.getEnvVar("username") || "demo1");
+  bru.setEnvVar("token", token);
+
+  const headers = { "content-type": "application/json", authorization: `Bearer ${token}` };
+  const base = `${bru.getEnvVar("seedBase")}/api/posts/v1/posts`;
+  const stamp = Date.now();
+
+  // root <- reply <- reply-to-reply: read the thread from `reply`.
+  const root = parse(
+    await bru.sendRequest({
+      method: "POST",
+      url: base,
+      headers,
+      data: { text: `Bruno thread root ${stamp}` },
+    }),
+  );
+  const reply = parse(
+    await bru.sendRequest({
+      method: "POST",
+      url: base,
+      headers,
+      data: { text: `Bruno thread reply ${stamp}`, replyToId: root.id },
+    }),
+  );
+  await bru.sendRequest({
+    method: "POST",
+    url: base,
+    headers,
+    data: { text: `Bruno thread grandreply ${stamp}`, replyToId: reply.id },
+  });
+
+  bru.setVar("threadRootId", root.id);
+  bru.setVar("threadReplyId", reply.id);
+}
+
+get {
+  url: {{seedBase}}/api/posts/v1/posts/{{threadReplyId}}/thread
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+assert {
+  res.status: 200
+}
+
+tests {
+  const rootId = bru.getVar("threadRootId");
+  const replyId = bru.getVar("threadReplyId");
+
+  // Ancestor chain is root -> direct parent, focus is the requested post.
+  expect(res.body.ancestors).to.have.lengthOf(1);
+  expect(res.body.ancestors[0].id).to.equal(rootId);
+  expect(res.body.ancestorsTruncated).to.equal(false);
+  expect(res.body.focus.id).to.equal(replyId);
+  expect(res.body.focus.replyToId).to.equal(rootId);
+
+  // The reply-to-reply nests under the focus as a tree node.
+  expect(res.body.replies).to.have.lengthOf(1);
+  expect(res.body.replies[0].post.replyToId).to.equal(replyId);
+  expect(res.body.replies[0].children).to.be.an("array");
+  expect(res.body.replies[0].childrenTruncated).to.equal(false);
+  expect(res.body.repliesCursor).to.equal(null);
+}
