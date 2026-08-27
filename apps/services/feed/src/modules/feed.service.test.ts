@@ -416,13 +416,13 @@ describe('FeedService.getFeed', () => {
     expect(typeof item.author.createdAt).toBe('string');
   });
 
-  it('renders repost entries with attribution to the reposter', async () => {
+  it('renders repost entries with the ORIGINAL author and reposter attribution', async () => {
     const { repo } = fakeRepo();
     const hydrator = fakeHydrator();
     const at = new Date('2026-08-18T12:00:00Z');
     const repost = entry({
       postId: '00000000-0000-4000-8000-000000000052',
-      authorId: FOLLOWEE, // reposter is the feed-surface author
+      authorId: FOLLOWEE, // reposter is the feed-surface author (entries.ts)
       reason: 'repost',
       repostedById: FOLLOWEE,
       postCreatedAt: at,
@@ -431,6 +431,7 @@ describe('FeedService.getFeed', () => {
     // The ORIGINAL author differs from the surface author.
     hydrator.store.posts.set(repost.postId, post(repost.postId, BLOCKED, at));
     hydrator.store.profiles.set(FOLLOWEE, profile(FOLLOWEE));
+    hydrator.store.profiles.set(BLOCKED, profile(BLOCKED));
 
     const service = new FeedService(
       repo,
@@ -443,9 +444,48 @@ describe('FeedService.getFeed', () => {
     const item = page.items[0]!;
     expect(item.reason).toBe('repost');
     expect(item.repostedBy?.id).toBe(FOLLOWEE);
-    // Attribution comes from the entry, not the post's own author.
-    expect(item.author.id).toBe(FOLLOWEE);
+    // The card identity is the post's OWN author (#145) - the reposter must
+    // never render as the author of someone else's post. The real profile
+    // (not a placeholder) proves the original author joined the batch.
+    expect(item.author.id).toBe(BLOCKED);
+    expect(item.author.username).toBe('user');
     expect(item.post.authorId).toBe(BLOCKED);
+  });
+
+  it("renders a repost of the viewer's own post as the viewer's (#145 incident regression)", async () => {
+    // Live incident 2026-08-27: a repost of the viewer's post showed the
+    // REPOSTER as the card author while the web gated delete on
+    // post.authorId - the owner deleted their own post believing it was
+    // someone else's. Identity and permission must pair.
+    const { repo } = fakeRepo();
+    const hydrator = fakeHydrator();
+    const at = new Date('2026-08-18T12:00:00Z');
+    const repost = entry({
+      postId: '00000000-0000-4000-8000-000000000054',
+      authorId: FOLLOWEE, // surface author = reposter
+      reason: 'repost',
+      repostedById: FOLLOWEE,
+      postCreatedAt: at,
+    });
+    await repo.upsertEntries([repost]);
+    hydrator.store.posts.set(repost.postId, post(repost.postId, OWNER, at)); // OWNER's own post
+    hydrator.store.profiles.set(FOLLOWEE, profile(FOLLOWEE));
+    hydrator.store.profiles.set(OWNER, profile(OWNER));
+
+    const service = new FeedService(
+      repo,
+      hydrator,
+      spyRealtime(),
+      new CheckpointRepository(fakeCheckpointDb()),
+    );
+    const page = await service.getFeed(OWNER, { limit: 20 });
+
+    const item = page.items[0]!;
+    // The byline is the true author, so the web's delete gate
+    // (post.authorId === viewerId) agrees with the rendered identity.
+    expect(item.author.id).toBe(OWNER);
+    expect(item.post.authorId).toBe(OWNER);
+    expect(item.repostedBy?.id).toBe(FOLLOWEE);
   });
 
   it('hydrates the reply-target author for replies, batched (#147)', async () => {
