@@ -115,10 +115,9 @@ export class FeedService {
     const authorIds = [
       ...new Set(
         entries.flatMap((entry) =>
-          [
-            posts.get(entry.postId)?.authorId ?? entry.authorId,
-            entry.repostedById,
-          ].filter((id): id is string => Boolean(id)),
+          [posts.get(entry.postId)?.authorId ?? entry.authorId, entry.repostedById].filter(
+            (id): id is string => Boolean(id),
+          ),
         ),
       ),
     ];
