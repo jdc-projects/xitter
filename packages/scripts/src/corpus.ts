@@ -3,9 +3,22 @@
  * I/O, no clocks - so every environment derives the identical corpus from
  * this module. The seeder (seed.ts) turns it into service calls; tests
  * assert the volumes and the cross-run fingerprint.
+ *
+ * Age offsets (#150): every post carries an `ageMs` derived from a pure
+ * slot hash (never faker, never a clock), spread over ~7 days before the
+ * seed run - thread roots older than their replies, same-author posts
+ * clustered into bursts. The seeder stamps `createdAt = seedTime - ageMs`
+ * through the posts internal create, so the corpus stays clock-free while
+ * the seeded world stops looking like it was minted in one 16-second window.
  */
 import { createHash } from 'node:crypto';
 import { faker } from '@faker-js/faker';
+import {
+  DEMO_IMAGE_PATTERNS,
+  DEMO_IMAGE_SIZES,
+  mulberry32,
+  type DemoImageSpec,
+} from './lib/images.js';
 
 /** Recorded in docs/specs/data/02-seeding.md as the determinism contract. */
 export const SEED_CONSTANT = 42;
@@ -15,10 +28,19 @@ const DEFAULT_POSTS_PER_USER = 12;
 /** ~30% of the ordered user pairs (each user follows ~3 of the other 9). */
 export const DEFAULT_FOLLOW_DENSITY = 0.3;
 
-/** Image posts: users 0, 2, 4, 6 each attach one generated PNG (spec: "a few"). */
-const IMAGE_USER_STRIDE = 2;
-const IMAGE_USER_COUNT = 4;
-/** Conversation threads: 3 roots x 4 chained replies (spec: concentrated). */
+/**
+ * Image posts (#150): one generated PNG per demo user (capped so oversized
+ * dev corpora keep the upload volume sane), each a distinct pattern/aspect
+ * from the demo palette.
+ */
+const IMAGE_MAX_USERS = 10;
+
+/**
+ * Conversation threads (#150): 3 roots x 4 replies, MIXED - each thread
+ * chains its first replies (root -> reply -> reply-to-reply) so the thread
+ * view (#152) has real depth to render, with the remainder answering the
+ * root directly.
+ */
 const THREAD_COUNT = 3;
 const REPLIES_PER_THREAD = 4;
 const REPOST_COUNT = 8;
@@ -26,6 +48,41 @@ const BOOKMARK_COUNT = 15;
 const HOT_POST_COUNT = 5;
 /** Per-user interaction cap: comfortably under the 20-burst interact limit. */
 const PER_USER_INTERACTION_CAP = 12;
+
+// --- Age offsets (#150) -------------------------------------------------------
+
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+
+/** Newest a seeded post may be: comfortably older than the seed run itself. */
+export const MIN_POST_AGE_MS = 10 * MINUTE_MS;
+/** Oldest a seeded post may be: the ~7-day pre-reset history (#150). */
+export const MAX_POST_AGE_MS = 7 * DAY_MS;
+
+/**
+ * Burst bands: a user's posts cluster around one anchor per band (people
+ * post in bursts); the bands spread those bursts across the window. Thread
+ * roots are pinned to the older two bands so reply chains always fit below
+ * them without breaching MIN_POST_AGE_MS.
+ */
+const AGE_BANDS = [
+  { lo: 5 * DAY_MS, hi: 6.5 * DAY_MS }, // late last week
+  { lo: 2.5 * DAY_MS, hi: 4.5 * DAY_MS }, // midweek
+  { lo: 12 * MINUTE_MS, hi: 30 * HOUR_MS }, // today / yesterday
+] as const;
+
+/** How far after its parent a reply lands (hash-derived per reply). */
+const REPLY_GAP_MIN_MS = 15 * MINUTE_MS;
+const REPLY_GAP_SPAN_MS = 6 * HOUR_MS - REPLY_GAP_MIN_MS;
+
+/** Salts keep the independent per-slot hash streams uncorrelated. */
+const SALT_ANCHOR = 0x5eed_0001;
+const SALT_BAND = 0x5eed_0002;
+const SALT_INTRA_GAP = 0x5eed_0003;
+const SALT_REPLY_GAP = 0x5eed_0004;
+const SALT_PATTERN = 0x5eed_0005;
+const SALT_SIZE = 0x5eed_0006;
 
 export type InteractionKind = 'like' | 'bookmark' | 'repost';
 
@@ -52,8 +109,12 @@ export interface CorpusPost extends PostRef {
   mediaCount: number;
   /** Descriptive alt text for the attached image (#133); null when none. */
   imageAlt: string | null;
+  /** Which demo pattern/size the seeder renders for the image; null when none. */
+  imageSpec: DemoImageSpec | null;
   /** Set for replies: the post this one answers. */
   replyTo: PostRef | null;
+  /** Age before the seed's stamp time: the seeder writes seedTime - ageMs. */
+  ageMs: number;
 }
 
 export interface CorpusInteraction {
@@ -117,17 +178,26 @@ export function buildCorpus(options: CorpusOptions = {}): SeedCorpus {
   //    (consuming their authors' ordinals), the rest standalone.
   const slots = planSlots(userCount, postsPerUser);
 
-  // 4. Texts + reply parents (faker consumed in slot order => stable).
+  // 4. Texts, image looks and reply parents (faker consumed in slot order =>
+  //    stable); ages come from pure slot hashes, not faker.
+  const ages = assignAges(slots, userCount);
+  const imageKeys = [...slots.imageKeys].sort();
   const posts: CorpusPost[] = [];
   for (const slot of slots.standalone) {
     const hashtag = faker.number.int({ min: 0, max: 3 }) === 1;
     const text = sentence(faker.number.int({ min: 4, max: 16 }));
+    const isImage = slots.imageKeys.has(keyOf(slot));
+    const spec = isImage ? imageSpecFor(slot) : null;
     posts.push({
       ...slot,
       text: hashtag ? `${text} #${faker.lorem.word()}` : text,
-      mediaCount: slots.imageKeys.has(keyOf(slot)) ? 1 : 0,
-      imageAlt: imageAltForSlot(slots.imageKeys, slot),
+      mediaCount: isImage ? 1 : 0,
+      imageAlt: spec
+        ? `Demo pattern ${imageKeys.indexOf(keyOf(slot)) + 1} of ${imageKeys.length}: ${describeImage(spec)}`
+        : null,
+      imageSpec: spec,
       replyTo: null,
+      ageMs: ages.get(keyOf(slot))!,
     });
   }
   for (const thread of slots.threads) {
@@ -137,7 +207,9 @@ export function buildCorpus(options: CorpusOptions = {}): SeedCorpus {
         text: sentence(faker.number.int({ min: 3, max: 10 })),
         mediaCount: 0,
         imageAlt: null,
-        replyTo: thread.root,
+        imageSpec: null,
+        replyTo: replySlot.parent,
+        ageMs: ages.get(keyOf(replySlot))!,
       });
     }
   }
@@ -186,7 +258,9 @@ export function corpusFingerprint(corpus: Omit<SeedCorpus, 'fingerprint'>): stri
       p.text,
       p.mediaCount,
       p.imageAlt,
+      p.imageSpec,
       p.replyTo ? [p.replyTo.authorIndex, p.replyTo.ordinal] : null,
+      p.ageMs,
     ]),
     interactions: corpus.interactions
       .map((i) => [i.kind, i.userIndex, i.post.authorIndex, i.post.ordinal])
@@ -203,13 +277,95 @@ export function corpusFingerprint(corpus: Omit<SeedCorpus, 'fingerprint'>): stri
 
 /**
  * Honest description of the generated demo pattern (lib/images.ts) for one
- * image slot, one per author so the per-asset alt mapping is observable
- * (#133); null for slots without an image.
+ * image slot (#133); null for slots without an image. #150: the description
+ * names the concrete pattern and size the seeder will render.
  */
-function imageAltForSlot(imageKeys: Set<string>, slot: PostRef): string | null {
-  return imageKeys.has(keyOf(slot))
-    ? `Demo pattern ${slot.authorIndex + 1}: a left-to-right color gradient with fine noise`
-    : null;
+function describeImage(spec: DemoImageSpec): string {
+  const pattern = DEMO_IMAGE_PATTERNS.find((p) => p.id === spec.pattern)!;
+  return `${pattern.description} (${spec.width}x${spec.height} pixels)`;
+}
+
+// ---------------------------------------------------------------------------
+// Slot-hash randomness (ages + image looks)
+// ---------------------------------------------------------------------------
+
+/**
+ * Pure per-slot PRNG stream. Deliberately NOT faker: ages and image specs
+ * must not shift faker's sequence (texts/thread shapes stay stable under
+ * unrelated changes), and a slot-keyed hash keeps each stream independent.
+ */
+function slotRandom(slot: PostRef, salt: number): () => number {
+  let h = (SEED_CONSTANT ^ salt) >>> 0;
+  h = Math.imul(h ^ (slot.authorIndex + 0x9e3779b9), 0x85ebca6b);
+  h ^= h >>> 13;
+  h = Math.imul(h ^ (slot.ordinal + 0xc2b2ae35), 0x27d4eb2f);
+  h ^= h >>> 16;
+  return mulberry32(h >>> 0);
+}
+
+/** Which demo pattern + size an image slot renders (varied, #150). */
+function imageSpecFor(slot: PostRef): DemoImageSpec {
+  const pattern = DEMO_IMAGE_PATTERNS[
+    Math.floor(slotRandom(slot, SALT_PATTERN)() * DEMO_IMAGE_PATTERNS.length)
+  ]!;
+  const [width, height] = DEMO_IMAGE_SIZES[
+    Math.floor(slotRandom(slot, SALT_SIZE)() * DEMO_IMAGE_SIZES.length)
+  ]!;
+  return { pattern: pattern.id, width, height };
+}
+
+/**
+ * Age assignment (#150): standalone posts cluster into per-author burst
+ * anchors (one per band); each successive post in a band lands minutes-to-
+ * an-hour after the previous one. Thread replies land after their parent by
+ * a hash-derived gap, clamped so no post is newer than MIN_POST_AGE_MS -
+ * so every thread is chronologically coherent by construction.
+ */
+function assignAges(plan: SlotPlan, userCount: number): Map<string, number> {
+  const ages = new Map<string, number>();
+
+  // One anchor per (author, band): where that author's burst sits.
+  const anchors: number[][] = [];
+  for (let u = 0; u < userCount; u++) {
+    anchors[u] = AGE_BANDS.map((band, b) => {
+      const roll = slotRandom({ authorIndex: u, ordinal: -1 - b }, SALT_ANCHOR)();
+      return Math.floor(band.lo + roll * (band.hi - band.lo));
+    });
+  }
+
+  const perBand = new Map<string, number>(); // `author:band` -> posts already placed
+  const bump = (authorIndex: number, band: number) => {
+    const key = `${authorIndex}:${band}`;
+    const next = (perBand.get(key) ?? 0) + 1;
+    perBand.set(key, next);
+    return next - 1; // this post's position within its author's burst
+  };
+
+  for (const slot of plan.standalone) {
+    const isRoot = plan.rootKeys.has(keyOf(slot));
+    // Roots stay in the older two bands: reply chains must fit below them.
+    const band = isRoot
+      ? Math.floor(slotRandom(slot, SALT_BAND)() * (AGE_BANDS.length - 1))
+      : Math.floor(slotRandom(slot, SALT_BAND)() * AGE_BANDS.length);
+    const position = bump(slot.authorIndex, band);
+    // Successive posts in one burst: 4-40 minutes apart.
+    const gap = 4 * MINUTE_MS + Math.floor(slotRandom(slot, SALT_INTRA_GAP)() * 36 * MINUTE_MS);
+    ages.set(keyOf(slot), Math.min(MAX_POST_AGE_MS, anchors[slot.authorIndex]![band]! + position * gap));
+  }
+
+  for (const thread of plan.threads) {
+    for (const reply of thread.replies) {
+      const parentAge = ages.get(keyOf(reply.parent))!;
+      const roll = slotRandom(reply, SALT_REPLY_GAP)();
+      const gap = Math.min(
+        REPLY_GAP_MIN_MS + Math.floor(roll * REPLY_GAP_SPAN_MS),
+        Math.max(0, parentAge - MIN_POST_AGE_MS),
+      );
+      ages.set(keyOf(reply), parentAge - gap);
+    }
+  }
+
+  return ages;
 }
 
 // ---------------------------------------------------------------------------
@@ -249,15 +405,21 @@ interface PostSlot extends PostRef {
   ordinal: number;
 }
 
+interface ReplySlot extends PostSlot {
+  /** The post this reply answers (root or an earlier reply - #150 nesting). */
+  parent: PostRef;
+}
+
 interface ThreadPlan {
   root: PostSlot;
-  replies: PostSlot[];
+  replies: ReplySlot[];
 }
 
 interface SlotPlan {
   standalone: PostSlot[];
   threads: ThreadPlan[];
   imageKeys: Set<string>;
+  rootKeys: Set<string>;
 }
 const keyOf = (ref: PostRef): string => `${ref.authorIndex}/${ref.ordinal}`;
 
@@ -290,11 +452,18 @@ function createSlotAllocator(userCount: number, postsPerUser: number): SlotAlloc
   };
 }
 
-/** Image posts: first ordinal of the first stride users. */
-function planImageSlots(alloc: SlotAllocator, userCount: number): Set<string> {
+/**
+ * Image posts (#150): every demo user (up to the cap) attaches one generated
+ * PNG at a derived ordinal - no longer just the first post of every other
+ * user.
+ */
+function planImageSlots(alloc: SlotAllocator, userCount: number, postsPerUser: number): Set<string> {
   const imageKeys = new Set<string>();
-  for (let i = 0; i < IMAGE_USER_COUNT && i * IMAGE_USER_STRIDE < userCount; i++) {
-    imageKeys.add(keyOf(alloc.take(i * IMAGE_USER_STRIDE, 0)));
+  for (let u = 0; u < Math.min(userCount, IMAGE_MAX_USERS); u++) {
+    const roll = slotRandom({ authorIndex: u, ordinal: -1 }, SALT_SIZE);
+    const ordinal = Math.min(postsPerUser - 1, 1 + Math.floor(roll() * (postsPerUser - 1)));
+    if (alloc.isTaken(u, ordinal)) continue; // degenerate tiny corpora: skip, not crash
+    imageKeys.add(keyOf(alloc.take(u, ordinal)));
   }
   return imageKeys;
 }
@@ -321,14 +490,16 @@ function planThreadRoots(
     .sort((a, b) => a.authorIndex - b.authorIndex || a.ordinal - b.ordinal);
   const threads = roots.map((root) => {
     alloc.take(root.authorIndex, root.ordinal);
-    return { root, replies: [] as PostSlot[] };
+    return { root, replies: [] as ReplySlot[] };
   });
   return { roots, threads };
 }
 
 /**
- * Reply chains: every reply answers the thread ROOT directly (a
- * concentrated conversation - the root's replies page carries them all).
+ * Reply chains (#150): each thread's first `2 + t` replies form a NESTED
+ * chain (root -> reply -> reply-to-reply...), the rest answer the root
+ * directly - the default shape yields depths 3/4/5 across the three
+ * threads, so both the flat replies page and the thread view have content.
  */
 function attachReplyChains(
   alloc: SlotAllocator,
@@ -336,12 +507,17 @@ function attachReplyChains(
   userCount: number,
   repliesPerThread: number,
 ): void {
-  for (const thread of threads) {
+  threads.forEach((thread, t) => {
+    const chainLength = Math.min(repliesPerThread, 2 + t);
+    let chainTip: PostRef = thread.root;
     for (let k = 1; k <= repliesPerThread; k++) {
       const authorIndex = (thread.root.authorIndex + k) % userCount;
-      thread.replies.push(alloc.take(authorIndex, alloc.firstFree(authorIndex)));
+      const slot = alloc.take(authorIndex, alloc.firstFree(authorIndex));
+      const parent = k <= chainLength ? chainTip : thread.root;
+      if (k <= chainLength) chainTip = slot;
+      thread.replies.push({ ...slot, parent });
     }
-  }
+  });
 }
 
 /** Standalone = every unclaimed slot PLUS the reserved roots and images. */
@@ -364,7 +540,7 @@ function collectStandalone(
 
 function planSlots(userCount: number, postsPerUser: number): SlotPlan {
   const alloc = createSlotAllocator(userCount, postsPerUser);
-  const imageKeys = planImageSlots(alloc, userCount);
+  const imageKeys = planImageSlots(alloc, userCount, postsPerUser);
   const { roots, threads } = planThreadRoots(alloc, userCount, postsPerUser);
   attachReplyChains(
     alloc,
@@ -377,6 +553,7 @@ function planSlots(userCount: number, postsPerUser: number): SlotPlan {
     standalone: collectStandalone(alloc, userCount, postsPerUser, specialKeys),
     threads,
     imageKeys,
+    rootKeys: new Set(roots.map(keyOf)),
   };
 }
 

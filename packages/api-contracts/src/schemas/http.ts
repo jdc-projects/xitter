@@ -65,6 +65,24 @@ export const createPostRequestSchema = z
 
 export type CreatePostRequest = z.infer<typeof createPostRequestSchema>;
 
+/**
+ * Internal (reset job → posts, #150): create a post on behalf of a user with
+ * an explicit creation time. The public create mints `createdAt` server-side
+ * and stays that way - back-dating is a seed-only capability (the corpus
+ * carries deterministic age offsets), so it lives on the service path scoped
+ * to the seeder's machine client, not on `POST /v1/posts`. The receiving
+ * service bounds the value (past-only, within its backdate window).
+ */
+export const internalCreatePostRequestSchema = createPostRequestSchema
+  .extend({
+    authorId: userIdSchema,
+    createdAt: z.iso.datetime(),
+  })
+  .strict()
+  .openapi('InternalCreatePostRequest');
+
+export type InternalCreatePostRequest = z.infer<typeof internalCreatePostRequestSchema>;
+
 const profileFields = {
   displayName: z.string().min(1).max(50).optional(),
   bio: z.string().max(200).nullable().optional(),

@@ -20,6 +20,16 @@ import { deriveViewerState } from './viewer-state.js';
 
 const logger = createLogger({ service: 'posts' });
 
+/**
+ * How far back an explicit `createdAt` may reach (#150). The seed's corpus
+ * spreads posts over ~7 days; the bound keeps a misbehaving seeder from
+ * minting absurd history rather than defending a product surface (the field
+ * only exists on the internal, seeder-scoped create).
+ */
+export const BACKDATE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+/** Tolerance for clock skew between seeder and service. */
+const BACKDATE_SKEW_MS = 60 * 1000;
+
 export interface PageRequest {
   cursor?: string;
   limit: number;
@@ -60,7 +70,11 @@ export class PostsService {
     @Inject(INTERACTION_REALTIME) private readonly realtime: InteractionRealtime,
   ) {}
 
-  async create(authorId: string, input: CreatePostRequest): Promise<Post> {
+  async create(
+    authorId: string,
+    input: CreatePostRequest,
+    options: { createdAt?: string } = {},
+  ): Promise<Post> {
     // The controller validates via the same schema; re-parsing here keeps the
     // 1..512 / uuid / max-4 rules true for every caller (seed, tests, future
     // internal paths), not just HTTP.
@@ -69,6 +83,7 @@ export class PostsService {
       throw badRequest('Post validation failed', { fields: parsed.error.flatten() });
     }
     input = parsed.data;
+    const createdAt = this.parseBackdate(options.createdAt);
 
     const parent = input.replyToId
       ? await this.requireReplyTarget(input.replyToId, authorId)
@@ -98,6 +113,9 @@ export class PostsService {
       mediaIds,
       media,
       replyToId: parent?.id ?? null,
+      // Absent = the store's now-default; never send an explicit undefined
+      // over the key (stubs and Prisma both read the key's presence).
+      ...(createdAt ? { createdAt } : {}),
     });
     const post = this.toPost(row);
 
@@ -357,6 +375,28 @@ export class PostsService {
       }
     }
     return parent;
+  }
+
+  /**
+   * Explicit creation times (#150): past-only within the backdate window.
+   * Future stamps would let a caller pin content to the top of every
+   * time-ordered read forever, so they are a validation error, not clamped -
+   * a seeder bug must fail loudly rather than seed silently-wrong times.
+   */
+  private parseBackdate(createdAt: string | undefined): Date | undefined {
+    if (createdAt === undefined) return undefined;
+    const when = new Date(createdAt);
+    if (Number.isNaN(when.getTime())) {
+      throw badRequest('createdAt must be an ISO-8601 timestamp');
+    }
+    const now = Date.now();
+    if (when.getTime() > now + BACKDATE_SKEW_MS) {
+      throw badRequest('createdAt must not be in the future');
+    }
+    if (when.getTime() < now - BACKDATE_WINDOW_MS) {
+      throw badRequest(`createdAt must be within the last ${BACKDATE_WINDOW_MS / 86_400_000} days`);
+    }
+    return when;
   }
 
   /**

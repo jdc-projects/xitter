@@ -4,10 +4,27 @@ import {
   buildCorpus,
   corpusFingerprint,
   DEFAULT_FOLLOW_DENSITY,
+  MAX_POST_AGE_MS,
+  MIN_POST_AGE_MS,
   SEED_CONSTANT,
+  type CorpusPost,
   type SeedCorpus,
 } from './corpus.js';
-import { demoPng } from './lib/images.js';
+import { DEMO_IMAGE_PATTERNS, DEMO_IMAGE_SIZES, demoPng } from './lib/images.js';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const keyOf = (post: { authorIndex: number; ordinal: number }) =>
+  `${post.authorIndex}/${post.ordinal}`;
+
+/** Depth of a post in its thread (root = 1), via the reply chain. */
+function depthOf(post: CorpusPost, byKey: Map<string, CorpusPost>): number {
+  return post.replyTo ? 1 + depthOf(byKey.get(keyOf(post.replyTo))!, byKey) : 1;
+}
+
+/** The thread root's key for a reply (walking up the chain). */
+function rootKeyOf(post: CorpusPost, byKey: Map<string, CorpusPost>): string {
+  return post.replyTo ? rootKeyOf(byKey.get(keyOf(post.replyTo))!, byKey) : keyOf(post);
+}
 
 /**
  * Corpus contracts (spec data 02): identical everywhere, fixed volumes,
@@ -17,6 +34,7 @@ import { demoPng } from './lib/images.js';
  */
 describe('buildCorpus', () => {
   const corpus = buildCorpus();
+  const byKey = new Map(corpus.posts.map((p) => [keyOf(p), p]));
 
   it('is deterministic across runs', () => {
     const again = buildCorpus();
@@ -35,7 +53,7 @@ describe('buildCorpus', () => {
     expect(corpus.counts.posts).toBe(120);
     expect(corpus.counts.follows).toBe(Math.round(DEFAULT_FOLLOW_DENSITY * 10 * 9));
     expect(corpus.counts.replies).toBe(12);
-    expect(corpus.counts.imagePosts).toBeGreaterThanOrEqual(4);
+    expect(corpus.counts.imagePosts).toBe(10); // one per demo user (#150)
     expect(corpus.counts.reposts).toBeGreaterThanOrEqual(5);
     expect(corpus.counts.bookmarks).toBeGreaterThanOrEqual(10);
     expect(corpus.counts.likes).toBeGreaterThan(corpus.counts.reposts);
@@ -47,9 +65,59 @@ describe('buildCorpus', () => {
     for (const post of imagePosts) {
       expect(post.imageAlt, `demo${post.authorIndex + 1}/post-${post.ordinal}`).toBeTruthy();
       expect(post.imageAlt!.length).toBeLessThanOrEqual(200);
+      // The description names the pattern the seeder will actually render.
+      expect(post.imageAlt).toContain(
+        DEMO_IMAGE_PATTERNS.find((p) => p.id === post.imageSpec!.pattern)!.description,
+      );
     }
     for (const post of corpus.posts.filter((p) => p.mediaCount === 0)) {
       expect(post.imageAlt).toBeNull();
+      expect(post.imageSpec).toBeNull();
+    }
+  });
+
+  it('varies the generated image looks across users (#150)', () => {
+    const specs = corpus.posts.filter((p) => p.mediaCount > 0).map((p) => p.imageSpec!);
+    // Every demo user owns exactly one image post.
+    expect(new Set(corpus.posts.filter((p) => p.mediaCount > 0).map((p) => p.authorIndex)).size).toBe(
+      10,
+    );
+    // Not one grey rectangle: several patterns and several aspects appear.
+    expect(new Set(specs.map((s) => s.pattern)).size).toBeGreaterThanOrEqual(3);
+    expect(new Set(specs.map((s) => `${s.width}x${s.height}`)).size).toBeGreaterThanOrEqual(4);
+    for (const spec of specs) {
+      expect(DEMO_IMAGE_SIZES).toContainEqual([spec.width, spec.height]);
+      expect(DEMO_IMAGE_PATTERNS.map((p) => p.id)).toContain(spec.pattern);
+    }
+  });
+
+  it('spreads deterministic age offsets over the ~7-day window (#150)', () => {
+    const ages = corpus.posts.map((p) => p.ageMs);
+    for (const age of ages) {
+      expect(age).toBeGreaterThanOrEqual(MIN_POST_AGE_MS);
+      expect(age).toBeLessThanOrEqual(MAX_POST_AGE_MS);
+    }
+    // The window is actually used: history reaches back days, and a
+    // same-day share exists (RelativeTime shows both shapes).
+    expect(Math.max(...ages)).toBeGreaterThan(6 * DAY_MS);
+    expect(ages.filter((a) => a < DAY_MS).length).toBeGreaterThan(20);
+    // Bursts: every author posts at least one sub-hour pair.
+    for (let user = 0; user < 10; user++) {
+      const sorted = corpus.posts
+        .filter((p) => p.authorIndex === user)
+        .map((p) => p.ageMs)
+        .sort((a, b) => b - a);
+      const pairs = sorted.filter((age, i) => i > 0 && sorted[i - 1]! - age < 60 * 60_000);
+      expect(pairs.length, `demo${user + 1} burst pairs`).toBeGreaterThan(0);
+    }
+  });
+
+  it('keeps every thread chronologically coherent (#150)', () => {
+    for (const post of corpus.posts) {
+      if (!post.replyTo) continue;
+      const parent = byKey.get(keyOf(post.replyTo))!;
+      // Bigger age = older: a reply must never predate its parent.
+      expect(parent.ageMs, `parent of ${keyOf(post)}`).toBeGreaterThanOrEqual(post.ageMs);
     }
   });
 
@@ -114,7 +182,8 @@ describe('buildCorpus', () => {
   it('points replies at posts that exist (and threads concentrate)', () => {
     const created = new Set<string>();
     // Creation order: standalone first, then replies - a reply's parent must
-    // already exist when it is created.
+    // already exist when it is created (parents precede children in the
+    // nested chains too).
     for (const post of corpus.posts) {
       expect(created.has(`${post.authorIndex}/${post.ordinal}`)).toBe(false);
       if (post.replyTo) {
@@ -125,15 +194,28 @@ describe('buildCorpus', () => {
       }
       created.add(`${post.authorIndex}/${post.ordinal}`);
     }
-    const rootCounts = new Map<string, number>();
+    const repliesByRoot = new Map<string, number>();
     for (const post of corpus.posts) {
       if (!post.replyTo) continue;
-      const key = `${post.replyTo.authorIndex}/${post.replyTo.ordinal}`;
-      rootCounts.set(key, (rootCounts.get(key) ?? 0) + 1);
+      const key = rootKeyOf(post, byKey);
+      repliesByRoot.set(key, (repliesByRoot.get(key) ?? 0) + 1);
     }
-    const threads = [...rootCounts.values()];
+    const threads = [...repliesByRoot.values()];
     expect(threads.length).toBeLessThanOrEqual(5); // concentrated, not scattered
     expect(Math.max(...threads)).toBeGreaterThanOrEqual(3); // real conversations
+  });
+
+  it('nests reply chains at least two threads deep (#150)', () => {
+    // Depth counts posts root->leaf: 3 = root -> reply -> reply-to-reply.
+    const depthsByThread = new Map<string, number>();
+    for (const post of corpus.posts) {
+      if (!post.replyTo) continue;
+      const root = rootKeyOf(post, byKey);
+      depthsByThread.set(root, Math.max(depthsByThread.get(root) ?? 0, depthOf(post, byKey)));
+    }
+    expect([...depthsByThread.values()].filter((d) => d >= 3).length).toBeGreaterThanOrEqual(2);
+    // And the deepest thread chains three replies below the root.
+    expect(Math.max(...depthsByThread.values())).toBeGreaterThanOrEqual(4);
   });
 
   it('caps per-user interactions under the mutation rate-limit burst', () => {
@@ -186,6 +268,50 @@ describe('buildCorpus', () => {
     // Follow/interaction order must not matter to the corpus identity.
     expect(corpusFingerprint(shuffled)).toBe(corpus.fingerprint);
   });
+
+  it('fingerprints the age offsets and image looks as corpus content (#150)', () => {
+    const nudged: SeedCorpus = {
+      ...corpus,
+      posts: corpus.posts.map((p, i) =>
+        i === 0 ? { ...p, ageMs: p.ageMs + 1 } : p,
+      ),
+      fingerprint: '',
+    };
+    expect(corpusFingerprint(nudged)).not.toBe(corpus.fingerprint);
+
+    const resized: SeedCorpus = {
+      ...corpus,
+      posts: corpus.posts.map((p, i, all) => {
+        const firstImage = all.findIndex((q) => q.imageSpec !== null);
+        return i === firstImage && p.imageSpec
+          ? { ...p, imageSpec: { ...p.imageSpec!, width: 42 } }
+          : p;
+      }),
+      fingerprint: '',
+    };
+    expect(corpusFingerprint(resized)).not.toBe(corpus.fingerprint);
+  });
+
+  it('stays coherent for smaller corpora (no window/nesting violations)', () => {
+    for (const options of [
+      { userCount: 2, postsPerUser: 2, followDensity: 0 },
+      { userCount: 3, postsPerUser: 4 },
+      { userCount: 5, postsPerUser: 3, followDensity: 1 },
+    ]) {
+      const small = buildCorpus(options);
+      const map = new Map(small.posts.map((p) => [keyOf(p), p]));
+      for (const post of small.posts) {
+        expect(post.ageMs, `${JSON.stringify(options)} ${keyOf(post)} age`).toBeGreaterThanOrEqual(
+          MIN_POST_AGE_MS,
+        );
+        expect(post.ageMs).toBeLessThanOrEqual(MAX_POST_AGE_MS);
+        if (post.replyTo) {
+          const parent = map.get(keyOf(post.replyTo))!;
+          expect(parent.ageMs).toBeGreaterThanOrEqual(post.ageMs);
+        }
+      }
+    }
+  });
 });
 
 describe('demoPng', () => {
@@ -207,6 +333,26 @@ describe('demoPng', () => {
   it('is deterministic per seed and varies across seeds', () => {
     expect(Buffer.compare(demoPng(5), demoPng(5))).toBe(0);
     expect(Buffer.compare(demoPng(5), demoPng(6))).not.toBe(0);
+  });
+
+  it('renders every palette spec as a structurally valid, distinct image (#150)', () => {
+    for (const [width, height] of DEMO_IMAGE_SIZES) {
+      for (const pattern of DEMO_IMAGE_PATTERNS) {
+        const png = demoPng(9, { pattern: pattern.id, width, height });
+        expect(png.subarray(0, 8).at(0)).toBe(0x89); // PNG magic
+        expect(png.readUInt32BE(16)).toBe(width);
+        expect(png.readUInt32BE(20)).toBe(height);
+        const idatLength = png.readUInt32BE(33);
+        expect(inflateSync(png.subarray(41, 41 + idatLength)).length).toBe(
+          height * (1 + width * 3),
+        );
+        expect(png.byteLength).toBeLessThan(64 * 1024); // stays tiny
+      }
+    }
+    // Same size, different pattern -> different bytes (the looks differ).
+    const horizontal = demoPng(9, { pattern: 'gradient-h', width: 96, height: 64 });
+    const vertical = demoPng(9, { pattern: 'gradient-v', width: 96, height: 64 });
+    expect(Buffer.compare(horizontal, vertical)).not.toBe(0);
   });
 
   it('stays well under the media size cap', () => {

@@ -9,6 +9,7 @@ import {
   createPostRequestSchema,
   errorSchema,
   interactionSchema,
+  internalCreatePostRequestSchema,
   pageQuerySchema,
   postLookupRequestSchema,
   postLookupResponseSchema,
@@ -190,6 +191,24 @@ postsApi.registerPath({
   },
 });
 // Internal endpoints: no version segment, service tokens only (spec 03).
+postsApi.registerPath({
+  method: 'post',
+  path: '/internal/posts',
+  tags: ['internal'],
+  security: [{ serviceToken: [] }],
+  description:
+    'Create a post on behalf of a user with an explicit creation time (#150: the seed corpus is back-dated, ~7 days). Seeder-only: azp is scoped to svc-reset, and `createdAt` must be in the past within the service\u2019s backdate window (30 days) - future stamps are a 400. Otherwise identical to POST /v1/posts (same validation, media checks, reply block rules, events).',
+  request: {
+    body: { content: { 'application/json': { schema: internalCreatePostRequestSchema } } },
+  },
+  responses: {
+    201: jsonResponse('Created post', postSchema),
+    400: jsonResponse('Validation error (incl. out-of-window createdAt)', errorSchema),
+    403: jsonResponse('Blocked from replying', errorSchema),
+    404: jsonResponse('Reply target not found', errorSchema),
+  },
+});
+
 postsApi.registerPath({
   method: 'post',
   path: '/internal/posts/lookup',

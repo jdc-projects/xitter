@@ -221,6 +221,44 @@ describe('posts HTTP wiring', () => {
     expect(versioned.statusCode).toBe(404);
   });
 
+  it('serves the seed-only internal create with an explicit createdAt (#150)', async () => {
+    app = await createApp();
+    const AUTHOR_ID = '00000000-0000-4000-8000-0000000000a1';
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/posts/internal/posts',
+      payload: {
+        authorId: AUTHOR_ID,
+        text: 'back-dated corpus post',
+        createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({ text: 'back-dated corpus post' });
+
+    // Schema: authorId/createdAt are required on this path.
+    const missing = await app.inject({
+      method: 'POST',
+      url: '/api/posts/internal/posts',
+      payload: { text: 'x' },
+    });
+    expect(missing.statusCode).toBe(400);
+
+    // Service rule: future stamps are a loud 400, not clamped.
+    const future = await app.inject({
+      method: 'POST',
+      url: '/api/posts/internal/posts',
+      payload: {
+        authorId: AUTHOR_ID,
+        text: 'x',
+        createdAt: new Date(Date.now() + 86_400_000).toISOString(),
+      },
+    });
+    expect(future.statusCode).toBe(400);
+    expect(future.json()).toMatchObject({ error: { code: 'VALIDATION_ERROR' } });
+  });
+
   it('serves interaction create/delete under the versioned prefix', async () => {
     app = await createApp();
 

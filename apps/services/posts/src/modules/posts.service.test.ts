@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createPostRequestSchema, POST_MEDIA_MAX, POST_TEXT_MAX } from '@xitter/api-contracts';
+import {
+  createPostRequestSchema,
+  POST_MEDIA_MAX,
+  POST_TEXT_MAX,
+} from '@xitter/api-contracts';
 import type { MediaAsset } from '@xitter/api-contracts';
-import { PostsService } from './posts.service.js';
+import { BACKDATE_WINDOW_MS, PostsService } from './posts.service.js';
 import { MediaServiceChecker, NullMediaChecker, type MediaChecker } from './media-checker.js';
 import { NullInteractionRealtime } from './interaction-realtime.js';
 import type { PostsEvents } from './posts-events.js';
@@ -564,5 +568,87 @@ describe('PostsService rules', () => {
     await expect(
       service.create(AUTHOR, { text: 'still works', mediaIds: [], replyToId: null }),
     ).resolves.toMatchObject({ text: 'still works' });
+  });
+});
+
+// #150: explicit creation times (the seed's back-dated corpus). Past-only,
+// bounded window, and the stamped value rides the row AND the event so
+// feed/search ordering stays coherent with the stored timestamps.
+describe('PostsService explicit createdAt (#150)', () => {
+  const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
+
+  function serviceWith(spied?: { createPost?: PostsRepository['createPost'] }) {
+    const { repo } = fakeRepo(spied);
+    const events = spyEvents();
+    const svc = new PostsService(
+      repo,
+      events,
+      allowAll,
+      new NullMediaChecker(),
+      new NullInteractionRealtime(),
+    );
+    return { svc, events, repo };
+  }
+
+  it('stamps the row and the created event with the requested time', async () => {
+    const threeDaysAgo = iso(3 * 24 * 60 * 60 * 1000);
+    const seen: Date[] = [];
+    const { svc, events } = serviceWith({
+      createPost: (input) => {
+        seen.push((input as { createdAt?: Date }).createdAt!);
+        return Promise.resolve(
+          row({ id: crypto.randomUUID(), authorId: AUTHOR, createdAt: seen[0] }),
+        );
+      },
+    });
+
+    const post = await svc.create(AUTHOR, { text: 'last week', mediaIds: [], replyToId: null }, {
+      createdAt: threeDaysAgo,
+    });
+
+    expect(seen[0]!.toISOString()).toBe(threeDaysAgo);
+    expect(post.createdAt).toBe(threeDaysAgo);
+    expect(events.calls[0]![1]).toMatchObject({ createdAt: threeDaysAgo });
+  });
+
+  it('rejects future stamps (within skew) and beyond the backdate window', async () => {
+    const { svc } = serviceWith();
+    await expect(
+      svc.create(AUTHOR, { text: 'from tomorrow', mediaIds: [], replyToId: null }, {
+        createdAt: new Date(Date.now() + BACKDATE_WINDOW_MS).toISOString(),
+      }),
+    ).rejects.toMatchObject({ response: { error: { code: 'VALIDATION_ERROR' } } });
+
+    await expect(
+      svc.create(AUTHOR, { text: 'too old', mediaIds: [], replyToId: null }, {
+        createdAt: new Date(Date.now() - BACKDATE_WINDOW_MS - 60_000).toISOString(),
+      }),
+    ).rejects.toMatchObject({ response: { error: { code: 'VALIDATION_ERROR' } } });
+
+    await expect(
+      svc.create(AUTHOR, { text: 'banana time', mediaIds: [], replyToId: null }, {
+        createdAt: 'not-a-date',
+      }),
+    ).rejects.toMatchObject({ response: { error: { code: 'VALIDATION_ERROR' } } });
+  });
+
+  it('accepts a small future skew and leaves the default stamp untouched when absent', async () => {
+    const { svc } = serviceWith();
+    // 30s ahead: inside the 60s skew allowance (seeder/service clock drift).
+    await expect(
+      svc.create(AUTHOR, { text: 'edge skew', mediaIds: [], replyToId: null }, {
+        createdAt: new Date(Date.now() + 30_000).toISOString(),
+      }),
+    ).resolves.toMatchObject({ text: 'edge skew' });
+
+    const seen: Array<Date | undefined> = [];
+    const plain = serviceWith({
+      createPost: (input) => {
+        seen.push((input as { createdAt?: Date }).createdAt);
+        return Promise.resolve(row({ id: crypto.randomUUID(), authorId: AUTHOR }));
+      },
+    });
+    await plain.svc.create(AUTHOR, { text: 'ordinary', mediaIds: [], replyToId: null });
+    expect(seen[0]).toBeUndefined(); // the store's now-default applies
   });
 });

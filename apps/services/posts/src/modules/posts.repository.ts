@@ -51,6 +51,8 @@ export class PostsRepository {
   /**
    * Create a post and, for replies, bump the parent's reply counter in one
    * transaction so the counts read-model can never drift from the rows.
+   * `createdAt` overrides the store's now-default for the seed's back-dated
+   * corpus (#150); absent, the row stamps itself as usual.
    */
   createPost(input: {
     authorId: string;
@@ -58,6 +60,7 @@ export class PostsRepository {
     mediaIds: string[];
     media: MediaAsset[];
     replyToId: string | null;
+    createdAt?: Date;
   }): Promise<PostRow> {
     return this.db.$transaction(async (tx) => {
       const post = await tx.post.create({ data: input });
