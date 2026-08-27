@@ -4,7 +4,14 @@ import { Avatar, type AvatarProps } from '@mantine/core';
 
 export interface UserAvatarProps extends Omit<AvatarProps, 'src'> {
   username: string;
-  displayName: string;
+  /**
+   * Real display name - drives the initial and the alt text (#141). Omit it
+   * only where no display name exists at all (e.g. a dormant account); the
+   * username initial is then the documented fallback. Never pass the
+   * username itself as the display name - an eslint rule in
+   * @xitter/eslint-config guards the call sites.
+   */
+  displayName?: string;
   /** Deterministic gradient per username when no image is set. */
   hasImage?: boolean;
   imageUrl?: string | null;
@@ -33,13 +40,17 @@ export function UserAvatar({
   imageUrl,
   ...props
 }: UserAvatarProps) {
+  // Defensive derivation (#141): a blank display name must not render a
+  // blank avatar - the username initial is the floor.
+  const label = displayName?.trim() || username;
+
   if (hasImage && imageUrl) {
-    return <Avatar src={imageUrl} alt={displayName} radius="xl" {...props} />;
+    return <Avatar src={imageUrl} alt={label} radius="xl" {...props} />;
   }
   const { from, to } = gradientFor(username);
   return (
-    <Avatar gradient={{ from, to, deg: 135 }} radius="xl" alt={displayName} {...props}>
-      {displayName.slice(0, 1).toUpperCase()}
+    <Avatar gradient={{ from, to, deg: 135 }} radius="xl" alt={label} {...props}>
+      {label.slice(0, 1).toUpperCase()}
     </Avatar>
   );
 }

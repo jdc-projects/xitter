@@ -26,6 +26,9 @@ describe('DormantProfile (#36)', () => {
 
     expect(screen.getByTestId('dormant-username').textContent).toBe('@demo7');
     expect(screen.getByText('This account has not logged in yet.')).toBeTruthy();
+    // The avatar takes the username initial (#141) - a dormant account has
+    // no profile, so no display name exists to pass instead.
+    expect(screen.getByText('D')).toBeTruthy();
     // The explanation names the account (the "log in as demo7" nudge).
     expect(screen.getByTestId('dormant-explain').textContent).toContain('demo7');
     expect(screen.getByTestId('dormant-feed-link').getAttribute('href')).toBe('/feed');

@@ -12,7 +12,10 @@ export function DormantProfile({ username }: { username: string }) {
     <Container size="sm" py="xl" data-testid="profile-dormant">
       <Stack gap="sm">
         <Group gap="md" wrap="nowrap" align="center">
-          <UserAvatar username={username} displayName={username} size="lg" />
+          {/* No displayName (#141): a dormant account has no profile, so no
+              display name exists - the username initial is the documented
+              UserAvatar fallback, not a display-name stand-in. */}
+          <UserAvatar username={username} size="lg" />
           <Stack gap={4}>
             <Title order={1} size="h2" data-testid="dormant-username">
               @{username}

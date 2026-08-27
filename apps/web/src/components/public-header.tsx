@@ -2,7 +2,6 @@
 
 import { Anchor, Box, Button, Container, Group, Text } from '@mantine/core';
 import { usePathname } from 'next/navigation';
-import { UserAvatar } from '@xitter/ui';
 
 export interface PublicHeaderProps {
   /** Signed-in username (#38): swaps Log in for the handle + a feed link. */
@@ -53,18 +52,19 @@ export function PublicHeader({ username }: PublicHeaderProps) {
             </Anchor>
             {username ? (
               <Group gap="sm" wrap="nowrap">
+                {/* Handle only, no avatar (#141): the session carries just
+                    the username, and a username initial would masquerade as
+                    a display name. Same treatment as the app shell's
+                    @handle. */}
                 <Anchor
                   href={`/profile/${username}`}
                   underline="never"
                   aria-label={`@${username}`}
                   data-testid="public-profile-link"
                 >
-                  <Group gap={6} wrap="nowrap">
-                    <UserAvatar username={username} displayName={username} size="sm" />
-                    <Text size="sm" c="dimmed" inherit>
-                      @{username}
-                    </Text>
-                  </Group>
+                  <Text size="sm" c="dimmed" inherit>
+                    @{username}
+                  </Text>
                 </Anchor>
                 <Button
                   component="a"
