@@ -177,7 +177,13 @@ test('thread view walks ancestors, nesting, and depth-cap navigation', async ({ 
     .locator(':scope > [data-testid^="thread-node-"]');
   await expect(topLevel).toHaveCount(1); // only the direct reply
   await expect(topLevel).toContainText(r1Text);
-  await expect(topLevel).not.toContainText(r2Text);
+  // r2 is nested INSIDE r1's node (a descendant), not a top-level sibling -
+  // toContainText reads the whole subtree, so assert structure: exactly one
+  // r2 node, and it lives within the single top-level node.
+  await expect(topLevel.getByTestId(`thread-node-${r2Id}`)).toHaveCount(1);
+  await expect(
+    page.getByTestId('thread-tree').locator(':scope > [data-testid^="thread-node-"]').getByTestId(`thread-node-${r2Id}`),
+  ).toHaveCount(1);
 
   // r3 is at the embedded depth cap (3 below the focus) with r4 below it:
   // navigation, not inline expansion.
