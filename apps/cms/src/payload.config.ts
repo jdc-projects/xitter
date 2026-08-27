@@ -25,6 +25,10 @@ export default buildConfig({
   typescript: { outputFile: 'src/payload-types.ts' },
   admin: {
     user: Users.slug,
+    // Brand mark (#143): the same indigo→cyan ✕ as the web app; basePath is
+    // prepended by hand because the URL is passed through to generated
+    // metadata, not resolved against the app router.
+    meta: { icons: { icon: '/cms/brand-mark.svg' } },
     livePreview: {
       url: ({ data, collectionConfig }) => {
         const id = (data as { id?: number | string }).id ?? '';

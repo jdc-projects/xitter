@@ -167,3 +167,11 @@ their internal admin endpoints — the panel gate is UX, not the boundary).
 | 13.4 | Every cursor-paginated list (feed, search, bookmarks, profile posts and follow lists, reply threads) uses one shared Load more that appends pages in place - no full-page cursor navigation, one `load-more` affordance everywhere.           |
 | 13.5 | One labelled search input per page: the header box hides itself on /search, where the page's own box is the single input.                                                                                                                     |
 | 13.6 | Every 404 inside the app - unmatched routes, deleted or malformed posts/profiles - renders within the authenticated shell, so nav, search and logout stay available; signed-out visitors get the same branded 404 body, not a login redirect. |
+
+## 14. Branding
+
+| #    | Acceptance criteria                                                                                                                                                                                              |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 14.1 | The brand mark is a white ✕ on an indigo→cyan (135°) rounded square - the wordmark's gradient. Its geometry lives in one place, `apps/web/scripts/generate-brand-icons.ts`, so every size regenerates from it.    |
+| 14.2 | The web app ships the mark via App Router conventions (`app/icon.svg` + `app/icon.png`, `app/apple-icon.png`) and a manifest with 192/512 icons; regenerate with `npm run icons` (workspace `web`).               |
+| 14.3 | Secondary surfaces reuse the same mark: the admin panel links `public/brand-mark.svg`, and the CMS admin panel's favicon points at its copy (basePath included, since the URL bypasses app-router resolution).   |

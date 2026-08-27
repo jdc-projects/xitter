@@ -30,6 +30,8 @@ ENV HOSTNAME=0.0.0.0
 ENV PORT=3457
 COPY --from=build --chown=node:node /app/apps/cms/.next/standalone ./
 COPY --from=build --chown=node:node /app/apps/cms/.next/static ./apps/cms/.next/static
+# Admin-panel brand mark (#143) - standalone output does not copy public/.
+COPY --from=build --chown=node:node /app/apps/cms/public ./apps/cms/public
 USER node
 EXPOSE 3457
 CMD ["node", "apps/cms/server.js"]

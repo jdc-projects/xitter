@@ -6,6 +6,7 @@
     "dev": "tsx scripts/serve.ts dev",
     "build": "next build --turbopack",
     "start": "tsx scripts/serve.ts start",
+    "icons": "tsx scripts/generate-brand-icons.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

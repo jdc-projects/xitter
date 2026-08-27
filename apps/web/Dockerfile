@@ -28,6 +28,8 @@ ENV HOSTNAME=0.0.0.0
 ENV PORT=3456
 COPY --from=build --chown=node:node /app/apps/web/.next/standalone ./
 COPY --from=build --chown=node:node /app/apps/web/.next/static ./apps/web/.next/static
+# Manifest brand icons (#143) - standalone output does not copy public/.
+COPY --from=build --chown=node:node /app/apps/web/public ./apps/web/public
 USER node
 EXPOSE 3456
 CMD ["node", "apps/web/server.js"]
