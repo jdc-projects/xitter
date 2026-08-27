@@ -11,7 +11,7 @@
     "packages/testing/src/containers.ts:247-258|packages/testing/src/containers.ts:305-316",
     "apps/web/src/app/(app)/feed/load-feed.ts:52-59|apps/web/src/app/(app)/search/load-search.ts:32-43",
     "apps/services/media/src/modules/admin.controller.ts:19-34|apps/services/posts/src/modules/admin.controller.ts:22-39",
-    "apps/services/media/src/modules/media.service.ts:287-297|apps/services/posts/src/modules/posts.service.ts:384-394|apps/services/social/src/modules/social/social.service.ts:363-373",
+    "apps/services/media/src/modules/media.service.ts:287-297|apps/services/posts/src/modules/posts.service.ts:499-509|apps/services/social/src/modules/social/social.service.ts:363-373",
     "apps/services/posts/src/modules/posts.registry.ts:20-30|apps/services/social/src/modules/social/social.registry.ts:22-32",
     "apps/services/search/src/modules/search.controller.ts:8-37|apps/services/search/src/modules/search.registry.ts:19-25",
     "apps/services/posts/src/modules/posts.controller.ts:32-38|apps/services/social/src/modules/social/social.controller.ts:30-36",

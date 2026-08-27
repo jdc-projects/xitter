@@ -247,6 +247,7 @@ export class PostsClient extends ServiceClient {
    * nested reply tree. `cursor` pages more top-level replies (same keyset
    * as getReplies).
    */
+  // fallow-ignore-next-line unused-class-member -- consumed by the web thread page (apps/web/src/app/(app)/post/[postId]/page.tsx)
   getThread(postId: string, cursor?: string): Promise<ThreadResponse> {
     return this.get(`${V1}/posts/v1/posts/${postId}/thread`, cursor ? { cursor } : undefined).then(
       threadResponseSchema.parse,
