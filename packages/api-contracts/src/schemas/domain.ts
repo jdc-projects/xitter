@@ -206,7 +206,13 @@ export type FeedItem = z.infer<typeof feedItemSchema>;
 /** Feed page item as served by `GET /v1/feed`: entry hydrated server-side. */
 export const hydratedFeedItemSchema = z.object({
   post: postSchema,
-  author: profileSchema,
+  /**
+   * The POST's author - for repost entries the ORIGINAL author, never the
+   * reposter (#145); the reposter rides `repostedBy` for attribution.
+   */
+  author: profileSchema.describe(
+    "The post's author (the ORIGINAL author for repost entries; the reposter rides `repostedBy` for attribution).",
+  ),
   reason: feedEntryReasonSchema,
   /** Reposter profile for `reason: repost` entries (attribution); else null. */
   repostedBy: profileSchema.nullable(),

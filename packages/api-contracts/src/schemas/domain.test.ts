@@ -4,6 +4,7 @@ import {
   POST_TEXT_MAX,
   mediaAltTextInputSchema,
   mediaAssetSchema,
+  hydratedFeedItemSchema,
   postSchema,
   usernameSchema,
 } from './domain.js';
@@ -272,5 +273,16 @@ describe('searchCheckpointPutRequestSchema', () => {
         eventAt: '2026-08-19T09:00:00.000Z',
       }).success,
     ).toBe(false);
+  });
+});
+
+// #145: the hydrated feed item's `author` documents WHO the card renders -
+// the post's own author, with the reposter on `repostedBy`. The contract
+// text is the rendering rule both feed and its consumers rely on.
+describe('hydratedFeedItemSchema author documentation (#145)', () => {
+  it('documents author as the post author, never the reposter', () => {
+    const description = hydratedFeedItemSchema.shape.author.description ?? '';
+    expect(description).toContain("post's author");
+    expect(description).toContain('repostedBy');
   });
 });

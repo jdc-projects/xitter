@@ -36,7 +36,8 @@ export class FeedService {
    * Newest-first page. Soft-deleted posts drop out during hydration; the
    * bounded refill keeps walking so a burst of deletions cannot shrink the
    * page below the requested size while older entries exist. Repost entries
-   * hydrate with the reposter's profile (`repostedBy`) for attribution.
+   * render the ORIGINAL author as `author` (product 6.6: the card shows the
+   * original post; the reposter rides `repostedBy` for attribution).
    */
   async getFeed(userId: string, page: FeedPageRequest): Promise<FeedPage> {
     assertValidCursor(page.cursor);
@@ -108,9 +109,17 @@ export class FeedService {
   ): Promise<HydratedFeedItem[]> {
     if (entries.length === 0) return [];
     const posts = await this.content.posts([...new Set(entries.map((entry) => entry.postId))]);
+    // The rendered author is the POST's author (#145) - repost entries store
+    // the reposter as the surface `authorId` (fanout filtering), so the
+    // original author must join the profile batch alongside the reposter.
     const authorIds = [
       ...new Set(
-        entries.flatMap((entry) => [entry.authorId, entry.repostedById ?? entry.authorId]),
+        entries.flatMap((entry) =>
+          [
+            posts.get(entry.postId)?.authorId ?? entry.authorId,
+            entry.repostedById,
+          ].filter((id): id is string => Boolean(id)),
+        ),
       ),
     ];
     const profiles = await this.content.profiles(authorIds);
@@ -127,7 +136,11 @@ export class FeedService {
       const repostedBy = entry.repostedById ? profiles.get(entry.repostedById) : undefined;
       items.push({
         post,
-        author: profileOrPlaceholder(entry.authorId, profiles),
+        // The POST's author, never the entry's surface author (#145): a
+        // reposted card must show the original author's identity while the
+        // reposter renders separately via `repostedBy` - the web gates
+        // delete on post.authorId, so identity and permission stay paired.
+        author: profileOrPlaceholder(post.authorId, profiles),
         reason: entry.reason === 'repost' ? 'repost' : 'post',
         repostedBy: entry.repostedById
           ? (repostedBy ?? profileOrPlaceholder(entry.repostedById, profiles))
