@@ -54,6 +54,7 @@ const row = (overrides: Partial<MediaRow> = {}): MediaRow => ({
   variants: [],
   attempts: 0,
   uploadedAt: null,
+  altText: null,
   createdAt: new Date('2026-08-18T00:00:00Z'),
   ...overrides,
 });

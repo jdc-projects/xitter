@@ -169,6 +169,8 @@ describe('runSeed retry hardening (#85)', () => {
   interface SeedSurfaceState {
     /** Posts the fake services hold (author's timeline items). */
     posts: Array<{ id: string; text: string; author: number; deletedAt: string | null }>;
+    /** Bodies of served (200-level) post creates, for wire assertions. */
+    postBodies: Array<{ text: string; mediaIds: unknown }>;
     /** 200-level create responses served (excludes adopted/faulty attempts). */
     postCreates: number;
     /** Every POST /posts attempt, including thrown/reconciled ones. */
@@ -189,7 +191,7 @@ describe('runSeed retry hardening (#85)', () => {
     method: string;
     test: RegExp;
     /** May throw to simulate a network-level failure. */
-    respond(url: URL, body: { text?: string } | undefined, outcome: unknown): unknown;
+    respond(url: URL, body: { text?: string; mediaIds?: unknown } | undefined, outcome: unknown): unknown;
   }
 
   /**
@@ -205,6 +207,7 @@ describe('runSeed retry hardening (#85)', () => {
   } {
     const state: SeedSurfaceState = {
       posts: [],
+      postBodies: [],
       postCreates: 0,
       postAttempts: 0,
       uploadAttempts: 0,
@@ -253,6 +256,7 @@ describe('runSeed retry hardening (#85)', () => {
           state.postCreates += 1;
           const id = `created-${state.postCreates}`;
           state.posts.push({ id, text, author: slot.authorIndex, deletedAt: null });
+          state.postBodies.push({ text, mediaIds: body?.mediaIds });
           return { id };
         },
       },
@@ -353,6 +357,17 @@ describe('runSeed retry hardening (#85)', () => {
     expect(report.skipped).toBe(false);
     expect(report.created.posts).toBe(tiny.counts.posts);
     expect(state.postCreates).toBe(tiny.counts.posts); // no duplicated creates
+
+    // The corpus image post carries its alt text onto the create wire (#133).
+    const withMedia = state.postBodies.filter(
+      (b) => Array.isArray(b.mediaIds) && b.mediaIds.length > 0,
+    );
+    expect(withMedia).toHaveLength(tiny.counts.imagePosts);
+    for (const body of withMedia) {
+      const slot = tiny.posts.find((p) => p.text === body.text)!;
+      expect(slot.imageAlt).toBeTruthy();
+      expect(body.mediaIds).toEqual([{ mediaId: 'm-1', altText: slot.imageAlt }]);
+    }
   });
 
   it('reconciles an ambiguous post-create failure by adopting the committed post', async () => {

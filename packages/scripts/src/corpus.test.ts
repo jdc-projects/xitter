@@ -41,6 +41,18 @@ describe('buildCorpus', () => {
     expect(corpus.counts.likes).toBeGreaterThan(corpus.counts.reposts);
   });
 
+  it('describes every image post with alt text and nothing else (#133)', () => {
+    const imagePosts = corpus.posts.filter((p) => p.mediaCount > 0);
+    expect(imagePosts.length).toBe(corpus.counts.imagePosts);
+    for (const post of imagePosts) {
+      expect(post.imageAlt, `demo${post.authorIndex + 1}/post-${post.ordinal}`).toBeTruthy();
+      expect(post.imageAlt!.length).toBeLessThanOrEqual(200);
+    }
+    for (const post of corpus.posts.filter((p) => p.mediaCount === 0)) {
+      expect(post.imageAlt).toBeNull();
+    }
+  });
+
   it('fixes the demo usernames', () => {
     expect(corpus.users.map((u) => u.username)).toEqual(
       Array.from({ length: 10 }, (_, i) => `demo${i + 1}`),

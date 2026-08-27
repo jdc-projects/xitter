@@ -484,7 +484,13 @@ export class MediaClient extends ServiceClient {
     mediaIds: string[],
     altTexts?: Record<string, string>,
   ): Promise<{ items: MediaAsset[] }> {
-    return this.post(`${V1}/media/internal/media/lookup`, { ownerId, mediaIds, altTexts }).then(
+    // altTexts only ride the wire when at least one is set - a bare lookup
+    // stays byte-identical to the historical shape.
+    const body =
+      altTexts && Object.keys(altTexts).length > 0
+        ? { ownerId, mediaIds, altTexts }
+        : { ownerId, mediaIds };
+    return this.post(`${V1}/media/internal/media/lookup`, body).then(
       mediaLookupResponseSchema.parse,
     );
   }

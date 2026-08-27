@@ -144,9 +144,10 @@ describe('PostsService media attach rules', () => {
 
   /** Checker whose resolved set the tests control per case. */
   const checkerOver = (
-    resolve: (ownerId: string, ids: string[]) => MediaAsset[],
+    resolve: (ownerId: string, ids: string[], altTexts: Record<string, string>) => MediaAsset[],
   ): MediaChecker => ({
-    resolveForAttach: (ownerId, ids) => Promise.resolve(resolve(ownerId, ids)),
+    resolveForAttach: (ownerId, ids, altTexts = {}) =>
+      Promise.resolve(resolve(ownerId, ids, altTexts)),
   });
 
   it('attaches ready assets and snapshots them for reads', async () => {
@@ -168,6 +169,44 @@ describe('PostsService media attach rules', () => {
 
     expect(post.media).toEqual([readyAsset(mediaId(1))]);
     expect(events.calls[0]![1]).toMatchObject({ mediaIds: [mediaId(1)] });
+  });
+
+  it('forwards per-attachment alt text to media and snapshots the answer (#133)', async () => {
+    const { repo } = fakeRepo();
+    const seen: Array<{ ids: string[]; altTexts: Record<string, string> }> = [];
+    const withAlt = (id: string, altText: string): MediaAsset => ({
+      ...readyAsset(id),
+      altText,
+    });
+    const service = new PostsService(
+      repo,
+      spyEvents(),
+      allowAll,
+      checkerOver((owner, ids, altTexts) => {
+        seen.push({ ids: [...ids], altTexts: { ...altTexts } });
+        return ids.map((id) => (altTexts[id] ? withAlt(id, altTexts[id]!) : readyAsset(id)));
+      }),
+      new NullInteractionRealtime(),
+    );
+
+    const post = await service.create(AUTHOR, {
+      text: 'described images',
+      mediaIds: [
+        { mediaId: mediaId(1), altText: 'A kite over the pier' },
+        mediaId(2), // mixed forms: bare id stays alt-less
+      ],
+      replyToId: null,
+    });
+
+    // Validation + persistence see the text via the same lookup call.
+    expect(seen).toEqual([
+      { ids: [mediaId(1), mediaId(2)], altTexts: { [mediaId(1)]: 'A kite over the pier' } },
+    ]);
+    // The stored snapshot renders the alt text exactly where it was given.
+    expect(post.media).toEqual([
+      withAlt(mediaId(1), 'A kite over the pier'),
+      readyAsset(mediaId(2)),
+    ]);
   });
 
   it('rejects non-ready (pending) media with the offending ids', async () => {
