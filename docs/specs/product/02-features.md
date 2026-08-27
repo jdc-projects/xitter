@@ -23,7 +23,7 @@ Acceptance-style catalogue of every user-facing feature area. "Must" = required 
 | 2.2 | Explains what xitter is, why it exists, and how it works (microservices demo).                                                                  |
 | 2.3 | Documents the data reset, including the schedule (nightly, default 00:30 UTC) and that reseed may restore a fixed corpus.                       |
 | 2.4 | Lists demo credentials (`demo1`..`demo10` / `DemoPass123!`).                                                                                    |
-| 2.5 | Contains an FAQ section with entries managed in the CMS.                                                                                        |
+| 2.5 | Contains an FAQ section with entries managed in the CMS, plus code-owned entries for product facts (e.g. what unauthenticated visitors can see). |                                                                                        |
 | 2.6 | Carries the PII warning: do not enter personal or sensitive data.                                                                               |
 | 2.7 | Reachable from the public header; carries no self-referential links (the reset notice's read-more link is suppressed on the About page itself). |
 
