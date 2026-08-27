@@ -54,16 +54,16 @@ Acceptance-style catalogue of every user-facing feature area. "Must" = required 
 
 ## 5. Feed
 
-| #   | Acceptance criteria                                                                                                                          |
-| --- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| 5.1 | Shows only posts from followed accounts plus the user's own posts — nothing else.                                                            |
-| 5.2 | Ordered most recent first.                                                                                                                   |
-| 5.3 | Timestamp format: relative (<24 h) rounded to the most significant figure (e.g. `1h`, not `1h 20m`); absolute `D MMM YYYY HH:mm` when older. |
-| 5.4 | Paginated (cursor-based; no gaps or duplicates across pages).                                                                                |
-| 5.5 | Near-real-time: new posts, replies, and interactions arrive via websocket notifications without a manual refresh.                            |
-| 5.6 | Reposts surface in the follower's feed attributed to the reposter, showing the original post.                                                |
-| 5.7 | Load failures show an inline error with a retry affordance - the copy never says "try again" without offering the button.                    |
-| 5.8 | Replies in the feed render a "Replying to @x" context line (the reply-target's author) above the post text; replies whose parent is gone render without it (#147). |
+| #   | Acceptance criteria                                                                                                                                                                                                                                                                     |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 5.1 | Shows only posts from followed accounts plus the user's own posts — nothing else.                                                                                                                                                                                                       |
+| 5.2 | Ordered most recent first.                                                                                                                                                                                                                                                              |
+| 5.3 | Timestamp format: relative (<24 h) rounded to the most significant figure (e.g. `1h`, not `1h 20m`); absolute `D MMM YYYY HH:mm` when older.                                                                                                                                            |
+| 5.4 | Paginated (cursor-based; no gaps or duplicates across pages).                                                                                                                                                                                                                           |
+| 5.5 | Near-real-time: new posts, replies, and interactions arrive via websocket notifications without a manual refresh.                                                                                                                                                                       |
+| 5.6 | Reposts surface in the follower's feed attributed to the reposter, showing the original post.                                                                                                                                                                                           |
+| 5.7 | Load failures show an inline error with a retry affordance - the copy never says "try again" without offering the button.                                                                                                                                                               |
+| 5.8 | Replies in the feed render a "Replying to @x" context line (the reply-target's author) above the post text; replies whose parent is gone render without it (#147).                                                                                                                      |
 | 5.9 | A fresh own post is visible at the top of the feed immediately after composing (optimistic prepend, refined by the next real fetch); while the websocket is closed the feed polls page 1 (~15 s) instead of relying on the at-most-once banner, pausing while the tab is hidden (#148). |
 
 ## 6. Interactions
