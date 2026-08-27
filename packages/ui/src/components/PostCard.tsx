@@ -57,7 +57,10 @@ export interface PostCardProps {
   href?: string;
 }
 
-const iconProps = { size: 18, stroke: 1.5 } as const;
+// aria-hidden: the glyphs are decorative - the adjacent label text (nav
+// labels, button aria-labels) carries the meaning, and without it each svg
+// surfaces in the a11y tree as an unnamed img (audit #32).
+const iconProps = { size: 18, stroke: 1.5, 'aria-hidden': true } as const;
 
 const KIND_COLOR: Record<PostCardInteractionKind, string> = {
   repost: 'teal',
@@ -70,6 +73,20 @@ const KIND_LABEL: Record<PostCardInteractionKind, string> = {
   like: 'Like',
   bookmark: 'Bookmark',
 };
+
+/**
+ * Accessible name for an interaction control: the state ("Undo like") plus
+ * the visible count, so a bare aria-label never hides the number from
+ * screen readers (audit #32). Bookmark counts are private - name only.
+ */
+function interactionName(
+  kind: PostCardInteractionKind,
+  active: boolean,
+  count: number | null,
+): string {
+  const label = active ? `Undo ${KIND_LABEL[kind].toLowerCase()}` : KIND_LABEL[kind];
+  return count === null ? label : `${label} (${count})`;
+}
 
 /**
  * Feed / profile post card. Interaction buttons are presentational here -
@@ -99,7 +116,7 @@ export function PostCard({
         <Icon {...iconProps} fill={fill} /> {count}
       </>
     );
-    const label = active ? `Undo ${KIND_LABEL[kind].toLowerCase()}` : KIND_LABEL[kind];
+    const label = interactionName(kind, Boolean(active), count);
 
     if (!onInteract) {
       return (
@@ -186,7 +203,13 @@ export function PostCard({
       )}
 
       <Group mt="sm" gap="lg">
-        <Text component="span" size="sm" c="dimmed" data-testid="count-replies">
+        <Text
+          component="span"
+          size="sm"
+          c="dimmed"
+          data-testid="count-replies"
+          aria-label={`${post.counts.replies} ${post.counts.replies === 1 ? 'reply' : 'replies'}`}
+        >
           <IconMessageCircle {...iconProps} /> {post.counts.replies}
         </Text>
         {interactButton('repost', post.counts.reposts, 'count-reposts')}

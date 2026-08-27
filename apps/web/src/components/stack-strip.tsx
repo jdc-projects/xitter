@@ -77,7 +77,9 @@ export function StackStrip() {
       <Group justify="flex-start" align="flex-start" gap="lg" wrap="wrap">
         {STACK_FACTS.map((fact) => (
           <Stack key={fact.label} gap={4} miw={150} maw={230}>
-            <ThemeIcon variant="light" color={fact.color} size="lg" radius="md">
+            {/* Decorative glyph: aria-hidden so it is not exposed as an
+                unnamed img in the a11y tree (audit #32). */}
+            <ThemeIcon variant="light" color={fact.color} size="lg" radius="md" aria-hidden="true">
               <fact.icon size={20} stroke={1.75} />
             </ThemeIcon>
             <Text size="sm" fw={600}>
