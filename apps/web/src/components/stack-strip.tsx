@@ -1,4 +1,4 @@
-import { Anchor, AvatarGroup, Box, Group, Stack, ThemeIcon, Text, Title } from '@mantine/core';
+import { Anchor, Group, Stack, ThemeIcon, Text, Title } from '@mantine/core';
 import type { MantineColor } from '@mantine/core';
 import {
   IconArrowsExchange,
@@ -8,7 +8,6 @@ import {
   IconServer,
 } from '@tabler/icons-react';
 import type { Icon } from '@tabler/icons-react';
-import { UserAvatar } from '@xitter/ui';
 
 interface StackFact {
   icon: Icon;
@@ -92,28 +91,5 @@ export function StackStrip() {
         ))}
       </Group>
     </Stack>
-  );
-}
-
-/**
- * Decorative hero motif (#37): the gradient avatars are xitter's visual
- * signature (one deterministic gradient per username), so the hero leans on
- * it. Purely decorative - hidden from assistive tech, no real profile data.
- */
-export function LandingAvatarMotif() {
-  return (
-    <Box aria-hidden="true" data-testid="landing-avatars">
-      <AvatarGroup>
-        {['demo1', 'demo2', 'demo3', 'demo4', 'demo5'].map((username) => (
-          <UserAvatar
-            key={username}
-            username={username}
-            // Stand-ins for the demo accounts, not fetched profiles.
-            displayName={username}
-            size="md"
-          />
-        ))}
-      </AvatarGroup>
-    </Box>
   );
 }
