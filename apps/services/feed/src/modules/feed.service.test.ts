@@ -471,7 +471,12 @@ describe('FeedService.getFeed', () => {
     hydrator.store.profiles.set(BLOCKED, profile(BLOCKED));
     const postsSpy = vi.spyOn(hydrator, 'posts');
 
-    const service = new FeedService(repo, hydrator, spyRealtime(), new CheckpointRepository(fakeCheckpointDb()));
+    const service = new FeedService(
+      repo,
+      hydrator,
+      spyRealtime(),
+      new CheckpointRepository(fakeCheckpointDb()),
+    );
     const page = await service.getFeed(OWNER, { limit: 20 });
 
     const hydratedReply = page.items.find((item) => item.post.id === replyId)!;
@@ -498,7 +503,12 @@ describe('FeedService.getFeed', () => {
     );
     hydrator.store.profiles.set(FOLLOWEE, profile(FOLLOWEE));
 
-    const service = new FeedService(repo, hydrator, spyRealtime(), new CheckpointRepository(fakeCheckpointDb()));
+    const service = new FeedService(
+      repo,
+      hydrator,
+      spyRealtime(),
+      new CheckpointRepository(fakeCheckpointDb()),
+    );
     const page = await service.getFeed(OWNER, { limit: 20 });
 
     // The reply still renders - minus the context line.
