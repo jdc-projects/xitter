@@ -55,6 +55,25 @@ export interface AdminActor {
  * - events are best-effort after commit: a Kafka outage logs but never fails
  *   the mutation (at-least-once consumers must be idempotent anyway).
  */
+/** Max age for explicit creation times (#150): the seed's backdate window. */
+export const BACKDATE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+const BACKDATE_SKEW_MS = 60 * 1000;
+
+/** Flatten create-request media entries: ids plus per-asset alt text (#133). */
+function mediaEntries(entries: CreatePostRequest['mediaIds']): {
+  mediaIds: string[];
+  altTexts: Record<string, string>;
+} {
+  const mediaIds = entries.map((entry) => (typeof entry === 'string' ? entry : entry.mediaId));
+  const altTexts: Record<string, string> = {};
+  for (const entry of entries) {
+    if (typeof entry !== 'string' && entry.altText !== undefined) {
+      altTexts[entry.mediaId] = entry.altText;
+    }
+  }
+  return { mediaIds, altTexts };
+}
+
 @Injectable()
 export class PostsService {
   constructor(
@@ -65,7 +84,11 @@ export class PostsService {
     @Inject(INTERACTION_REALTIME) private readonly realtime: InteractionRealtime,
   ) {}
 
-  async create(authorId: string, input: CreatePostRequest): Promise<Post> {
+  async create(
+    authorId: string,
+    input: CreatePostRequest,
+    options: { createdAt?: string } = {},
+  ): Promise<Post> {
     // The controller validates via the same schema; re-parsing here keeps the
     // 1..512 / uuid / max-4 rules true for every caller (seed, tests, future
     // internal paths), not just HTTP.
@@ -74,6 +97,7 @@ export class PostsService {
       throw badRequest('Post validation failed', { fields: parsed.error.flatten() });
     }
     input = parsed.data;
+    const createdAt = this.parseBackdate(options.createdAt);
 
     const parent = input.replyToId
       ? await this.requireReplyTarget(input.replyToId, authorId)
@@ -83,15 +107,7 @@ export class PostsService {
     // at attach time - the snapshot taken here is what reads render. Entries
     // may carry per-asset alt text (#133); it rides the same lookup so
     // validation (trim/non-empty) and storage both happen in media.
-    const mediaIds = input.mediaIds.map((entry) =>
-      typeof entry === 'string' ? entry : entry.mediaId,
-    );
-    const altTexts: Record<string, string> = {};
-    for (const entry of input.mediaIds) {
-      if (typeof entry !== 'string' && entry.altText !== undefined) {
-        altTexts[entry.mediaId] = entry.altText;
-      }
-    }
+    const { mediaIds, altTexts } = mediaEntries(input.mediaIds);
 
     const requested = [...new Set(mediaIds)];
     const media =
@@ -103,6 +119,9 @@ export class PostsService {
       mediaIds,
       media,
       replyToId: parent?.id ?? null,
+      // Absent = the store's now-default; never send an explicit undefined
+      // over the key (stubs and Prisma both read the key's presence).
+      ...(createdAt ? { createdAt } : {}),
     });
     const post = this.toPost(row);
 
@@ -374,6 +393,28 @@ export class PostsService {
    * A reply target must exist and be visible, and no block may exist between
    * the replier and the parent's author in either direction (product 6.4).
    */
+  /**
+   * Explicit creation times (#150): past-only within the backdate window.
+   * Future stamps would let a caller pin content to the top of every
+   * time-ordered read forever, so they are a validation error, not clamped -
+   * a seeder bug must fail loudly rather than seed silently-wrong times.
+   */
+  private parseBackdate(createdAt: string | undefined): Date | undefined {
+    if (createdAt === undefined) return undefined;
+    const when = new Date(createdAt);
+    if (Number.isNaN(when.getTime())) {
+      throw badRequest('createdAt must be an ISO-8601 timestamp');
+    }
+    const now = Date.now();
+    if (when.getTime() > now + BACKDATE_SKEW_MS) {
+      throw badRequest('createdAt must not be in the future');
+    }
+    if (when.getTime() < now - BACKDATE_WINDOW_MS) {
+      throw badRequest(`createdAt must be within the last ${BACKDATE_WINDOW_MS / 86_400_000} days`);
+    }
+    return when;
+  }
+
   private async requireReplyTarget(replyToId: string, replierId: string): Promise<PostRow> {
     const parent = await this.repo.findVisiblePost(replyToId);
     if (!parent) throw notFound('Post not found');

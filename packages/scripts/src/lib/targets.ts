@@ -9,6 +9,7 @@
  * → the local port for that service.
  */
 import { envString, localUrl } from '@xitter/config';
+import { createJwtCache, realmUrls } from '@xitter/auth';
 
 export type ApiTarget = 'social' | 'posts' | 'media' | 'feed' | 'search' | 'cms';
 
@@ -29,6 +30,21 @@ function demoRealm(): string {
 
 function tokenEndpoint(): string {
   return `${keycloakBase()}/realms/${demoRealm()}/protocol/openid-connect/token`;
+}
+
+/**
+ * The reset job's machine credential (svc-reset client credentials), cached.
+ * The seed uses it for posts' internal create (#150: explicit createdAt);
+ * the reset flow itself uses the same client for /internal/reseed. Env
+ * names are shared with the reset flow so one provisioning covers both.
+ */
+export function resetServiceToken(fetchImpl: typeof fetch = fetch): { get(): Promise<string> } {
+  return createJwtCache({
+    tokenUrl: realmUrls(keycloakBase(), demoRealm()).token,
+    clientId: envString('XITTER_RESET_CLIENT_ID', 'svc-reset'),
+    clientSecret: envString('XITTER_RESET_CLIENT_SECRET', 'svc-reset-local-secret'),
+    fetchImpl,
+  });
 }
 
 /**
