@@ -1,18 +1,33 @@
-import { Body, Controller, Delete, Get, HttpCode, Inject, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Inject,
+  Param,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { Internal } from '@xitter/auth-nest';
 import {
+  feedCheckpointPutRequestSchema,
   upsertFeedEntriesRequestSchema,
   userIdSchema,
   postIdSchema,
+  type FeedCheckpointPutRequest,
   type ResetStatus,
   type UpsertFeedEntriesRequest,
 } from '@xitter/api-contracts';
 import { ZodValidationPipe } from '@xitter/service-kit';
+import { z } from 'zod';
 import { FeedService } from './feed.service.js';
 import { RESET_STATUS, type ResetStatusReader } from './reset-status.js';
 
 const uuidParam = new ZodValidationPipe(userIdSchema);
 const postParam = new ZodValidationPipe(postIdSchema);
+// Single-value param pipes take scalar schemas (object schemas would 400).
+const consumerKeyQuery = new ZodValidationPipe(z.string().min(1).max(100));
 
 /**
  * Service-to-service endpoints (spec 03 internal table): the fanout worker
@@ -69,6 +84,24 @@ export class InternalFeedController {
   @Internal()
   resetUser(@Param('userId', uuidParam) userId: string) {
     return this.feed.resetUser(userId);
+  }
+
+  /** Persist the fanout worker's last processed position (#149). */
+  @Post('feed/checkpoint')
+  @Internal()
+  @HttpCode(204)
+  putCheckpoint(
+    @Body(new ZodValidationPipe(feedCheckpointPutRequestSchema))
+    body: FeedCheckpointPutRequest,
+  ) {
+    return this.feed.reportCheckpoint(body);
+  }
+
+  /** Fanout resume positions for one consumer (worker boot, #149). */
+  @Get('feed/checkpoint')
+  @Internal()
+  getCheckpoints(@Query('consumerKey', consumerKeyQuery) consumerKey: string) {
+    return this.feed.checkpointPositions(consumerKey).then((positions) => ({ positions }));
   }
 
   @Post('reseed')

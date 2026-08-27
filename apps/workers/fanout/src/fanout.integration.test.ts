@@ -37,6 +37,9 @@ describe('fanout consumption (testcontainers kafka)', () => {
   const deleteRepostEntries = vi.fn((_postId: string, _repostedById: string) =>
     Promise.resolve({ deleted: 1 }),
   );
+  // The suite consumer checkpoints like the real worker (the resume test
+  // asserts this wiring end to end with its own dedicated recorders).
+  const putCheckpoint = vi.fn(() => Promise.resolve());
 
   beforeAll(async () => {
     kafka = await startKafka();
@@ -65,9 +68,11 @@ describe('fanout consumption (testcontainers kafka)', () => {
         internalDeletePostEntries: deletePostEntries,
         internalDeleteAuthorEntries: deleteAuthorEntries,
         internalDeleteRepostEntries: deleteRepostEntries,
+        internalPutCheckpoint: putCheckpoint,
       } as unknown as FeedApi,
+      consumerKey: CONSUMER_GROUPS.fanoutWorker,
     };
-    await consumer.run((envelope) => handleEvent(envelope, deps));
+    await consumer.run((envelope, raw) => handleEvent(envelope, raw, deps));
   }, 240_000);
 
   afterAll(async () => {
@@ -124,6 +129,10 @@ describe('fanout consumption (testcontainers kafka)', () => {
     const entries = upsertEntries.mock.calls[0]![0] as { userId: string }[];
     expect(entries.map((e) => e.userId).sort()).toEqual([AUTHOR, FOLLOWER_1, FOLLOWER_2].sort());
     expect(followerIds).toHaveBeenCalledWith(AUTHOR);
+    // Every consumed event is checkpointed after its side effects (#149).
+    expect(putCheckpoint).toHaveBeenCalledWith(
+      expect.objectContaining({ consumerKey: CONSUMER_GROUPS.fanoutWorker }),
+    );
   }, 90_000);
 
   it('backfills the followee recent posts into the follower feed', async () => {
@@ -272,4 +281,104 @@ describe('fanout consumption (testcontainers kafka)', () => {
 
     await probe.disconnect();
   }, 90_000);
+
+  it('resumes from the durable checkpoint after downtime - events produced while down are consumed (#149)', async () => {
+    // Same key throughout: one partition, so the checkpoint cursor and the
+    // downtime events share an ordered log.
+    const KEY = 'fanout-resume-probe';
+    const postA = uid('e2a1');
+    const postB = uid('e2b1');
+    const postC = uid('e2c1');
+    const emitPost = (postId: string) =>
+      producer.emit('posts', {
+        eventType: 'posts.post.created',
+        producer: 'posts',
+        occurredAt: NOW,
+        key: KEY,
+        payload: {
+          postId,
+          authorId: AUTHOR,
+          text: 'resume probe',
+          mediaIds: [],
+          replyToId: null,
+          repostOfId: null,
+          createdAt: NOW,
+        },
+      });
+
+    // Dedicated side-effect recorders for the resume scenario: the suite's
+    // long-lived consumer keeps consuming everything in its own group, so
+    // shared mocks could not attribute B/C to the resumed worker.
+    const resumeUpserts = vi.fn((_entries: unknown[]) => Promise.resolve({ inserted: 0 }));
+    const resumeCheckpoints: { topicPartition: string; offset: number }[] = [];
+    const resumeDeps = {
+      social: { internalFollowerIds: followerIds } as unknown as SocialApi,
+      posts: { internalGetAuthorPosts: userPosts } as unknown as PostsApi,
+      feed: {
+        internalUpsertEntries: resumeUpserts,
+        internalDeletePostEntries: deletePostEntries,
+        internalDeleteAuthorEntries: deleteAuthorEntries,
+        internalDeleteRepostEntries: deleteRepostEntries,
+        internalPutCheckpoint: vi.fn((input: { topicPartition: string; offset: number }) => {
+          resumeCheckpoints.push({ topicPartition: input.topicPartition, offset: input.offset });
+          return Promise.resolve();
+        }),
+      } as unknown as FeedApi,
+      consumerKey: CONSUMER_GROUPS.fanoutWorker,
+    };
+    /** How many fan-out upsert batches carried this post's entries. */
+    const upsertsOf = (postId: string) =>
+      resumeUpserts.mock.calls.filter((entries) =>
+        (entries[0] as { postId: string }[]).some((entry) => entry.postId === postId),
+      ).length;
+
+    // The worker under test: its own consumer group (fromBeginning so the
+    // emit cannot race the group's first join). Group loss is the harshest
+    // resume scenario - only the durable checkpoint survives it.
+    const worker1 = createEventConsumer({
+      clientId: 'fanout-test-resume-1',
+      brokers: kafka.bootstrapServers.split(','),
+      groupId: `${CONSUMER_GROUPS.fanoutWorker}-resume1-${crypto.randomUUID()}`,
+      topics: ['posts', 'social'],
+      fromBeginning: true,
+    });
+    await worker1.run((envelope, raw) => handleEvent(envelope, raw, resumeDeps));
+
+    await emitPost(postA);
+    await waitFor(() => upsertsOf(postA) > 0);
+    // The checkpoint write follows the upsert inside the same handler
+    // invocation; let it land before snapshotting the resume positions.
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    const resumeFrom = new Map<string, number>();
+    for (const { topicPartition, offset } of resumeCheckpoints) {
+      resumeFrom.set(topicPartition, Math.max(resumeFrom.get(topicPartition) ?? -1, offset) + 1);
+    }
+    expect(resumeFrom.size).toBeGreaterThan(0); // the worker checkpointed its positions
+    const handledBefore = upsertsOf(postA);
+
+    // Downtime: the worker is down while two posts are produced.
+    await worker1.disconnect();
+    await emitPost(postB);
+    await emitPost(postC);
+
+    // Boot: a fresh group carrying the durable positions (what main.ts
+    // fetches from the feed checkpoint store) must consume the gap rather
+    // than seek past it.
+    const worker2 = createEventConsumer({
+      clientId: 'fanout-test-resume-2',
+      brokers: kafka.bootstrapServers.split(','),
+      groupId: `${CONSUMER_GROUPS.fanoutWorker}-resume2-${crypto.randomUUID()}`,
+      topics: ['posts', 'social'],
+      fromBeginning: true,
+    });
+    await worker2.run((envelope, raw) => handleEvent(envelope, raw, resumeDeps), { resumeFrom });
+
+    await waitFor(() => upsertsOf(postB) > 0 && upsertsOf(postC) > 0, 60_000);
+
+    expect(upsertsOf(postB)).toBeGreaterThan(0); // downtime event consumed
+    expect(upsertsOf(postC)).toBeGreaterThan(0); // downtime event consumed
+    expect(upsertsOf(postA)).toBe(handledBefore); // pre-checkpoint backlog not replayed
+
+    await worker2.disconnect();
+  }, 240_000);
 });

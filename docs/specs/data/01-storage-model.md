@@ -9,7 +9,7 @@ Per-service data ownership. Each service owns exactly one store and is the only 
 | Profiles, follows, blocks | social         | Postgres (`social`)                               | Identity-adjacent data; user info itself lives in Keycloak                            |
 | Posts, interactions       | posts          | Postgres (`posts`)                                | Source of truth for posts, replies, likes, bookmarks, reposts                         |
 | Media assets              | media          | Postgres (`media`) + RustFS bucket `xitter-media` | Objects keyed `{userId}/{mediaId}/{original\|thumb}.{ext}`                            |
-| Feed entries              | feed           | Postgres (`feed`)                                 | Materialised per-user timeline, event-fed                                             |
+| Feed entries              | feed           | Postgres (`feed`)                                 | Materialised per-user timeline (event-fed) + the fanout worker's resume checkpoints   |
 | Search                    | search         | Postgres (`search`) + OpenSearch `posts` index    | Postgres holds only checkpoints; OpenSearch holds the index                           |
 | Site content              | cms (Payload)  | Postgres (`cms`)                                  | Payload-managed tables: landing intro, FAQ entries, users/sessions for the CMS itself |
 
@@ -111,12 +111,24 @@ erDiagram
         string authorId "hydrated from posts/social at read time"
         string reason "post | repost"
         string repostedById "nullable - repost entries refine with #8"
+        string entryKey "derived source identity: post:{postId} | repost:{postId}:{repostedById}"
         datetime postCreatedAt "ordering key (post/interaction time)"
         datetime insertedAt "materialisation time"
     }
+    FeedCheckpoint {
+        string id PK
+        string consumerKey "consumer group id"
+        string topicPartition "topic:partition"
+        bigint lastOffset "last processed Kafka offset"
+        string lastEventId "idempotency trail"
+        datetime lastEventAt
+        datetime updatedAt
+    }
 ```
 
-Unique: `FeedEntry(userId, postId, reason)` — idempotent event application. `repostedById` is deliberately **not** part of the key: Postgres unique indexes treat NULLs as distinct, so a nullable column would defeat the constraint for `reason = 'post'` rows (every replay would insert a duplicate); #8 refines the repost key when reposts land. Entries store ids + ordering columns only — post bodies and author profiles are hydrated server-side from posts/social on read (`GET /v1/feed`). Deleted posts drop out at hydration; blocked authors are filtered at query time (rows persist until the nightly reset, per the block product decision).
+Unique: `FeedEntry(userId, entryKey)` where `entryKey` is the derived source identity (`post:{postId}` or `repost:{postId}:{repostedById}`, computed by `feedEntryKey` in `@xitter/api-contracts` so the worker and the service cannot disagree) — idempotent event application; a nullable `repostedById` alone cannot join the key because Postgres unique indexes treat NULLs as distinct. Entries store ids + ordering columns only — post bodies and author profiles are hydrated server-side from posts/social on read (`GET /v1/feed`). Deleted posts drop out at hydration; blocked authors are filtered at query time (rows persist until the nightly reset, per the block product decision).
+
+Unique: `FeedCheckpoint(consumerKey, topicPartition)` — the fanout worker's durable resume cursor (#149), the feed-owned twin of search's `SearchCheckpoint`: upserted after every processed event (only once the entry side effect has landed, so the cursor never points past unprocessed work), read back at worker boot so a restart outside a reset resumes instead of seeking to the log end and skipping the downtime gap. Feed owns it because fanout materialises feed's data.
 
 ### search
 
@@ -151,14 +163,14 @@ Field tables above (types/constraints inline in each ER diagram) are normative. 
 
 ## Index strategy
 
-| Store      | Indexes (beyond PKs/uniques)                                                                         | Serves                                                                          |
-| ---------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| social     | `Follow(followeeId)`, `Block(blockedId)`                                                             | Followers lists; block checks on write paths                                    |
-| posts      | `Post(authorId, createdAt desc)`, `Post(replyToId)`, `Interaction(userId, kind)`                     | Profiles, threads, "my bookmarks/likes"                                         |
-| media      | `MediaAsset(ownerId)`, `MediaAsset(status)`                                                          | Owner lookups (attach validation); pending/failed cleanup                       |
-| feed       | `FeedEntry(userId, postCreatedAt desc, id desc)`, `FeedEntry(postId)`, `FeedEntry(userId, authorId)` | The feed page itself (keyset, newest first); deletion fan-out; unfollow cleanup |
-| search     | `SearchCheckpoint(consumerKey, topicPartition)` unique                                               | Resume position                                                                 |
-| OpenSearch | standard text index on posts                                                                         | Full-text search                                                                |
+| Store      | Indexes (beyond PKs/uniques)                                                                                                                               | Serves                                                                                                  |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| social     | `Follow(followeeId)`, `Block(blockedId)`                                                                                                                   | Followers lists; block checks on write paths                                                            |
+| posts      | `Post(authorId, createdAt desc)`, `Post(replyToId)`, `Interaction(userId, kind)`                                                                           | Profiles, threads, "my bookmarks/likes"                                                                 |
+| media      | `MediaAsset(ownerId)`, `MediaAsset(status)`                                                                                                                | Owner lookups (attach validation); pending/failed cleanup                                               |
+| feed       | `FeedEntry(userId, postCreatedAt desc, id desc)`, `FeedEntry(postId)`, `FeedEntry(userId, authorId)`, `FeedCheckpoint(consumerKey, topicPartition)` unique | The feed page itself (keyset, newest first); deletion fan-out; unfollow cleanup; fanout resume position |
+| search     | `SearchCheckpoint(consumerKey, topicPartition)` unique                                                                                                     | Resume position                                                                                         |
+| OpenSearch | standard text index on posts                                                                                                                               | Full-text search                                                                                        |
 
 Guideline: index for the read patterns in the product flows ([../product/03-user-flows.md](../product/03-user-flows.md)); add indexes with evidence, not speculation.
 

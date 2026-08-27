@@ -86,11 +86,17 @@ sequenceDiagram
     F->>S: GET /internal/users/:authorId/followers/ids
     S-->>F: follower ids
     F->>FD: POST /internal/feed/entries (author + followers, bulk upsert)
+    F->>FD: POST /internal/feed/checkpoint (resume position, #149)
     FD->>V: PUBLISH feed:updates:{userId} per affected user
     V-->>FD: fan-out to feed replicas
     FD-->>B: ws push {type:"feed.new-items", count}
     B->>W: refetch GET /api/feed/v1/feed
 ```
+
+Design notes:
+
+- **Event emission is best-effort but loud.** A Kafka outage never fails the user's mutation (the DB write committed; at-least-once consumers are idempotent), but the posts service logs a structured error carrying the post id (`emitSafe`), so a downstream view missing an item is traceable from the posts logs alone.
+- **Downtime is not data loss (#149).** The fanout worker checkpoints every consumed position to the feed service (`FeedCheckpoint`) after the event's side effects succeed, and fetches those positions (with patience — the feed service may still be booting) before joining the group. A restart outside a reset therefore resumes exactly after the last processed event instead of the reset gate's fresh-boot seek-to-end, which would permanently skip the events produced while the worker was down. Feed owns the store because fanout materialises feed's data; the nightly reseed wipes it together with the entries (a fresh feed must not resume into a log that predates the wipe), at which point the gate's fail-safe (seek to log end) governs again. Replays are safe: entry writes are idempotent on `(userId, entryKey)`.
 
 ### Media upload → processing → post referencing media
 
@@ -208,11 +214,11 @@ Documents are keyed by `postId` (idempotent replays converge); deletes are tombs
 
 Group ids live in `CONSUMER_GROUPS` (`packages/events/src/topics.ts`); the nightly reset recreates them (see [05-data-platform.md](05-data-platform.md)).
 
-| Group                         | Worker        | Topics                                | Notes                                                                                                                                                                         |
-| ----------------------------- | ------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `xitter-fanout-worker`        | fanout        | `xitter.posts.v1`, `xitter.social.v1` | Feed materialisation + backfill/removal                                                                                                                                       |
-| `xitter-media-process-worker` | media-process | `xitter.media.v1`                     | Only `media.media.uploaded` is actionable                                                                                                                                     |
-| `xitter-search-index-worker`  | search-index  | `xitter.posts.v1`, `xitter.social.v1` | `posts.post.*` index/tombstone documents; `social.profile.updated` refreshes denormalised author names; batches events per fetch (one bulk upsert + one checkpoint per batch) |
+| Group                         | Worker        | Topics                                | Notes                                                                                                                                                                                 |
+| ----------------------------- | ------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `xitter-fanout-worker`        | fanout        | `xitter.posts.v1`, `xitter.social.v1` | Feed materialisation + backfill/removal; checkpoints every consumed position to feed (`FeedCheckpoint`) so a restart outside a reset resumes instead of seeking to the log end (#149) |
+| `xitter-media-process-worker` | media-process | `xitter.media.v1`                     | Only `media.media.uploaded` is actionable                                                                                                                                             |
+| `xitter-search-index-worker`  | search-index  | `xitter.posts.v1`, `xitter.social.v1` | `posts.post.*` index/tombstone documents; `social.profile.updated` refreshes denormalised author names; batches events per fetch (one bulk upsert + one checkpoint per batch)         |
 
 Groups (and topic data) are deleted and recreated by the nightly reset — see [05-data-platform.md](05-data-platform.md).
 

@@ -3,6 +3,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { realmUrls } from '@xitter/auth';
 import { env } from '../env.js';
 import { PrismaClient } from '../generated/prisma/client.js';
+import { CheckpointRepository } from './checkpoint.repository.js';
 import { CONTENT_HYDRATOR, ServiceContentHydrator } from './content-hydrator.js';
 import { FEED_REALTIME, ValkeyFeedRealtime, type FeedRealtime } from './feed-realtime.js';
 import { FeedController } from './feed.controller.js';
@@ -67,6 +68,7 @@ export class FeedLifecycle implements OnApplicationShutdown {
     realtimeProvider,
     resetStatusProvider,
     FeedRepository,
+    CheckpointRepository,
     FeedService,
     FeedLifecycle,
   ],

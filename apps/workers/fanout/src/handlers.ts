@@ -1,3 +1,4 @@
+import type { EachMessagePayload } from 'kafkajs';
 import type { FeedEntryInput, Post, PostCreated } from '@xitter/api-contracts';
 import { eventSchemas, EVENT_TYPES, type DomainEvent } from '@xitter/events';
 import { createLogger } from '@xitter/observability';
@@ -40,12 +41,21 @@ export interface FeedApi {
   internalDeletePostEntries(postId: string): Promise<{ deleted: number }>;
   internalDeleteAuthorEntries(userId: string, authorId: string): Promise<{ deleted: number }>;
   internalDeleteRepostEntries(postId: string, repostedById: string): Promise<{ deleted: number }>;
+  internalPutCheckpoint(input: {
+    consumerKey: string;
+    topicPartition: string;
+    offset: number;
+    eventId: string;
+    eventAt: string;
+  }): Promise<void>;
 }
 
 export interface HandlerDeps {
   social: SocialApi;
   posts: PostsApi;
   feed: FeedApi;
+  /** Checkpoint identity - the consumer group id (#149). */
+  consumerKey: string;
 }
 
 /**
@@ -66,8 +76,45 @@ export interface HandlerDeps {
  * Payloads validate against the shared event schemas at this boundary;
  * everything downstream is idempotent on the feed natural key, so
  * at-least-once redelivery converges.
+ *
+ * After the dispatch (whatever it did - including skipping events fanout
+ * ignores), the consumed position is checkpointed to the feed service so a
+ * restart outside a reset resumes exactly after this event (#149) instead
+ * of the reset gate's fresh-boot seek-to-end permanently skipping the
+ * downtime gap. The write happens only once the side effects succeeded:
+ * a failure propagates, Kafka redelivers, and the idempotent upserts
+ * converge - the checkpoint never points past unprocessed work.
  */
-export async function handleEvent(envelope: unknown, deps: HandlerDeps): Promise<void> {
+export async function handleEvent(
+  envelope: unknown,
+  raw: EachMessagePayload | undefined,
+  deps: HandlerDeps,
+): Promise<void> {
+  await dispatch(envelope, deps);
+  await checkpoint(envelope, raw, deps);
+}
+
+/**
+ * Durable resume position (#149): `raw` is absent for context-free (unit)
+ * calls - side effects run, nothing checkpoints.
+ */
+async function checkpoint(
+  envelope: unknown,
+  raw: EachMessagePayload | undefined,
+  deps: HandlerDeps,
+): Promise<void> {
+  if (!raw) return;
+  const { eventId, occurredAt } = envelope as { eventId: string; occurredAt: string };
+  await deps.feed.internalPutCheckpoint({
+    consumerKey: deps.consumerKey,
+    topicPartition: `${raw.topic}:${raw.partition}`,
+    offset: Number(raw.message.offset),
+    eventId,
+    eventAt: occurredAt,
+  });
+}
+
+async function dispatch(envelope: unknown, deps: HandlerDeps): Promise<void> {
   const { eventType, payload } = (envelope ?? {}) as {
     eventType?: string;
     payload?: Record<string, unknown>;

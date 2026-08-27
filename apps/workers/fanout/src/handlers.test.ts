@@ -106,6 +106,13 @@ function fakeDeps() {
   const deletedPosts: string[] = [];
   const removedAuthors: { userId: string; authorId: string }[] = [];
   const removedReposts: { postId: string; repostedById: string }[] = [];
+  const checkpoints: {
+    consumerKey: string;
+    topicPartition: string;
+    offset: number;
+    eventId: string;
+    eventAt: string;
+  }[] = [];
   const deps = {
     social: {
       internalFollowerIds: vi.fn(() => Promise.resolve([FOLLOWER_1, FOLLOWER_2])),
@@ -130,10 +137,31 @@ function fakeDeps() {
         removedReposts.push({ postId, repostedById });
         return Promise.resolve({ deleted: 1 });
       }),
+      internalPutCheckpoint: vi.fn(
+        (input: {
+          consumerKey: string;
+          topicPartition: string;
+          offset: number;
+          eventId: string;
+          eventAt: string;
+        }) => {
+          checkpoints.push(input);
+          return Promise.resolve();
+        },
+      ),
     } as unknown as FeedApi,
+    consumerKey: 'xitter-fanout-worker-test',
   };
-  return { deps, upserts, deletedPosts, removedAuthors, removedReposts };
+  return { deps, upserts, deletedPosts, removedAuthors, removedReposts, checkpoints };
 }
+
+/** Kafka message context for checkpoint assertions (offset is what matters). */
+const rawAt = (topic: string, partition: number, offset: number) =>
+  ({
+    topic,
+    partition,
+    message: { offset: String(offset) },
+  }) as Parameters<typeof handleEvent>[1];
 
 const postCreatedEnvelope = (payload: object) => ({
   eventId: crypto.randomUUID(),
@@ -157,7 +185,7 @@ describe('handleEvent dispatch', () => {
   it('fans post.created out to author + followers via the feed internal API', async () => {
     const { deps, upserts } = fakeDeps();
 
-    await handleEvent(postCreatedEnvelope({}), deps);
+    await handleEvent(postCreatedEnvelope({}), undefined, deps);
 
     expect(deps.social.internalFollowerIds).toHaveBeenCalledWith(AUTHOR);
     expect(upserts).toHaveLength(1);
@@ -193,6 +221,7 @@ describe('handleEvent dispatch', () => {
         occurredAt: CREATED_AT,
         payload: { followerId: FOLLOWER_1, followeeId: AUTHOR, createdAt: CREATED_AT },
       },
+      undefined,
       deps,
     );
 
@@ -217,6 +246,7 @@ describe('handleEvent dispatch', () => {
           deletedAt: CREATED_AT,
         },
       },
+      undefined,
       deps,
     );
 
@@ -235,6 +265,7 @@ describe('handleEvent dispatch', () => {
         occurredAt: CREATED_AT,
         payload: { followerId: FOLLOWER_1, followeeId: AUTHOR, deletedAt: CREATED_AT },
       },
+      undefined,
       deps,
     );
 
@@ -260,6 +291,7 @@ describe('handleEvent dispatch', () => {
           createdAt: CREATED_AT,
         },
       },
+      undefined,
       deps,
     );
 
@@ -289,6 +321,7 @@ describe('handleEvent dispatch', () => {
             createdAt: CREATED_AT,
           },
         },
+        undefined,
         deps,
       );
     }
@@ -314,6 +347,7 @@ describe('handleEvent dispatch', () => {
           deletedAt: CREATED_AT,
         },
       },
+      undefined,
       deps,
     );
 
@@ -335,6 +369,7 @@ describe('handleEvent dispatch', () => {
           occurredAt: CREATED_AT,
           payload: { blockerId: AUTHOR, blockedId: FOLLOWER_1, createdAt: CREATED_AT },
         },
+        undefined,
         deps,
       );
     }
@@ -347,17 +382,91 @@ describe('handleEvent dispatch', () => {
     const { deps, upserts } = fakeDeps();
 
     // missing createdAt + bad authorId shape: must not reach the feed API
-    await handleEvent(postCreatedEnvelope({ authorId: 'not-a-uuid', createdAt: undefined }), deps);
+    await handleEvent(
+      postCreatedEnvelope({ authorId: 'not-a-uuid', createdAt: undefined }),
+      undefined,
+      deps,
+    );
 
     expect(upserts).toHaveLength(0);
   });
 
   it('rethrows handler failures so Kafka redelivers', async () => {
-    const { deps } = fakeDeps();
+    const { deps, checkpoints } = fakeDeps();
     (deps.feed.internalUpsertEntries as ReturnType<typeof vi.fn>).mockRejectedValue(
       new Error('feed down'),
     );
 
-    await expect(handleEvent(postCreatedEnvelope({}), deps)).rejects.toThrow('feed down');
+    await expect(handleEvent(postCreatedEnvelope({}), undefined, deps)).rejects.toThrow(
+      'feed down',
+    );
+    // The cursor never points past unprocessed work: a failed side effect
+    // must not advance the checkpoint.
+    expect(checkpoints).toHaveLength(0);
+  });
+});
+
+describe('handleEvent checkpointing (#149)', () => {
+  it('checkpoints the consumed position after the side effects land', async () => {
+    const { deps, checkpoints } = fakeDeps();
+    const envelope = postCreatedEnvelope({});
+    const eventId = (envelope as { eventId: string }).eventId;
+
+    await handleEvent(envelope, rawAt('xitter.posts.v1', 0, 41), deps);
+
+    expect(checkpoints).toEqual([
+      {
+        consumerKey: 'xitter-fanout-worker-test',
+        topicPartition: 'xitter.posts.v1:0',
+        offset: 41,
+        eventId,
+        eventAt: CREATED_AT,
+      },
+    ]);
+  });
+
+  it('checkpoints past events fanout ignores, so the cursor never lags', async () => {
+    const { deps, checkpoints } = fakeDeps();
+
+    await handleEvent(
+      {
+        eventId: crypto.randomUUID(),
+        eventType: EVENT_TYPES.interactionCreated,
+        eventVersion: 1,
+        producer: 'posts',
+        occurredAt: CREATED_AT,
+        payload: {
+          interactionId: '00000000-0000-4000-8000-0000000000d1',
+          kind: 'like', // like/bookmark: no feed entries, but still consumed
+          postId: '00000000-0000-4000-8000-0000000000d2',
+          userId: FOLLOWER_1,
+          createdAt: CREATED_AT,
+        },
+      },
+      rawAt('xitter.posts.v1', 3, 7),
+      deps,
+    );
+
+    expect(checkpoints).toHaveLength(1); // no upserts, cursor still advanced
+    expect(checkpoints[0]).toMatchObject({ topicPartition: 'xitter.posts.v1:3', offset: 7 });
+  });
+
+  it('does not checkpoint context-free (unit) calls', async () => {
+    const { deps, checkpoints } = fakeDeps();
+
+    await handleEvent(postCreatedEnvelope({}), undefined, deps);
+
+    expect(checkpoints).toHaveLength(0);
+  });
+
+  it('propagates checkpoint failures so the event redelivers', async () => {
+    const { deps } = fakeDeps();
+    (deps.feed.internalPutCheckpoint as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error('checkpoint store down'),
+    );
+
+    await expect(
+      handleEvent(postCreatedEnvelope({}), rawAt('xitter.posts.v1', 0, 1), deps),
+    ).rejects.toThrow('checkpoint store down');
   });
 });

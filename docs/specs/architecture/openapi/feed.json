@@ -706,6 +706,119 @@
         }
       }
     },
+    "/internal/feed/checkpoint": {
+      "post": {
+        "tags": ["internal"],
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "Persist the fanout worker's last processed Kafka position (durable resume cursor, #149) - a restart outside a reset resumes exactly there instead of at the log end.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "consumerKey": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "topicPartition": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "offset": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "eventId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "eventAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": ["consumerKey", "topicPartition", "offset", "eventId", "eventAt"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Stored"
+          }
+        }
+      },
+      "get": {
+        "tags": ["internal"],
+        "security": [
+          {
+            "serviceToken": []
+          }
+        ],
+        "description": "Fanout resume positions for one consumer (worker boot, #149).",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "required": true,
+            "name": "consumerKey",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Positions by topic-partition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "positions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "topicPartition": {
+                            "type": "string"
+                          },
+                          "offset": {
+                            "type": "integer",
+                            "minimum": 0
+                          },
+                          "eventId": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "eventAt": {
+                            "type": "string",
+                            "nullable": true
+                          }
+                        },
+                        "required": ["topicPartition", "offset", "eventId", "eventAt"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["positions"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/internal/reseed": {
       "post": {
         "tags": ["internal"],
@@ -714,7 +827,7 @@
             "serviceToken": []
           }
         ],
-        "description": "Truncate feed entries (reset job); the timeline rebuilds from events.",
+        "description": "Truncate feed entries and resume checkpoints (reset job); the timeline rebuilds from events after the reset.",
         "responses": {
           "200": {
             "description": "Acknowledged",
