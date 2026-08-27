@@ -219,7 +219,11 @@ export function PostComposer({
   /** Bare ids when no alt was written, `{mediaId, altText}` entries when it was. */
   const mediaEntries: MediaEntry[] = attachments.flatMap((attachment) =>
     attachment.status === 'ready' && attachment.mediaId
-      ? [attachment.altText ? { mediaId: attachment.mediaId, altText: attachment.altText } : attachment.mediaId]
+      ? [
+          attachment.altText
+            ? { mediaId: attachment.mediaId, altText: attachment.altText }
+            : attachment.mediaId,
+        ]
       : [],
   );
 

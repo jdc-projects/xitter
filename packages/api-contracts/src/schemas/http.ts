@@ -44,7 +44,7 @@ export const errorSchema = z
 //
 // Attachment entries (#133): a bare media id (the historical shape, still
 // accepted) or an object carrying optional alt text for that asset.
-export const postMediaAttachmentSchema = z.union([
+const postMediaAttachmentSchema = z.union([
   mediaIdSchema,
   z
     .object({
@@ -53,8 +53,6 @@ export const postMediaAttachmentSchema = z.union([
     })
     .strict(),
 ]);
-
-export type PostMediaAttachment = z.infer<typeof postMediaAttachmentSchema>;
 
 export const createPostRequestSchema = z
   .object({

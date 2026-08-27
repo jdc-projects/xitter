@@ -103,7 +103,9 @@ export function MediaListPage() {
                   width={64}
                   height={64}
                   style={{ objectFit: 'cover' }}
-                  alt={`Media ${record.id}`}
+                  // The author's alt text when present (#133), else a
+                  // moderation-stable description of what is shown.
+                  alt={record.altText ?? `Media ${record.id}`}
                 />
               ) : (
                 <Tag>none</Tag>

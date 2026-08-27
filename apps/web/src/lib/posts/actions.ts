@@ -3,11 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError } from '@xitter/api-client';
-import {
-  POST_MEDIA_MAX,
-  POST_TEXT_MAX,
-  type CreatePostRequest,
-} from '@xitter/api-contracts';
+import { POST_MEDIA_MAX, POST_TEXT_MAX, type CreatePostRequest } from '@xitter/api-contracts';
 import { postsForSession } from './server';
 
 export interface ComposerResult {
@@ -48,7 +44,7 @@ function parseMediaIds(raw: FormDataEntryValue | null): CreatePostRequest['media
           (typeof entry === 'object' &&
             entry !== null &&
             typeof (entry as { mediaId?: unknown }).mediaId === 'string' &&
-            (((entry as { altText?: unknown }).altText === undefined) ||
+            ((entry as { altText?: unknown }).altText === undefined ||
               typeof (entry as { altText?: unknown }).altText === 'string')),
       )
     ) {

@@ -118,6 +118,11 @@
                               ]
                             }
                           },
+                          "altText": {
+                            "type": "string",
+                            "nullable": true,
+                            "maxLength": 200
+                          },
                           "createdAt": {
                             "type": "string",
                             "format": "date-time"

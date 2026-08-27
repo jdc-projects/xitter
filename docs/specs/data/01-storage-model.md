@@ -91,13 +91,14 @@ erDiagram
         int bytes "<= 5MB, HEAD-verified at completion"
         string status "pending|ready|failed"
         json variants "[] until processed: kind, objectKey, mime, bytes, width, height"
+        string altText "nullable - author alt text (#133), set at post-create via the lookup"
         int attempts "worker failures; 3 -> failed"
         datetime uploadedAt "nullable - set when completion verified"
         datetime createdAt
     }
 ```
 
-Assets are never foreign-keyed to posts: attachment is validated at post creation (existence, ownership, `ready`) via the media internal API, and the post row stores a snapshot of the ready asset's variants so reads render without a media round-trip. Variants are immutable once recorded, so the snapshot cannot drift.
+Assets are never foreign-keyed to posts: attachment is validated at post creation (existence, ownership, `ready`) via the media internal API, and the post row stores a snapshot of the ready asset's variants (plus its alt text when the author supplied one, #133) so reads render without a media round-trip. Variants are immutable once recorded, so the snapshot cannot drift.
 
 ### feed
 

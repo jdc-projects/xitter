@@ -78,7 +78,9 @@ export class PostsService {
     // at attach time - the snapshot taken here is what reads render. Entries
     // may carry per-asset alt text (#133); it rides the same lookup so
     // validation (trim/non-empty) and storage both happen in media.
-    const mediaIds = input.mediaIds.map((entry) => (typeof entry === 'string' ? entry : entry.mediaId));
+    const mediaIds = input.mediaIds.map((entry) =>
+      typeof entry === 'string' ? entry : entry.mediaId,
+    );
     const altTexts: Record<string, string> = {};
     for (const entry of input.mediaIds) {
       if (typeof entry !== 'string' && entry.altText !== undefined) {

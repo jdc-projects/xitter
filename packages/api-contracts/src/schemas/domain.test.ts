@@ -159,7 +159,9 @@ describe('mediaLookupRequestSchema altTexts (#133)', () => {
   const mediaId = '9e8a7b6c-1234-4abc-9def-0011223344ee';
 
   it('accepts a lookup without altTexts (historical caller)', () => {
-    expect(mediaLookupRequestSchema.parse({ ownerId, mediaIds: [mediaId] }).altTexts).toBeUndefined();
+    expect(
+      mediaLookupRequestSchema.parse({ ownerId, mediaIds: [mediaId] }).altTexts,
+    ).toBeUndefined();
   });
 
   it('accepts altTexts keyed by requested ids and returns them trimmed', () => {
@@ -183,8 +185,11 @@ describe('mediaLookupRequestSchema altTexts (#133)', () => {
 
   it('rejects blank alt values', () => {
     expect(
-      mediaLookupRequestSchema.safeParse({ ownerId, mediaIds: [mediaId], altTexts: { [mediaId]: '' } })
-        .success,
+      mediaLookupRequestSchema.safeParse({
+        ownerId,
+        mediaIds: [mediaId],
+        altTexts: { [mediaId]: '' },
+      }).success,
     ).toBe(false);
   });
 });

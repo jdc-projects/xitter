@@ -252,7 +252,11 @@ async function seedPosts(
 async function createPost(
   ctx: SeedContext,
   author: CorpusUser,
-  body: { text: string; mediaIds: (string | { mediaId: string; altText: string })[]; replyToId: string | null },
+  body: {
+    text: string;
+    mediaIds: (string | { mediaId: string; altText: string })[];
+    replyToId: string | null;
+  },
   token: string,
 ): Promise<{ id: string }> {
   const create = () =>

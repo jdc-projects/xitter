@@ -521,7 +521,7 @@ describe('lookup + reseed (internal)', () => {
     expect(rows.get(slot.mediaId)).toMatchObject({ altText: 'A kite over the pier' });
   });
 
-  it('never writes alt text onto another user\'s asset (#133 ownership)', async () => {
+  it("never writes alt text onto another user's asset (#133 ownership)", async () => {
     const { service, rows } = makeDeps();
     const theirs = await service.createUpload(OTHER, { mimeType: 'image/png', bytes: 10 });
 

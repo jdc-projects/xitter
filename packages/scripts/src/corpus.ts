@@ -122,14 +122,11 @@ export function buildCorpus(options: CorpusOptions = {}): SeedCorpus {
   for (const slot of slots.standalone) {
     const hashtag = faker.number.int({ min: 0, max: 3 }) === 1;
     const text = sentence(faker.number.int({ min: 4, max: 16 }));
-    const hasImage = slots.imageKeys.has(keyOf(slot));
     posts.push({
       ...slot,
       text: hashtag ? `${text} #${faker.lorem.word()}` : text,
-      mediaCount: hasImage ? 1 : 0,
-      // Honest description of the generated demo pattern (lib/images.ts),
-      // one per author so the per-asset alt mapping is observable (#133).
-      imageAlt: hasImage ? `Demo pattern ${slot.authorIndex + 1}: a left-to-right color gradient with fine noise` : null,
+      mediaCount: slots.imageKeys.has(keyOf(slot)) ? 1 : 0,
+      imageAlt: imageAltForSlot(slots.imageKeys, slot),
       replyTo: null,
     });
   }
@@ -202,6 +199,17 @@ export function corpusFingerprint(corpus: Omit<SeedCorpus, 'fingerprint'>): stri
       ),
   };
   return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+}
+
+/**
+ * Honest description of the generated demo pattern (lib/images.ts) for one
+ * image slot, one per author so the per-asset alt mapping is observable
+ * (#133); null for slots without an image.
+ */
+function imageAltForSlot(imageKeys: Set<string>, slot: PostRef): string | null {
+  return imageKeys.has(keyOf(slot))
+    ? `Demo pattern ${slot.authorIndex + 1}: a left-to-right color gradient with fine noise`
+    : null;
 }
 
 // ---------------------------------------------------------------------------

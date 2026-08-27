@@ -191,6 +191,11 @@
                     "required": ["kind", "objectKey", "mimeType", "bytes", "width", "height", "url"]
                   }
                 },
+                "altText": {
+                  "type": "string",
+                  "nullable": true,
+                  "maxLength": 200
+                },
                 "createdAt": {
                   "type": "string",
                   "format": "date-time"
@@ -443,6 +448,11 @@
                         ]
                       }
                     },
+                    "altText": {
+                      "type": "string",
+                      "nullable": true,
+                      "maxLength": 200
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
@@ -567,6 +577,11 @@
                         ]
                       }
                     },
+                    "altText": {
+                      "type": "string",
+                      "nullable": true,
+                      "maxLength": 200
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
@@ -618,6 +633,14 @@
                     },
                     "minItems": 1,
                     "maxItems": 4
+                  },
+                  "altTexts": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    }
                   }
                 },
                 "required": ["ownerId", "mediaIds"],
@@ -701,6 +724,11 @@
                                 "url"
                               ]
                             }
+                          },
+                          "altText": {
+                            "type": "string",
+                            "nullable": true,
+                            "maxLength": 200
                           },
                           "createdAt": {
                             "type": "string",
@@ -819,6 +847,11 @@
                         ]
                       }
                     },
+                    "altText": {
+                      "type": "string",
+                      "nullable": true,
+                      "maxLength": 200
+                    },
                     "createdAt": {
                       "type": "string",
                       "format": "date-time"
@@ -932,6 +965,11 @@
                           "url"
                         ]
                       }
+                    },
+                    "altText": {
+                      "type": "string",
+                      "nullable": true,
+                      "maxLength": 200
                     },
                     "createdAt": {
                       "type": "string",
@@ -1089,6 +1127,11 @@
                           "url"
                         ]
                       }
+                    },
+                    "altText": {
+                      "type": "string",
+                      "nullable": true,
+                      "maxLength": 200
                     },
                     "createdAt": {
                       "type": "string",
@@ -1312,6 +1355,11 @@
                           "url"
                         ]
                       }
+                    },
+                    "altText": {
+                      "type": "string",
+                      "nullable": true,
+                      "maxLength": 200
                     },
                     "createdAt": {
                       "type": "string",
