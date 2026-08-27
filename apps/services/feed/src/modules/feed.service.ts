@@ -4,6 +4,7 @@ import type {
   FeedEntryInput,
   HydratedFeedItem,
   Post,
+  Profile,
 } from '@xitter/api-contracts';
 import { assertValidCursor, profileOrPlaceholder } from '@xitter/service-kit';
 import { CheckpointRepository, type CheckpointInput } from './checkpoint.repository.js';
@@ -158,21 +159,31 @@ export class FeedService {
       // the ORIGINAL author is only known after hydration - filter there too
       // (product 7.6: blocked content hidden where feasible).
       if (blocked.has(post.authorId)) continue;
-      const repostedBy = entry.repostedById ? profiles.get(entry.repostedById) : undefined;
-      // A missing parent (deleted since the reply was written) renders the
-      // reply WITHOUT context rather than dropping it - it is still a
-      // visible post server-side.
-      const parent = post.replyToId ? parents.get(post.replyToId) : undefined;
-      items.push({
-        post,
-        author: profileOrPlaceholder(entry.authorId, profiles),
-        reason: entry.reason === 'repost' ? 'repost' : 'post',
-        repostedBy: entry.repostedById
-          ? (repostedBy ?? profileOrPlaceholder(entry.repostedById, profiles))
-          : null,
-        replyToAuthor: parent ? profileOrPlaceholder(parent.authorId, profiles) : null,
-      });
+      items.push(this.hydrateEntry(entry, post, parents, profiles));
     }
     return items;
+  }
+
+  /** One entry -> hydrated item; parents carry the reply-context targets. */
+  private hydrateEntry(
+    entry: FeedEntryRow,
+    post: Post,
+    parents: Map<string, Post>,
+    profiles: Map<string, Profile>,
+  ): HydratedFeedItem {
+    const repostedBy = entry.repostedById ? profiles.get(entry.repostedById) : undefined;
+    // A missing parent (deleted since the reply was written) renders the
+    // reply WITHOUT context rather than dropping it - it is still a
+    // visible post server-side.
+    const parent = post.replyToId ? parents.get(post.replyToId) : undefined;
+    return {
+      post,
+      author: profileOrPlaceholder(entry.authorId, profiles),
+      reason: entry.reason === 'repost' ? 'repost' : 'post',
+      repostedBy: entry.repostedById
+        ? (repostedBy ?? profileOrPlaceholder(entry.repostedById, profiles))
+        : null,
+      replyToAuthor: parent ? profileOrPlaceholder(parent.authorId, profiles) : null,
+    };
   }
 }

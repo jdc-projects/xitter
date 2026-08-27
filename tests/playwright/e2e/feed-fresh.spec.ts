@@ -56,10 +56,18 @@ test('replies in the feed carry a "Replying to @x" context line (#147)', async (
     data: { text: rootText, mediaIds: [], replyToId: null },
   });
   expect(root.status()).toBe(201);
-  const rootId = ((await root.json()) as { id: string }).id;
+  const rootBody = (await root.json()) as { id: string; authorId: string };
+  const rootId = rootBody.id;
 
-  // The ring graph seeds demo4 -> demo3, so demo3's reply fans out to demo4.
   await login(page, 'demo4');
+  // The corpus's follow graph is density-derived and CHANGES (#150 rotates
+  // it again) - never assume a pair. Make THIS viewer follow the author
+  // (idempotent), so the reply is guaranteed to fan out to them.
+  const demo4Token = await accessToken(page);
+  const follow = await page.request.post(`/api/social/v1/profiles/${rootBody.authorId}/follow`, {
+    headers: { authorization: `Bearer ${demo4Token}` },
+  });
+  expect([200, 201, 204, 409]).toContain(follow.status());
   const replyText = `t6 reply context reply ${crypto.randomUUID()}`;
   const reply = await demo3.request.post('/api/posts/v1/posts', {
     headers: { authorization: `Bearer ${token}` },
