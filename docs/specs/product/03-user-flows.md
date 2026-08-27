@@ -91,6 +91,27 @@ flowchart TD
 
 Edge cases: double-click like (idempotent — unique per user+post+kind); interacting with a post deleted moments ago (404, UI removes it); undo of each interaction returns counts to prior state.
 
+## 5.1 Thread view (#152)
+
+Opening a post's detail page renders the whole conversation around it:
+
+```mermaid
+flowchart TD
+    A["Open /post/:id"] --> B["Ancestor chain above the focus
+(root → direct parent, linked compact cards
+with connector guides; deleted ancestor
+ends the chain)"]
+    B --> C[Focus post - full detail card] --> D[One inline reply composer]
+    D --> E["Nested reply tree below (server embeds
+3 levels, 2 preview children per node)"]
+    E -- "branch has more replies" --> F["'Show N replies' - expands in place
+via the /replies keyset"]
+    E -- "branch continues past depth 3" --> G["'Show this thread' - navigates:
+that reply becomes the focus"]
+```
+
+Reply counts on cards stay direct-children semantics. Replying to a nested reply happens by navigation (its own page's composer), never an inline form under every node.
+
 ## 6. Following / unfollowing
 
 ```mermaid

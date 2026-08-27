@@ -57,6 +57,13 @@ export interface PostCardProps {
    * HTML and an axe violation.
    */
   href?: string;
+  /**
+   * Rendering variant (#152): `ancestor` is the compact thread-context card
+   * (avatar, name, text, time; no counts row; the whole card is a link via
+   * `href`). `thumb`/`original` render the standard card - image-variant
+   * selection stays with the caller's `images` prop.
+   */
+  variant?: 'thumb' | 'original' | 'ancestor';
 }
 
 // aria-hidden: the glyphs are decorative - the adjacent label text (nav
@@ -105,6 +112,7 @@ export function PostCard({
   repostedBy,
   replyingTo,
   href,
+  variant,
 }: PostCardProps) {
   const interactButton = (kind: PostCardInteractionKind, count: number | null, testId: string) => {
     const active =
@@ -200,6 +208,41 @@ export function PostCard({
       ) : null}
     </>
   );
+
+  // Thread ancestor context (#152): compact card, no counts row, the whole
+  // card links to the ancestor's own detail page ("showing this thread").
+  if (variant === 'ancestor') {
+    return (
+      <Card withBorder padding="xs" radius="md" data-testid={`post-ancestor-${post.id}`}>
+        <Anchor
+          href={href}
+          unstyled
+          style={{ textDecoration: 'none', display: 'block' }}
+          aria-label={`${author.displayName}: ${post.text}`}
+        >
+          <Group wrap="nowrap" gap="sm" align="flex-start">
+            <UserAvatar size="sm" username={author.username} displayName={author.displayName} />
+            <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+              <Group wrap="nowrap" gap="xs" justify="space-between">
+                <Group wrap="nowrap" gap="xs" style={{ minWidth: 0 }}>
+                  <Text size="sm" fw={600} truncate="end">
+                    {author.displayName}
+                  </Text>
+                  <Text size="xs" c="dimmed" truncate="end">
+                    @{author.username}
+                  </Text>
+                </Group>
+                <RelativeTime date={post.createdAt} />
+              </Group>
+              <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
+                {post.text}
+              </Text>
+            </Stack>
+          </Group>
+        </Anchor>
+      </Card>
+    );
+  }
 
   return (
     <Card withBorder padding="sm" radius="md" data-testid={`post-${post.id}`}>

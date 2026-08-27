@@ -385,9 +385,9 @@ describe.skipIf(!hasGeneratedClient)('posts integration (testcontainers)', () =>
     const forged = Buffer.from(JSON.stringify({ createdAt: 'banana', id: 'x' }), 'utf8').toString(
       'base64url',
     );
-    await expect(
-      service.getThread(root.id, { cursor: forged, limit: 20 }),
-    ).rejects.toMatchObject({ response: { error: { code: 'VALIDATION_ERROR' } } });
+    await expect(service.getThread(root.id, { cursor: forged, limit: 20 })).rejects.toMatchObject({
+      response: { error: { code: 'VALIDATION_ERROR' } },
+    });
   });
 
   it('thread paginates top-level replies and walks the cursor to completeness', async () => {

@@ -413,8 +413,12 @@ export class PostsService {
     // Collected parent → root; the contract order is root → parent.
     ancestors.reverse();
 
-    const capped = ancestors.length === THREAD_ANCESTORS_MAX && Boolean(next);
-    const truncated = capped ? Boolean(await this.repo.findVisiblePost(next)) : false;
+    // Truncated only when the *visible* chain continues past the cap: one
+    // extra hop decides it (a deleted 26th ancestor is a gap, not a flag).
+    let truncated = false;
+    if (ancestors.length === THREAD_ANCESTORS_MAX && next) {
+      truncated = Boolean(await this.repo.findVisiblePost(next));
+    }
     return { ancestors, truncated };
   }
 
