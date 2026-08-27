@@ -23,6 +23,7 @@ import {
   relationshipSchema,
   searchCheckpointPositionSchema,
   feedCheckpointPositionSchema,
+  threadResponseSchema,
   viewerStateResponseSchema,
   type createPostRequestSchema,
   type createProfileRequestSchema,
@@ -43,6 +44,7 @@ import {
   type SearchCheckpointPosition,
   type SearchCheckpointPutRequest,
   type SearchIndexDocument,
+  type ThreadResponse,
 } from '@xitter/api-contracts';
 import { z } from 'zod';
 import { ServiceClient, type ServiceClientOptions } from './client.js';
@@ -240,6 +242,17 @@ export class PostsClient extends ServiceClient {
   ): Promise<{ items: Post[]; nextCursor: string | null }> {
     return this.get(`${V1}/posts/v1/posts/${postId}/replies`, cursor ? { cursor } : undefined).then(
       (r) => paginated(postSchema).parse(r),
+    );
+  }
+
+  /**
+   * The composed thread read (#152): ancestors, focus, and a depth-capped
+   * nested reply tree. `cursor` pages more top-level replies (same keyset
+   * as getReplies).
+   */
+  getThread(postId: string, cursor?: string): Promise<ThreadResponse> {
+    return this.get(`${V1}/posts/v1/posts/${postId}/thread`, cursor ? { cursor } : undefined).then(
+      threadResponseSchema.parse,
     );
   }
 
