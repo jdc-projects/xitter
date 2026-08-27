@@ -3,12 +3,12 @@ import { Kafka } from 'kafkajs';
 import { startKafka } from '@xitter/testing';
 import { CONSUMER_GROUPS, createEventConsumer, createEventProducer } from '@xitter/events';
 import type { Post } from '@xitter/api-contracts';
-import { handleEvent, type FeedApi, type PostsApi, type SocialApi } from './handlers.js';
+import { handleConsumedEvent, type FeedApi, type PostsApi, type SocialApi } from './handlers.js';
 
 /**
  * Fanout consumption contract against a throwaway Kafka (testcontainers):
  * the real consumer wiring from main.ts (group, topics) driving the real
- * handleEvent, fed by a real producer - entry correctness, backfill window
+ * handleConsumedEvent, fed by a real producer - entry correctness, backfill window
  * and removals asserted through the recorded internal-API calls (the feed
  * service's DB-side behaviour is covered by its own integration suite; the
  * e2e suite covers the full path).
@@ -72,7 +72,7 @@ describe('fanout consumption (testcontainers kafka)', () => {
       } as unknown as FeedApi,
       consumerKey: CONSUMER_GROUPS.fanoutWorker,
     };
-    await consumer.run((envelope, raw) => handleEvent(envelope, raw, deps));
+    await consumer.run((envelope, raw) => handleConsumedEvent(envelope, raw, deps));
   }, 240_000);
 
   afterAll(async () => {
@@ -342,7 +342,7 @@ describe('fanout consumption (testcontainers kafka)', () => {
       topics: ['posts', 'social'],
       fromBeginning: true,
     });
-    await worker1.run((envelope, raw) => handleEvent(envelope, raw, resumeDeps));
+    await worker1.run((envelope, raw) => handleConsumedEvent(envelope, raw, resumeDeps));
 
     await emitPost(postA);
     await waitFor(() => upsertsOf(postA) > 0);
@@ -371,7 +371,9 @@ describe('fanout consumption (testcontainers kafka)', () => {
       topics: ['posts', 'social'],
       fromBeginning: true,
     });
-    await worker2.run((envelope, raw) => handleEvent(envelope, raw, resumeDeps), { resumeFrom });
+    await worker2.run((envelope, raw) => handleConsumedEvent(envelope, raw, resumeDeps), {
+      resumeFrom,
+    });
 
     await waitFor(() => upsertsOf(postB) > 0 && upsertsOf(postC) > 0, 60_000);
 

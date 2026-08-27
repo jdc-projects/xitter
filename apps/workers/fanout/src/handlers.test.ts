@@ -7,7 +7,13 @@ import {
   entriesForNewPost,
   entriesForRepost,
 } from './entries.js';
-import { handleEvent, type FeedApi, type PostsApi, type SocialApi } from './handlers.js';
+import {
+  handleConsumedEvent,
+  handleEvent,
+  type FeedApi,
+  type PostsApi,
+  type SocialApi,
+} from './handlers.js';
 
 const AUTHOR = '00000000-0000-4000-8000-0000000000a1';
 const FOLLOWER_1 = '00000000-0000-4000-8000-0000000000b1';
@@ -161,7 +167,7 @@ const rawAt = (topic: string, partition: number, offset: number) =>
     topic,
     partition,
     message: { offset: String(offset) },
-  }) as Parameters<typeof handleEvent>[1];
+  }) as Parameters<typeof handleConsumedEvent>[1];
 
 const postCreatedEnvelope = (payload: object) => ({
   eventId: crypto.randomUUID(),
@@ -185,7 +191,7 @@ describe('handleEvent dispatch', () => {
   it('fans post.created out to author + followers via the feed internal API', async () => {
     const { deps, upserts } = fakeDeps();
 
-    await handleEvent(postCreatedEnvelope({}), undefined, deps);
+    await handleEvent(postCreatedEnvelope({}), deps);
 
     expect(deps.social.internalFollowerIds).toHaveBeenCalledWith(AUTHOR);
     expect(upserts).toHaveLength(1);
@@ -221,7 +227,6 @@ describe('handleEvent dispatch', () => {
         occurredAt: CREATED_AT,
         payload: { followerId: FOLLOWER_1, followeeId: AUTHOR, createdAt: CREATED_AT },
       },
-      undefined,
       deps,
     );
 
@@ -246,7 +251,6 @@ describe('handleEvent dispatch', () => {
           deletedAt: CREATED_AT,
         },
       },
-      undefined,
       deps,
     );
 
@@ -265,7 +269,6 @@ describe('handleEvent dispatch', () => {
         occurredAt: CREATED_AT,
         payload: { followerId: FOLLOWER_1, followeeId: AUTHOR, deletedAt: CREATED_AT },
       },
-      undefined,
       deps,
     );
 
@@ -291,7 +294,6 @@ describe('handleEvent dispatch', () => {
           createdAt: CREATED_AT,
         },
       },
-      undefined,
       deps,
     );
 
@@ -321,7 +323,6 @@ describe('handleEvent dispatch', () => {
             createdAt: CREATED_AT,
           },
         },
-        undefined,
         deps,
       );
     }
@@ -347,7 +348,6 @@ describe('handleEvent dispatch', () => {
           deletedAt: CREATED_AT,
         },
       },
-      undefined,
       deps,
     );
 
@@ -369,7 +369,6 @@ describe('handleEvent dispatch', () => {
           occurredAt: CREATED_AT,
           payload: { blockerId: AUTHOR, blockedId: FOLLOWER_1, createdAt: CREATED_AT },
         },
-        undefined,
         deps,
       );
     }
@@ -382,11 +381,7 @@ describe('handleEvent dispatch', () => {
     const { deps, upserts } = fakeDeps();
 
     // missing createdAt + bad authorId shape: must not reach the feed API
-    await handleEvent(
-      postCreatedEnvelope({ authorId: 'not-a-uuid', createdAt: undefined }),
-      undefined,
-      deps,
-    );
+    await handleEvent(postCreatedEnvelope({ authorId: 'not-a-uuid', createdAt: undefined }), deps);
 
     expect(upserts).toHaveLength(0);
   });
@@ -397,22 +392,20 @@ describe('handleEvent dispatch', () => {
       new Error('feed down'),
     );
 
-    await expect(handleEvent(postCreatedEnvelope({}), undefined, deps)).rejects.toThrow(
-      'feed down',
-    );
+    await expect(handleEvent(postCreatedEnvelope({}), deps)).rejects.toThrow('feed down');
     // The cursor never points past unprocessed work: a failed side effect
     // must not advance the checkpoint.
     expect(checkpoints).toHaveLength(0);
   });
 });
 
-describe('handleEvent checkpointing (#149)', () => {
+describe('handleConsumedEvent checkpointing (#149)', () => {
   it('checkpoints the consumed position after the side effects land', async () => {
     const { deps, checkpoints } = fakeDeps();
     const envelope = postCreatedEnvelope({});
     const eventId = (envelope as { eventId: string }).eventId;
 
-    await handleEvent(envelope, rawAt('xitter.posts.v1', 0, 41), deps);
+    await handleConsumedEvent(envelope, rawAt('xitter.posts.v1', 0, 41), deps);
 
     expect(checkpoints).toEqual([
       {
@@ -428,7 +421,7 @@ describe('handleEvent checkpointing (#149)', () => {
   it('checkpoints past events fanout ignores, so the cursor never lags', async () => {
     const { deps, checkpoints } = fakeDeps();
 
-    await handleEvent(
+    await handleConsumedEvent(
       {
         eventId: crypto.randomUUID(),
         eventType: EVENT_TYPES.interactionCreated,
@@ -454,7 +447,7 @@ describe('handleEvent checkpointing (#149)', () => {
   it('does not checkpoint context-free (unit) calls', async () => {
     const { deps, checkpoints } = fakeDeps();
 
-    await handleEvent(postCreatedEnvelope({}), undefined, deps);
+    await handleConsumedEvent(postCreatedEnvelope({}), undefined, deps);
 
     expect(checkpoints).toHaveLength(0);
   });
@@ -466,7 +459,7 @@ describe('handleEvent checkpointing (#149)', () => {
     );
 
     await expect(
-      handleEvent(postCreatedEnvelope({}), rawAt('xitter.posts.v1', 0, 1), deps),
+      handleConsumedEvent(postCreatedEnvelope({}), rawAt('xitter.posts.v1', 0, 1), deps),
     ).rejects.toThrow('checkpoint store down');
   });
 });

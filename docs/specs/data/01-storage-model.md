@@ -111,7 +111,7 @@ erDiagram
         string authorId "hydrated from posts/social at read time"
         string reason "post | repost"
         string repostedById "nullable - repost entries refine with #8"
-        string entryKey "derived source identity: post:{postId} | repost:{postId}:{repostedById}"
+        string entryKey "derived source identity - see feedEntryKey"
         datetime postCreatedAt "ordering key (post/interaction time)"
         datetime insertedAt "materialisation time"
     }

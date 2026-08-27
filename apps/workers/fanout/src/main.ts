@@ -18,7 +18,7 @@ import { FeedClient, internalCredentials, PostsClient, SocialClient } from '@xit
 import { loadRepoEnv, parseEnv } from '@xitter/config';
 import { CONSUMER_GROUPS, runEventWorker } from '@xitter/events';
 import { createLogger } from '@xitter/observability';
-import { handleEvent } from './handlers.js';
+import { handleConsumedEvent } from './handlers.js';
 import { envSchema } from './env.js';
 
 const logger = createLogger({ service: 'fanout-worker' });
@@ -96,7 +96,7 @@ await runEventWorker({
   resumeFrom,
   metricsPort: env.METRICS_PORT,
   handle: (envelope, raw) =>
-    handleEvent(envelope, raw, {
+    handleConsumedEvent(envelope, raw, {
       social,
       posts,
       feed,

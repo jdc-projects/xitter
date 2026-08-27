@@ -76,45 +76,8 @@ export interface HandlerDeps {
  * Payloads validate against the shared event schemas at this boundary;
  * everything downstream is idempotent on the feed natural key, so
  * at-least-once redelivery converges.
- *
- * After the dispatch (whatever it did - including skipping events fanout
- * ignores), the consumed position is checkpointed to the feed service so a
- * restart outside a reset resumes exactly after this event (#149) instead
- * of the reset gate's fresh-boot seek-to-end permanently skipping the
- * downtime gap. The write happens only once the side effects succeeded:
- * a failure propagates, Kafka redelivers, and the idempotent upserts
- * converge - the checkpoint never points past unprocessed work.
  */
-export async function handleEvent(
-  envelope: unknown,
-  raw: EachMessagePayload | undefined,
-  deps: HandlerDeps,
-): Promise<void> {
-  await dispatch(envelope, deps);
-  await checkpoint(envelope, raw, deps);
-}
-
-/**
- * Durable resume position (#149): `raw` is absent for context-free (unit)
- * calls - side effects run, nothing checkpoints.
- */
-async function checkpoint(
-  envelope: unknown,
-  raw: EachMessagePayload | undefined,
-  deps: HandlerDeps,
-): Promise<void> {
-  if (!raw) return;
-  const { eventId, occurredAt } = envelope as { eventId: string; occurredAt: string };
-  await deps.feed.internalPutCheckpoint({
-    consumerKey: deps.consumerKey,
-    topicPartition: `${raw.topic}:${raw.partition}`,
-    offset: Number(raw.message.offset),
-    eventId,
-    eventAt: occurredAt,
-  });
-}
-
-async function dispatch(envelope: unknown, deps: HandlerDeps): Promise<void> {
+export async function handleEvent(envelope: unknown, deps: HandlerDeps): Promise<void> {
   const { eventType, payload } = (envelope ?? {}) as {
     eventType?: string;
     payload?: Record<string, unknown>;
@@ -184,6 +147,34 @@ async function dispatch(envelope: unknown, deps: HandlerDeps): Promise<void> {
     default:
       return; // like/bookmark interactions, blocks, profiles: not feed concerns
   }
+}
+
+/**
+ * Message-mode entry (#149): run the dispatch, then checkpoint the consumed
+ * position once its side effects have landed. The checkpoint advances past
+ * EVERY consumed event - including ones fanout ignores - so a restart
+ * outside a reset resumes after, not before, already-classified work,
+ * instead of the reset gate's fresh-boot seek-to-end permanently skipping
+ * the downtime gap. A failure propagates: Kafka redelivers, the idempotent
+ * upserts converge, and the checkpoint never points past unprocessed work.
+ * `raw` is absent for context-free (unit) calls - side effects run,
+ * nothing checkpoints.
+ */
+export async function handleConsumedEvent(
+  envelope: unknown,
+  raw: EachMessagePayload | undefined,
+  deps: HandlerDeps,
+): Promise<void> {
+  await handleEvent(envelope, deps);
+  if (!raw) return;
+  const { eventId, occurredAt } = envelope as { eventId: string; occurredAt: string };
+  await deps.feed.internalPutCheckpoint({
+    consumerKey: deps.consumerKey,
+    topicPartition: `${raw.topic}:${raw.partition}`,
+    offset: Number(raw.message.offset),
+    eventId,
+    eventAt: occurredAt,
+  });
 }
 
 /** Boundary validation: unparseable payloads log + skip (poison-safe). */
