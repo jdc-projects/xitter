@@ -3,7 +3,11 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError } from '@xitter/api-client';
-import { POST_MEDIA_MAX, POST_TEXT_MAX } from '@xitter/api-contracts';
+import {
+  POST_MEDIA_MAX,
+  POST_TEXT_MAX,
+  type CreatePostRequest,
+} from '@xitter/api-contracts';
 import { postsForSession } from './server';
 
 export interface ComposerResult {
@@ -26,17 +30,29 @@ function composerErrorFor(error: unknown): string {
   return 'Could not publish your post. Try again shortly.';
 }
 
-/** mediaIds arrive as a JSON string from the composer's hidden input. */
-function parseMediaIds(raw: FormDataEntryValue | null): string[] {
+/**
+ * mediaIds arrive as a JSON string from the composer's hidden input: bare
+ * ids, `{mediaId, altText}` entries, or a mix (#133). Malformed input is
+ * dropped (the service re-validates everything).
+ */
+function parseMediaIds(raw: FormDataEntryValue | null): CreatePostRequest['mediaIds'] {
   if (typeof raw !== 'string' || raw === '') return [];
   try {
     const parsed: unknown = JSON.parse(raw);
     if (
       Array.isArray(parsed) &&
-      parsed.every((id) => typeof id === 'string') &&
-      parsed.length <= POST_MEDIA_MAX
+      parsed.length <= POST_MEDIA_MAX &&
+      parsed.every(
+        (entry) =>
+          typeof entry === 'string' ||
+          (typeof entry === 'object' &&
+            entry !== null &&
+            typeof (entry as { mediaId?: unknown }).mediaId === 'string' &&
+            (((entry as { altText?: unknown }).altText === undefined) ||
+              typeof (entry as { altText?: unknown }).altText === 'string')),
+      )
     ) {
-      return parsed as string[];
+      return parsed as CreatePostRequest['mediaIds'];
     }
   } catch {
     /* fall through: malformed input is dropped, the service re-validates */

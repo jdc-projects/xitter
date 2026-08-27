@@ -126,10 +126,28 @@ export class MediaService {
     return this.toInternal(row);
   }
 
-  /** Internal (posts): existence + ownership + ready-status resolution. */
-  async lookup(ownerId: string, mediaIds: string[]): Promise<MediaAsset[]> {
+  /**
+   * Internal (posts): existence + ownership + ready-status resolution.
+   * Optional altTexts (#133) are persisted onto the OWNED assets before the
+   * response is built, so the returned snapshot carries them (posts stores
+   * that snapshot on the post row - the render truth).
+   */
+  async lookup(
+    ownerId: string,
+    mediaIds: string[],
+    altTexts: Record<string, string> = {},
+  ): Promise<MediaAsset[]> {
     const rows = await this.repo.findByIds(mediaIds);
-    return rows.filter((row) => row.ownerId === ownerId).map((row) => this.toAsset(row));
+    const owned = rows.filter((row) => row.ownerId === ownerId);
+    if (owned.length > 0 && Object.keys(altTexts).length > 0) {
+      const ownedIds = new Set(owned.map((row) => row.id));
+      const applied = await this.repo.applyAltTexts(
+        Object.fromEntries(Object.entries(altTexts).filter(([id]) => ownedIds.has(id))),
+      );
+      const byId = new Map(applied.map((row) => [row.id, row]));
+      return owned.map((row) => this.toAsset(byId.get(row.id) ?? row));
+    }
+    return owned.map((row) => this.toAsset(row));
   }
 
   /**
@@ -268,6 +286,8 @@ export class MediaService {
         ...variant,
         url: mediaUrl(variant.objectKey),
       })),
+      // Absent, not null, on the wire when the asset never got text (#133).
+      ...(row.altText ? { altText: row.altText } : {}),
       createdAt: row.createdAt.toISOString(),
     };
   }

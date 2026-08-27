@@ -19,6 +19,17 @@ export const POST_TEXT_MAX = 512;
 export const MEDIA_MAX_BYTES = 5 * 1024 * 1024;
 /** Max images attached to a single post (matches the demo UI). */
 export const POST_MEDIA_MAX = 4;
+/** Product limit: max 200 characters of alt text per attached image (#133). */
+export const MEDIA_ALT_TEXT_MAX = 200;
+
+/**
+ * Author-supplied alt text for one attached image (#133): trimmed, then
+ * either a non-empty string or absent entirely - a blank/whitespace value
+ * never reaches storage (clients omit the field instead).
+ */
+export const mediaAltTextInputSchema = z.string().trim().min(1).max(MEDIA_ALT_TEXT_MAX);
+
+export type MediaAltTextInput = z.infer<typeof mediaAltTextInputSchema>;
 
 export const profileSchema = z.object({
   id: userIdSchema,
@@ -61,11 +72,17 @@ export const mediaVariantSchema = mediaVariantCoreSchema.extend({
 
 export type MediaVariant = z.infer<typeof mediaVariantSchema>;
 
+/**
+ * Media asset as served by media/posts: `altText` is optional + nullable
+ * so legacy snapshots (taken before #133) and alt-less assets both parse -
+ * readers fall back to a generic description when it is absent/empty.
+ */
 export const mediaAssetSchema = z.object({
   id: mediaIdSchema,
   ownerId: userIdSchema,
   status: z.enum(['pending', 'ready', 'failed']),
   variants: z.array(mediaVariantSchema),
+  altText: z.string().max(MEDIA_ALT_TEXT_MAX).nullable().optional(),
   createdAt: z.iso.datetime(),
 });
 

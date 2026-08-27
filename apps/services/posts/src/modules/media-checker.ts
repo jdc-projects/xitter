@@ -7,8 +7,15 @@ const logger = createLogger({ service: 'posts' });
 
 /** Attach-validation seam: the service depends on this port, not MediaClient. */
 export interface MediaChecker {
-  /** Assets among mediaIds that exist AND are owned by ownerId. */
-  resolveForAttach(ownerId: string, mediaIds: string[]): Promise<MediaAsset[]>;
+  /**
+   * Assets among mediaIds that exist AND are owned by ownerId. Optional
+   * altTexts (#133) persist onto the owned assets in the same call.
+   */
+  resolveForAttach(
+    ownerId: string,
+    mediaIds: string[],
+    altTexts?: Record<string, string>,
+  ): Promise<MediaAsset[]>;
 }
 
 /** Injection token (string token so test doubles are easy to provide). */
@@ -17,15 +24,21 @@ export const MEDIA_CHECKER = 'MEDIA_CHECKER';
 /**
  * Inert checker for tests: every requested id resolves as a ready asset with
  * placeholder variants (shape only - nothing reads variant URLs in tests).
+ * altTexts (#133) are echoed back so snapshots/reads behave like production.
  */
 export class NullMediaChecker implements MediaChecker {
-  resolveForAttach(_ownerId: string, mediaIds: string[]): Promise<MediaAsset[]> {
+  resolveForAttach(
+    _ownerId: string,
+    mediaIds: string[],
+    altTexts: Record<string, string> = {},
+  ): Promise<MediaAsset[]> {
     return Promise.resolve(
       mediaIds.map((id) => ({
         id,
         ownerId: _ownerId,
-        status: 'ready',
+        status: 'ready' as const,
         variants: [],
+        ...(altTexts[id] ? { altText: altTexts[id] } : {}),
         createdAt: '2026-08-18T00:00:00.000Z',
       })),
     );
@@ -60,9 +73,13 @@ export class MediaServiceChecker implements MediaChecker {
     });
   }
 
-  async resolveForAttach(ownerId: string, mediaIds: string[]): Promise<MediaAsset[]> {
+  async resolveForAttach(
+    ownerId: string,
+    mediaIds: string[],
+    altTexts: Record<string, string> = {},
+  ): Promise<MediaAsset[]> {
     try {
-      const { items } = await this.media.internalLookup(ownerId, mediaIds);
+      const { items } = await this.media.internalLookup(ownerId, mediaIds, altTexts);
       return items;
     } catch (err) {
       logger.error({ err }, 'media attach lookup failed');

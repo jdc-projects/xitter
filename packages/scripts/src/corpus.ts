@@ -50,6 +50,8 @@ export interface CorpusPost extends PostRef {
   text: string;
   /** 1 = attach a generated demo image (media pipeline). */
   mediaCount: number;
+  /** Descriptive alt text for the attached image (#133); null when none. */
+  imageAlt: string | null;
   /** Set for replies: the post this one answers. */
   replyTo: PostRef | null;
 }
@@ -120,10 +122,14 @@ export function buildCorpus(options: CorpusOptions = {}): SeedCorpus {
   for (const slot of slots.standalone) {
     const hashtag = faker.number.int({ min: 0, max: 3 }) === 1;
     const text = sentence(faker.number.int({ min: 4, max: 16 }));
+    const hasImage = slots.imageKeys.has(keyOf(slot));
     posts.push({
       ...slot,
       text: hashtag ? `${text} #${faker.lorem.word()}` : text,
-      mediaCount: slots.imageKeys.has(keyOf(slot)) ? 1 : 0,
+      mediaCount: hasImage ? 1 : 0,
+      // Honest description of the generated demo pattern (lib/images.ts),
+      // one per author so the per-asset alt mapping is observable (#133).
+      imageAlt: hasImage ? `Demo pattern ${slot.authorIndex + 1}: a left-to-right color gradient with fine noise` : null,
       replyTo: null,
     });
   }
@@ -133,6 +139,7 @@ export function buildCorpus(options: CorpusOptions = {}): SeedCorpus {
         ...replySlot,
         text: sentence(faker.number.int({ min: 3, max: 10 })),
         mediaCount: 0,
+        imageAlt: null,
         replyTo: thread.root,
       });
     }
@@ -181,6 +188,7 @@ export function corpusFingerprint(corpus: Omit<SeedCorpus, 'fingerprint'>): stri
       p.ordinal,
       p.text,
       p.mediaCount,
+      p.imageAlt,
       p.replyTo ? [p.replyTo.authorIndex, p.replyTo.ordinal] : null,
     ]),
     interactions: corpus.interactions

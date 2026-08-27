@@ -75,14 +75,25 @@ export class PostsService {
       : null;
 
     // mediaIds must exist, be owned by the author, and be ready (processed)
-    // at attach time - the snapshot taken here is what reads render.
-    const requested = [...new Set(input.mediaIds)];
-    const media = requested.length > 0 ? await this.requireAttachable(authorId, requested) : [];
+    // at attach time - the snapshot taken here is what reads render. Entries
+    // may carry per-asset alt text (#133); it rides the same lookup so
+    // validation (trim/non-empty) and storage both happen in media.
+    const mediaIds = input.mediaIds.map((entry) => (typeof entry === 'string' ? entry : entry.mediaId));
+    const altTexts: Record<string, string> = {};
+    for (const entry of input.mediaIds) {
+      if (typeof entry !== 'string' && entry.altText !== undefined) {
+        altTexts[entry.mediaId] = entry.altText;
+      }
+    }
+
+    const requested = [...new Set(mediaIds)];
+    const media =
+      requested.length > 0 ? await this.requireAttachable(authorId, requested, altTexts) : [];
 
     const row = await this.repo.createPost({
       authorId,
       text: input.text,
-      mediaIds: input.mediaIds,
+      mediaIds,
       media,
       replyToId: parent?.id ?? null,
     });
@@ -350,9 +361,14 @@ export class PostsService {
    * Every requested id must resolve to a ready asset owned by the author.
    * The media checker fails closed when media is unreachable; here the
    * response decides per-asset (missing / not-yours / still-pending).
+   * altTexts (#133) ride the same call and land on the resolved snapshot.
    */
-  private async requireAttachable(authorId: string, mediaIds: string[]): Promise<MediaAsset[]> {
-    const resolved = await this.media.resolveForAttach(authorId, mediaIds);
+  private async requireAttachable(
+    authorId: string,
+    mediaIds: string[],
+    altTexts: Record<string, string> = {},
+  ): Promise<MediaAsset[]> {
+    const resolved = await this.media.resolveForAttach(authorId, mediaIds, altTexts);
     const ready = new Set(resolved.filter((asset) => asset.status === 'ready').map((a) => a.id));
     const invalid = mediaIds.filter((id) => !ready.has(id));
     if (invalid.length > 0) {
