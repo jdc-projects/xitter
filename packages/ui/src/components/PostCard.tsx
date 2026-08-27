@@ -192,7 +192,7 @@ export function PostCard({
 
       {repostedBy ? (
         <Text size="xs" c="dimmed" mt={4} data-testid={`post-repost-attribution-${post.id}`}>
-          {repostedBy.displayName} reposted
+          {repostedBy.displayName} (@{repostedBy.username}) reposted
         </Text>
       ) : null}
 
