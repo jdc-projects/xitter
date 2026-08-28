@@ -75,9 +75,12 @@ function hasIntegrationTests(dir: string): boolean {
 const MUTATING_WORKSPACES = loadWorkspaces().filter((ws) => ws.pkg.scripts?.mutate !== undefined);
 
 describe('createStrykerConfig', () => {
-  it('runs the default vitest config unless integration tests are excluded', () => {
+  it('always pins the mutation vitest config in plain mode', () => {
     const plain = createStrykerConfig('demo');
-    expect(plain.vitest).toBeUndefined();
+    expect(plain.vitest).toEqual({
+      related: false,
+      configFile: './vitest.mutation.config.ts',
+    });
 
     const excluded = createStrykerConfig('demo', { excludeIntegrationTests: true });
     expect(excluded.vitest).toEqual({
@@ -109,6 +112,21 @@ describe('repo mutation configs', () => {
     expect(names).toContain('apps/services/feed');
     expect(names).toContain('packages/scripts');
     expect(names.length).toBeGreaterThanOrEqual(9);
+  });
+
+  /**
+   * Guard for the quiet-reporter convention (#177): every mutating workspace
+   * runs on its vitest.mutation.config.ts, and that config must select the
+   * dot reporter - the default reporter prints a full failure dump per
+   * killed mutant, burying real dry-run failures in identical noise.
+   */
+  it('quiets every mutating workspace with the dot reporter', () => {
+    const offenders = MUTATING_WORKSPACES.filter((ws) => {
+      const vitestMutation = join(ws.dir, 'vitest.mutation.config.ts');
+      if (!existsSync(vitestMutation)) return true;
+      return !/reporters:\s*\[.*'dot'/.test(readFileSync(vitestMutation, 'utf8'));
+    }).map((ws) => ws.rel);
+    expect(offenders).toEqual([]);
   });
 
   /**

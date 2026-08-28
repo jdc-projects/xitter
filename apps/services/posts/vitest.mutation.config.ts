@@ -12,6 +12,10 @@ export default mergeConfig(
   base,
   defineConfig({
     test: {
+      // #177: dot reporter - killed mutants stop printing full failure dumps
+      // (Stryker's killed/survived accounting is the signal; dry-run
+      // failures still abort loudly).
+      reporters: ['dot'],
       exclude: ['**/*.integration.test.ts', '**/node_modules/**', '**/dist/**'],
     },
   }),

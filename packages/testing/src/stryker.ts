@@ -43,16 +43,23 @@ export function createStrykerConfig(
       'https://raw.githubusercontent.com/stryker-mutator/stryker-js/master/packages/api/schema/stryker-schema.json',
     packageManager: 'npm',
     testRunner: 'vitest',
-    vitest: options.excludeIntegrationTests
-      ? {
-          // Related mode (--related) resolves tests from the module graph of
-          // mutated files and ignores the mutation config's excludes -
-          // integration suites leak back into the sandbox. Plain mode runs
-          // exactly what vitest.mutation.config.ts selects.
-          related: false,
-          configFile: './vitest.mutation.config.ts',
-        }
-      : undefined,
+    vitest: {
+      // Every mutate workspace runs PLAIN mode on its vitest.mutation.config.ts
+      // (the shape all packages already ran in CI). It carries the dot
+      // reporter (#177): vitest's default reporter prints a full failure dump
+      // for EVERY killed mutant - 1000+ stack-trace blocks per full-mutation
+      // run, burying a genuine dry-run failure in identical noise. Stryker's
+      // killed/survived accounting is the signal; dry-run failures still
+      // abort loudly.
+      //
+      // Plain, not related: related mode narrows test files via the module
+      // graph and (a) ignores the config's integration excludes, AND (b)
+      // empirically breaks perTest mutant-coverage attribution in this
+      // runner version (covered mutants all report NoCoverage - measured
+      // 2026-08-28, score 38.25 -> 13.63 on @xitter/scripts).
+      configFile: './vitest.mutation.config.ts',
+      related: false,
+    },
     logLevel: 'warn',
     reporters: ['clear-text', 'html', 'json', 'progress'],
     clearTextReporter: {
