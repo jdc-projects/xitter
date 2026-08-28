@@ -15,6 +15,15 @@ export interface Session {
 const EXPIRY_SKEW_MS = 30_000;
 
 /**
+ * Proactive refresh window (#155): when a loaded session's token expires
+ * within this budget, the refresh kicks off in the BACKGROUND and the
+ * current (still-valid) token serves the request. The inline refresh then
+ * almost never runs on a request's critical path - it stays as the fallback
+ * for when the background refresh lost the race or failed.
+ */
+const REFRESH_AHEAD_MS = 60_000;
+
+/**
  * One refresh grant in flight per session id: layout and page render both
  * call getSession() concurrently and must share it - two grants with the
  * same refresh token would log the user out under rotation. Module state is
@@ -66,7 +75,24 @@ export async function resolveSession(
   }
   if (!record) return null;
 
-  if (Date.now() < record.expiresAt) return toSession(id, record);
+  if (Date.now() < record.expiresAt) {
+    // Proactive refresh (#155): near expiry, start the refresh in the
+    // background and serve this request with the valid token - the next
+    // request finds it fresh. Deduped with the inline path's map, and a
+    // failure here must NOT destroy the session (that is the inline path's
+    // contract once the token is actually stale).
+    const expiresIn = record.expiresAt - Date.now();
+    if (expiresIn <= REFRESH_AHEAD_MS && record.refreshToken && !refreshInFlight.has(id)) {
+      const refresh = refreshSession(store, id, record.refreshToken, {
+        // Background path: the token is valid - keep the session on failure.
+        onFailure: 'keep',
+      })
+        .catch(() => null satisfies Session | null)
+        .finally(() => refreshInFlight.delete(id));
+      refreshInFlight.set(id, refresh);
+    }
+    return toSession(id, record);
+  }
   if (!record.refreshToken) {
     await store.delete(id).catch(() => undefined);
     return null;
@@ -76,7 +102,11 @@ export async function resolveSession(
   if (inFlight) return inFlight;
 
   const refreshToken = record.refreshToken;
-  const refresh = refreshSession(store, id, refreshToken).finally(() => refreshInFlight.delete(id));
+  const refresh = refreshSession(store, id, refreshToken, {
+    // Inline path: the token is already stale - a failed refresh means the
+    // session is unusable, destroy it.
+    onFailure: 'destroy',
+  }).finally(() => refreshInFlight.delete(id));
   refreshInFlight.set(id, refresh);
   return refresh;
 }
@@ -85,6 +115,7 @@ async function refreshSession(
   store: SessionStore,
   id: string,
   refreshToken: string,
+  options: { onFailure: 'destroy' | 'keep' },
 ): Promise<Session | null> {
   try {
     const config = await oidcConfig();
@@ -98,6 +129,12 @@ async function refreshSession(
     await store.save(id, refreshed);
     return toSession(id, refreshed);
   } catch {
+    if (options.onFailure === 'keep') {
+      // Background refresh (#155): the token is still valid - a transient
+      // grant failure must not log anyone out. The inline path handles the
+      // record once the token is actually stale.
+      return null;
+    }
     // Refresh rejected, or the store is down mid-refresh: unusable either
     // way. Cleanup is best-effort (the store may be the thing that failed).
     await store.delete(id).catch(() => undefined);
