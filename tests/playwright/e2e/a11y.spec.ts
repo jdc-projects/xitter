@@ -10,6 +10,11 @@ import { loginViaKeycloak, waitForComposerHydration } from './helpers';
  * shared 404 surface in both renders: unauthenticated below, and the
  * app-shell render (#135) plus the malformed-id guard route (#131) after it.
  *
+ * This file runs in BOTH the desktop `a11y` project and `a11y-mobile`
+ * (#151: the axe set re-scanned at an iPhone-class viewport, where WCAG
+ * 2.5.8 target-size actually bites). The desktop-first admin panel is
+ * scanned by admin-a11y.spec.ts in the desktop project only.
+ *
  * Deliberately not scanned here: the dormant-profile shell (#36) needs a
  * wiped-but-NOT-reseeded stack - the e2e wrapper reseeds before the probe
  * port opens, so every demo profile is live (first-run.spec.ts documents
@@ -248,59 +253,6 @@ test('/search (results page, authenticated) has no serious axe violations', asyn
   // Any query exercises the results screen; the empty state is a valid scan
   // target and needs no seeded corpus.
   await page.goto(`/search?q=${encodeURIComponent('feed')}`);
-
-  const results = await new AxeBuilder({ page })
-    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
-    .analyze();
-  const serious = results.violations.filter((v) =>
-    ['serious', 'critical'].includes(v.impact ?? ''),
-  );
-  expect(serious, JSON.stringify(serious, null, 2)).toEqual([]);
-});
-
-/** Drive the admin realm's Keycloak login (T10 panel). */
-async function loginViaAdminRealm(page: Page, username: string, password: string) {
-  await page.goto('/admin/');
-  await page.getByTestId('admin-login-button').click();
-  await page.waitForURL(/\/realms\/xitter-local-admin\//);
-  await page.locator('#username').fill(username);
-  await page.locator('#password').fill(password);
-  await page.locator('#kc-login').click();
-}
-
-const adminPages = [
-  { path: '/admin/health', testId: 'health-table' },
-  { path: '/admin/posts', testId: 'posts-table' },
-  { path: '/admin/media', testId: 'media-table' },
-  { path: '/admin/users', testId: 'users-table' },
-  { path: '/admin/audit', testId: 'audit-table' },
-];
-
-for (const { path, testId } of adminPages) {
-  test(`${path} (admin panel) has no serious axe violations`, async ({ page }) => {
-    await loginViaAdminRealm(page, 'localadmin', 'LocalAdmin123!');
-    await page.waitForURL(/\/admin\/health$/);
-    await page.goto(path);
-    await expect(page.getByTestId(testId)).toBeVisible({ timeout: 20_000 });
-    // The table shell renders while rows still stream in; scanning the
-    // spinner state passes vacuously and hides row-level violations (the
-    // seeded world guarantees rows on every panel page - hold the scan to
-    // them or fail loudly).
-    await expect(page.locator('.ant-table-row').first()).toBeVisible({ timeout: 20_000 });
-
-    const results = await new AxeBuilder({ page })
-      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
-      .analyze();
-    const serious = results.violations.filter((v) =>
-      ['serious', 'critical'].includes(v.impact ?? ''),
-    );
-    expect(serious, JSON.stringify(serious, null, 2)).toEqual([]);
-  });
-}
-
-test('/admin/ (panel login) has no serious axe violations', async ({ page }) => {
-  await page.goto('/admin/');
-  await expect(page.getByTestId('admin-login')).toBeVisible({ timeout: 20_000 });
 
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])

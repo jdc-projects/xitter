@@ -53,16 +53,27 @@ test('unauthenticated search redirects to login and back', async ({ page }) => {
   await expect(page).toHaveURL(/next=%2Fsearch%3Fq%3Dhello/);
 });
 
-test('header search box navigates to results for the query', async ({ page }) => {
+test('search box navigates to results for the query', async ({ page }) => {
   await login(page, 'demo1');
   // The header box hides itself on /search (#39): the page's own box is the
   // single labelled input, so no strict-mode scoping is needed anymore. The
   // header box is an uncontrolled GET form, so the URL (not the header
   // input) reflects the query after navigation; the page's box re-renders
   // with it.
+  // Mobile matrix (#151): below the xs breakpoint the header box is hidden
+  // entirely - the search icon routes to /search, whose own (now fluid)
+  // box drives the same journey.
   const headerSearch = page.getByTestId('app-nav').getByTestId('search-input');
-  await headerSearch.fill('hello');
-  await headerSearch.press('Enter');
+  if (await headerSearch.isVisible()) {
+    await headerSearch.fill('hello');
+    await headerSearch.press('Enter');
+  } else {
+    await page.getByTestId('mobile-search-link').click();
+    await page.waitForURL(/\/search$/);
+    const pageBox = page.getByTestId('search-input');
+    await pageBox.fill('hello');
+    await pageBox.press('Enter');
+  }
 
   await page.waitForURL(/\/search\?q=hello/);
   await expect(page.getByTestId('search-input')).toHaveValue('hello');

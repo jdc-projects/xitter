@@ -78,7 +78,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
           Search
         </Title>
 
-        <SearchBox defaultValue={query} />
+        <SearchBox defaultValue={query} fluid />
 
         {query === '' ? (
           <Text size="sm" c="dimmed" data-testid="search-prompt">

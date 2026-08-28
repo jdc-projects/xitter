@@ -367,7 +367,9 @@ export function PostComposer({
         data-testid={`${testId}-textarea`}
       />
       {attachments.length > 0 ? (
-        <SimpleGrid cols={2} mt="xs" data-testid={`${testId}-previews`}>
+        // One preview per row on phones (#151): two 45%-width cells leave
+        // the alt input unusably narrow below xs.
+        <SimpleGrid cols={{ base: 1, xs: 2 }} mt="xs" data-testid={`${testId}-previews`}>
           {attachments.map((attachment) => (
             <Stack
               key={attachment.clientId}
@@ -386,7 +388,9 @@ export function PostComposer({
                 <ActionIcon
                   variant="subtle"
                   color="gray"
-                  size="xs"
+                  // ≥24px touch target (#151): the compact xs icon sat right
+                  // beside the alt input - mis-taps deleted instead of typed.
+                  size="sm"
                   aria-label={`Remove ${attachment.file.name}`}
                   onClick={() => removeAttachment(attachment.clientId)}
                   data-testid={`${testId}-remove`}
@@ -414,6 +418,8 @@ export function PostComposer({
           <Tooltip label={`Up to ${POST_MEDIA_MAX} images (png/jpeg/webp/gif, 5MB each)`}>
             <ActionIcon
               variant="subtle"
+              // The most-tapped control in the app gets a 36px target (#151).
+              size="lg"
               aria-label="Attach images"
               onClick={() => fileInput.current?.click()}
               disabled={attachments.length >= POST_MEDIA_MAX}
