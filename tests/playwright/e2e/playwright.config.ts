@@ -53,9 +53,14 @@ export default defineConfig({
       testMatch: MOBILE_MATCH,
     },
     {
+      // Runs AFTER `mobile` (#151): the flow specs share fixed demo-account
+      // pairs, so two device projects racing the same spec against one stack
+      // fight over follow/block state. Serial device passes keep the matrix
+      // deterministic; the desktop projects still run alongside.
       name: 'mobile-se',
       use: { ...chromiumDevice(devices['iPhone SE']) },
       testMatch: MOBILE_MATCH,
+      dependencies: ['mobile'],
     },
     {
       // The axe set re-scanned at an iPhone-class viewport (#151) - where

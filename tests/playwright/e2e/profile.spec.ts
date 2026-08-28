@@ -87,7 +87,15 @@ test('block stops the blocked user from following and shows badges', async ({ pa
   const demo4 = await loggedInPage(browser, 'demo4');
   const demo3 = await loggedInPage(browser, 'demo3');
   await demo4.close();
+  // A previously interrupted run (or a retry) may leave demo3 blocking
+  // demo4 - the cycle below needs a clean edge, so normalize like the
+  // follow tests do: block state is only observable from the blocker.
   await demo3.goto('/profile/demo4');
+  const staleBlock = demo3.getByTestId('unblock-button');
+  if (await staleBlock.isVisible()) {
+    await staleBlock.click();
+    await expect(demo3.getByTestId('block-button')).toBeVisible();
+  }
   await demo3.getByTestId('block-button').click();
   await expect(demo3.getByTestId('badge-blocked')).toBeVisible();
   await expect(demo3.getByTestId('unblock-button')).toBeVisible();

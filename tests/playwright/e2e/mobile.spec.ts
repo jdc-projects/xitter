@@ -16,9 +16,15 @@ async function login(page: Page, username = 'demo1') {
   await page.waitForURL(/\/feed$/);
 }
 
-/** First seeded post id on the feed, for the detail-page check. */
+/** First seeded ORIGINAL post id on the feed, for the detail-page check. */
 async function firstFeedPostId(page: Page): Promise<string> {
-  const item = page.locator('[data-testid^="post-item-"]').first();
+  // Repost rows carry `post-item-<id>-repost-<rid>` testids - their detail
+  // page is the original's. Take the first plain item instead of un packing
+  // a composite id.
+  const item = page
+    .locator('[data-testid^="post-item-"]')
+    .and(page.locator(':not([data-testid*="-repost-"])'))
+    .first();
   await expect(item).toBeVisible();
   return (await item.getAttribute('data-testid'))!.replace('post-item-', '');
 }
