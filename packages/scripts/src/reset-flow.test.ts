@@ -99,6 +99,13 @@ function proxyStores(stores: StoreControls, order: string[]): StoreControls {
       order.push('index');
       return stores.deleteSearchIndex();
     },
+    ...(stores.warmPages
+      ? {
+          async warmPages() {
+            return stores.warmPages!();
+          },
+        }
+      : {}),
     async flushValkey() {
       order.push('flush');
       return stores.flushValkey();
@@ -200,6 +207,68 @@ describe('runResetFlow', () => {
     expect(order.indexOf('seed')).toBeLessThan(order.indexOf('status'));
     expect(report.reseeded).toBe(true);
     expect(report.fingerprint).toBe('abc123');
+  });
+
+  it('warms pages after seeding when the store exposes the seam (#156)', async () => {
+    const h = harness();
+    const order: string[] = [];
+    const report = await runResetFlow({
+      seed: true,
+      realm: h.realm,
+      stores: proxyStores(
+        {
+          ...h.stores,
+          async warmPages() {
+            order.push('warm');
+            return 3;
+          },
+        },
+        order,
+      ),
+      log: () => undefined,
+      seedFn: async () => {
+        order.push('seed');
+        return { fingerprint: 'abc123' };
+      },
+    });
+
+    expect(order.indexOf('warm')).toBeGreaterThan(order.indexOf('seed'));
+    const step = report.steps.find((s) => s.name === 'warm-pages');
+    expect(step?.ok).toBe(true);
+    expect(step?.detail).toBe('3 page(s) rendered warm');
+    expect(report.success).toBe(true);
+  });
+
+  it('a failed warm-up never fails the reset (best-effort contract, #156)', async () => {
+    const h = harness();
+    const report = await runResetFlow({
+      seed: true,
+      realm: h.realm,
+      stores: {
+        ...h.stores,
+        async warmPages() {
+          throw new Error('edge briefly unreachable');
+        },
+      },
+      log: () => undefined,
+      seedFn: async () => ({ fingerprint: 'abc123' }),
+    });
+
+    expect(report.steps.find((s) => s.name === 'warm-pages')?.ok).toBe(false);
+    expect(report.success).toBe(true);
+  });
+
+  it('skips the warm step entirely when no seam is provided (local/dev)', async () => {
+    const h = harness();
+    const report = await runResetFlow({
+      seed: true,
+      realm: h.realm,
+      stores: h.stores,
+      log: () => undefined,
+      seedFn: async () => ({ fingerprint: 'abc123' }),
+    });
+    expect(report.steps.find((s) => s.name === 'warm-pages')).toBeUndefined();
+    expect(report.success).toBe(true);
   });
 
   it('waits for the epoch to be acknowledged by every worker before wiping', async () => {
