@@ -44,7 +44,7 @@ http:
       rule: 'PathPrefix(`/media`)'
       priority: 300
       service: rustfs
-      middlewares: [strip-media]
+      middlewares: [strip-media, media-cache]
 
     cms:
       rule: 'PathPrefix(`/cms`)'
@@ -64,6 +64,15 @@ http:
       replacePathRegex:
         regex: '^/media/(.*)'
         replacement: '/xitter-media/${1}'
+
+    # Object keys are content-stable (uuid uploads; the deterministic seed
+    # recreates byte-identical objects after each nightly wipe), so responses
+    # cache immutably for a year - a detail view stops re-downloading ~4.3MB
+    # on every visit (#154).
+    media-cache:
+      headers:
+        customResponseHeaders:
+          Cache-Control: 'public, max-age=31536000, immutable'
 
   services:
     web:

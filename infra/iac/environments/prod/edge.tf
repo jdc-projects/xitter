@@ -141,6 +141,29 @@ resource "kubernetes_manifest" "media_path_rewrite" {
   }
 }
 
+# Object responses are immutable (uuid uploads; the deterministic seed
+# recreates byte-identical objects after each nightly wipe) - cache at the
+# browser for a year so detail views stop re-downloading originals (#154).
+resource "kubernetes_manifest" "media_cache_headers" {
+  manifest = {
+    apiVersion = "traefik.io/v1alpha1"
+    kind       = "Middleware"
+
+    metadata = {
+      name      = "xitter-media-cache-headers"
+      namespace = local.ns
+    }
+
+    spec = {
+      headers = {
+        customResponseHeaders = {
+          "Cache-Control" = "public, max-age=31536000, immutable"
+        }
+      }
+    }
+  }
+}
+
 module "ingress_media" {
   source = "github.com/jdc-projects/homelab//iac/modules/ingress"
 
@@ -154,10 +177,16 @@ module "ingress_media" {
   existing_service_namespace = local.ns
   target_port                = 9000
 
-  extra_middlewares = [{
-    name      = kubernetes_manifest.media_path_rewrite.manifest.metadata.name
-    namespace = local.ns
-  }]
+  extra_middlewares = [
+    {
+      name      = kubernetes_manifest.media_path_rewrite.manifest.metadata.name
+      namespace = local.ns
+    },
+    {
+      name      = kubernetes_manifest.media_cache_headers.manifest.metadata.name
+      namespace = local.ns
+    },
+  ]
 
   do_enable_geoblock = false
 
