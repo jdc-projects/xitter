@@ -82,7 +82,9 @@ export function AppShellFrame({ username, children }: AppShellFrameProps) {
   return (
     <AppShell header={{ height: 56 }}>
       <AppShell.Header>
-        <Container size="md" h="100%">
+        {/* sm matches the pages' Container (#151): the md shell let the
+            header cluster sit wider than the content it framed. */}
+        <Container size="sm" h="100%">
           <Group h="100%" justify="space-between" wrap="nowrap" gap="sm" data-testid="app-nav">
             <Group gap="sm" wrap="nowrap">
               <Burger
@@ -116,12 +118,16 @@ export function AppShellFrame({ username, children }: AppShellFrameProps) {
               </ActionIcon>
               {username ? (
                 <>
+                  {/* Hidden below xs (#151): @handle + "Log out" + brand +
+                    burger + search icon overflowed a 320px nowrap row. The
+                    drawer's identity row keeps both reachable on phones. */}
                   <Text
                     size="sm"
                     c="dimmed"
                     inherit
                     component="a"
                     href={`/profile/${username}`}
+                    visibleFrom="xs"
                     data-testid="nav-username"
                   >
                     @{username}
@@ -163,6 +169,36 @@ export function AppShellFrame({ username, children }: AppShellFrameProps) {
             data-testid="drawer-nav-search"
           />
           {visibleItems.map((item) => navLink(item, pathname, 'drawer'))}
+          {username ? (
+            // Identity footer (#151): the header hides @handle below xs, so
+            // the drawer carries the handle + logout - nothing becomes
+            // unreachable on a phone.
+            <>
+              <Divider my={4} />
+              <Group justify="space-between" wrap="nowrap" gap="sm">
+                <Text
+                  size="sm"
+                  c="dimmed"
+                  component="a"
+                  href={`/profile/${username}`}
+                  inherit
+                  data-testid="drawer-username"
+                >
+                  @{username}
+                </Text>
+                <form action="/api/auth/logout" method="post">
+                  <Button
+                    size="sm"
+                    variant="subtle"
+                    type="submit"
+                    data-testid="drawer-logout-button"
+                  >
+                    Log out
+                  </Button>
+                </form>
+              </Group>
+            </>
+          ) : null}
           <Divider my={4} />
           {/* Public info stays reachable post-login (reset schedule, FAQ). */}
           <Text size="xs" c="dimmed">

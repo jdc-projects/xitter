@@ -12,17 +12,35 @@ async function login(page: Page, username = 'demo4') {
   await page.waitForURL(/\/feed$/);
 }
 
+/**
+ * The nav link for a destination on whichever surface this viewport exposes:
+ * header links ≥ sm, the drawer below it (#151 mobile matrix - the same
+ * active marking lives in both).
+ */
+async function navLink(page: Page, name: string) {
+  const header = page.getByTestId(`header-nav-${name}`);
+  if (await header.isVisible()) return header;
+  // The drawer may already be open from a previous lookup - its overlay
+  // covers the burger, so only open it when it is actually closed.
+  const drawer = page.getByTestId(`drawer-nav-${name}`);
+  if (!(await drawer.isVisible())) {
+    await page.getByTestId('nav-burger').click();
+  }
+  return drawer;
+}
+
 test('nav marks the current page, not its siblings', async ({ page }) => {
   await login(page);
 
-  const feed = page.getByTestId('header-nav-feed');
+  const feed = await navLink(page, 'feed');
   await expect(feed).toBeVisible();
   await expect(feed).toHaveAttribute('aria-current', 'page');
 
-  await page.getByTestId('header-nav-bookmarks').click();
+  await (await navLink(page, 'bookmarks')).click();
   await page.waitForURL(/\/bookmarks$/);
-  await expect(page.getByTestId('header-nav-bookmarks')).toHaveAttribute('aria-current', 'page');
-  await expect(page.getByTestId('header-nav-feed')).not.toHaveAttribute('aria-current', 'page');
+  const bookmarks = await navLink(page, 'bookmarks');
+  await expect(bookmarks).toHaveAttribute('aria-current', 'page');
+  await expect(await navLink(page, 'feed')).not.toHaveAttribute('aria-current', 'page');
 });
 
 test('mobile drawer opens and navigates', async ({ page }) => {

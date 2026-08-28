@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MantineProvider, createTheme } from '@mantine/core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppShellFrame, isNavActive } from './app-shell';
@@ -78,5 +78,28 @@ describe('AppShellFrame (#39 navigation polish)', () => {
     expect(screen.getByTestId('nav-burger')).toBeTruthy();
     expect(screen.getByTestId('logout-button')).toBeTruthy();
     expect(screen.getByTestId('nav-username').textContent).toBe('@demo1');
+  });
+
+  it('carries the identity row in the drawer when the header drops the handle (#151)', async () => {
+    // jsdom does not apply Mantine's media-query classes, so both the
+    // (visibleFrom xs) header handle and the drawer identity render - the
+    // responsive truth is the Playwright mobile matrix's job. Here we pin
+    // the drawer contract: opening it surfaces the handle + a logout that
+    // nothing below the xs breakpoint can lose access to.
+    renderShell({ username: 'demo1' });
+    fireEvent.click(screen.getByTestId('nav-burger'));
+
+    expect(await screen.findByTestId('drawer-username')).toBeTruthy();
+    expect(screen.getByTestId('drawer-username').textContent).toBe('@demo1');
+    expect(screen.getByTestId('drawer-username').getAttribute('href')).toBe('/profile/demo1');
+    const logout = await screen.findByTestId('drawer-logout-button');
+    const form = logout.closest('form');
+    expect(form?.getAttribute('action')).toBe('/api/auth/logout');
+  });
+
+  it('renders no drawer identity row when signed out', () => {
+    renderShell({ username: null });
+    expect(screen.queryByTestId('drawer-username')).toBeNull();
+    expect(screen.queryByTestId('drawer-logout-button')).toBeNull();
   });
 });

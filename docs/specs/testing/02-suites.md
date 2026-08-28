@@ -25,6 +25,7 @@ Per-suite detail. For philosophy and ownership see [01-strategy.md](01-strategy.
 
 - Assertions target rendered output and user interaction, not network internals — mocks return realistic contract-shaped payloads.
 - Includes visual sanity (layout renders, key elements visible) and basic a11y checks (landmarks, labels) beyond raw axe.
+- **Viewport matrix (#151)**: every spec runs in three projects — `chromium` (1280×720), `mobile` (iPhone 13, 390×844) and `mobile-se` (iPhone SE, 375×667). Device emulation runs on Chromium (see [03-coverage-and-gates.md](03-coverage-and-gates.md) non-goals), sharing one `webServer` via `reuseExistingServer`.
 
 ## Playwright — e2e (full stack)
 
@@ -36,6 +37,7 @@ Per-suite detail. For philosophy and ownership see [01-strategy.md](01-strategy.
 
 - Runs against **seeded known state** (deterministic seed), so flows assert on expected users/posts.
 - Accessibility: axe-core scans in journey pages - public surfaces (incl. `/login` and the 404 in both signed-out and app-shell renders), authenticated app pages, and the admin panel; tags `wcag2a`, `wcag2aa`, `wcag21aa`, `wcag22aa`; **no serious or critical violations allowed**. The dormant-profile shell is out of reach on the reseeded stack (documented in the spec header; unit-tested instead).
+- **Viewport matrix (#151)**: the core journey specs (`nav`, `feed-flow`, `post-flow`, `profile`, `search-flow`) re-run in the `mobile` project (iPhone 13, 390×844); `mobile-se` (iPhone SE, 375×667) carries the 320px-class geometry guard — `nav` + the overflow spec — rather than a second concurrent pass over the stateful flow specs (they share fixed demo accounts). `mobile.spec.ts` (mobile-only) holds the horizontal-overflow guard — `document.documentElement.scrollWidth` must not exceed the viewport — plus the fluid-search-box and stacked-profile-header guarantees, at both device widths. The axe set re-runs at iPhone 13 in `a11y-mobile` (where WCAG 2.5.8 target-size bites); the desktop-first admin panel is scanned by the desktop `a11y` project only (`admin-a11y.spec.ts`).
 
 ## Artillery — load
 

@@ -159,7 +159,9 @@ export function FeedView({ initialEntries, initialCursor, viewerId }: FeedViewPr
               {newCount} new {newCount === 1 ? 'update' : 'updates'}
             </span>
             <Button
-              size="compact-xs"
+              // compact-xs (~22px) sat under the 24px touch floor - this is
+              // the banner phone users tap every time a post lands (#151).
+              size="xs"
               variant="light"
               onClick={() => void (setNewCount(0), refresh())}
             >
@@ -218,7 +220,7 @@ export function FeedView({ initialEntries, initialCursor, viewerId }: FeedViewPr
               from the current cursor state (e.g. a failed Show-new while
               scrolled). */}
             <Button
-              size="compact-xs"
+              size="xs"
               variant="light"
               loading={loading}
               onClick={() => void (failedMode === 'append' ? loadMore() : refresh())}

@@ -12,7 +12,8 @@ export function RetryRefreshButton({ label = 'Try again' }: { label?: string }) 
   const router = useRouter();
   return (
     <Button
-      size="compact-xs"
+      // 24px touch floor (#151) - compact-xs renders ~22px.
+      size="xs"
       variant="light"
       onClick={() => router.refresh()}
       data-testid="retry-refresh"

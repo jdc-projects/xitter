@@ -78,6 +78,11 @@ export interface PostCardProps {
 // surfaces in the a11y tree as an unnamed img (audit #32).
 const iconProps = { size: 18, stroke: 1.5, 'aria-hidden': true } as const;
 
+// pre-wrap keeps authored line breaks; `anywhere` (not `break-word`) lets a
+// long unbroken token - a URL, a 50-char word - wrap at any character so it
+// cannot push the card past a 320px viewport (#151).
+const TEXT_WRAP_STYLE = { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' } as const;
+
 const KIND_COLOR: Record<PostCardInteractionKind, string> = {
   repost: 'teal',
   like: 'red',
@@ -219,7 +224,7 @@ function AncestorCard({ author, post, href }: Pick<PostCardProps, 'author' | 'po
               </Group>
               <RelativeTime date={post.createdAt} />
             </Group>
-            <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
+            <Text size="sm" style={TEXT_WRAP_STYLE}>
               {post.text}
             </Text>
           </Stack>
@@ -285,7 +290,7 @@ export function PostCard({
         </Text>
       ) : null}
 
-      <Text mt="sm" size="sm" style={{ whiteSpace: 'pre-wrap' }}>
+      <Text mt="sm" size="sm" style={TEXT_WRAP_STYLE}>
         {post.text}
       </Text>
 
@@ -304,6 +309,10 @@ export function PostCard({
               radius="sm"
               fit="cover"
               loading="lazy"
+              // A single original renders at natural aspect; cap its height
+              // so a very tall image cannot dominate a phone viewport (#151).
+              // The 2-up grid keeps intrinsic heights (each cell is small).
+              mah={images.length === 1 ? { base: 320, sm: 480 } : undefined}
               data-testid={`post-image-${post.id}`}
             />
           ))}

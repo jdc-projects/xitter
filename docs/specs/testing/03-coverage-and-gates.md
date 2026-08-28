@@ -2,16 +2,16 @@
 
 ## Gate definitions
 
-| Gate               | What runs                                        | Command                             |
-| ------------------ | ------------------------------------------------ | ----------------------------------- |
-| Build              | `turbo run build` (all workspaces)               | part of `npm run check`             |
-| Lint               | Per-workspace ESLint + `tsc --noEmit` typecheck  | `npm run lint`, `npm run typecheck` |
-| Repo lint          | `fallow analyze` + `react-doctor check`          | `npm run lint:repo`                 |
-| Unit + integration | Vitest per workspace                             | `npm run test`                      |
-| Web UI             | Playwright web suite                             | `npm run test:web`                  |
-| E2E + a11y         | Playwright e2e suite (incl. `@a11y` specs)       | `npm run test:e2e`                  |
-| Mutation (scoped)  | Stryker on affected workspaces via turbo filters | `npm run mutate -- --filter=...`    |
-| Format             | `prettier --check .`                             | `npm run format:check`              |
+| Gate               | What runs                                                                       | Command                             |
+| ------------------ | ------------------------------------------------------------------------------- | ----------------------------------- |
+| Build              | `turbo run build` (all workspaces)                                              | part of `npm run check`             |
+| Lint               | Per-workspace ESLint + `tsc --noEmit` typecheck                                 | `npm run lint`, `npm run typecheck` |
+| Repo lint          | `fallow analyze` + `react-doctor check`                                         | `npm run lint:repo`                 |
+| Unit + integration | Vitest per workspace                                                            | `npm run test`                      |
+| Web UI             | Playwright web suite                                                            | `npm run test:web`                  |
+| E2E + a11y         | Playwright e2e suite (incl. `@a11y` specs and the mobile viewport matrix, #151) | `npm run test:e2e`                  |
+| Mutation (scoped)  | Stryker on affected workspaces via turbo filters                                | `npm run mutate -- --filter=...`    |
+| Format             | `prettier --check .`                                                            | `npm run format:check`              |
 
 All gates: `npm run check` = `format:check` + `build:packages` + `turbo run lint typecheck test build`. Repo lint (fallow + react-doctor), web/e2e Playwright, and scoped mutation are separate — `npm run check:all` is full CI parity.
 
@@ -46,6 +46,6 @@ Determinism rules from [01-strategy.md](01-strategy.md) apply: fixed `now` for t
 
 ## Non-goals
 
-- No cross-browser matrix — **Chromium only** in CI.
+- No cross-browser matrix — **Chromium only** in CI. The mobile viewport projects (#151) are iPhone-class **device emulation on Chromium** (viewport, touch, `isMobile`), not a WebKit engine addition - the rule holds.
 - No visual regression suite initially — a future option if UI churn demands it; basic render assertions in the web suite cover the interim.
 - No coverage-number enforcement that rewards string-checking config files — coverage is judged by value, not a threshold gate.

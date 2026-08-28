@@ -22,3 +22,19 @@ export async function loginViaKeycloak(page: Page, username: string, password: s
 export async function waitForComposerHydration(page: Page, testId = 'composer') {
   await expect(page.getByTestId(`${testId}-form`)).toHaveAttribute('data-hydrated', 'true');
 }
+
+/**
+ * Horizontal-overflow guard (#151): the document must never scroll sideways
+ * at a phone viewport. +1px tolerance absorbs subpixel rounding in
+ * fractional-width viewports (390x844 DPR 3 reports fractional widths).
+ */
+export async function expectNoHorizontalOverflow(page: Page) {
+  const metrics = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    innerWidth: window.innerWidth,
+  }));
+  expect(
+    metrics.scrollWidth,
+    `document scrolls horizontally: ${JSON.stringify(metrics)}`,
+  ).toBeLessThanOrEqual(metrics.innerWidth + 1);
+}

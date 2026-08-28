@@ -23,7 +23,9 @@ export function LoadMoreControl({ cursor, loading, error, onLoadMore }: LoadMore
         <Group justify="center">
           <Button
             variant="light"
-            size="xs"
+            // sm (30px) keeps the shared affordance above the 24px touch
+            // floor on phones (#151).
+            size="sm"
             loading={loading}
             onClick={onLoadMore}
             data-testid="load-more"
@@ -38,7 +40,8 @@ export function LoadMoreControl({ cursor, loading, error, onLoadMore }: LoadMore
           <Group justify="space-between" gap="sm">
             <span>{error}</span>
             <Button
-              size="compact-xs"
+              // compact-xs renders ~22px tall - below the 24px floor (#151).
+              size="xs"
               variant="light"
               loading={loading}
               onClick={onLoadMore}

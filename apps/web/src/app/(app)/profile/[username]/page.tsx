@@ -154,16 +154,29 @@ export default async function ProfilePage({
 
   return (
     <Container size="sm" py="xl">
-      <Group justify="space-between" align="flex-start" wrap="nowrap">
-        <Group gap="md" wrap="nowrap">
+      {/* Responsive stack (#151): the identity block is full-width below
+        sm, so the actions always wrap onto their own left-aligned row under
+        it; from sm the block is auto-width and shares one space-between row.
+        One DOM node keeps every testid singular - e2e stays viewport-agnostic
+        instead of duplicating hidden/visible copies. (Mantine 9's Group
+        justify/wrap are not responsive style props, so the stacking rides on
+        the responsive `w` style prop.) */}
+      <Group justify="space-between" align="flex-start" wrap="wrap" gap="md">
+        <Group gap="md" wrap="nowrap" w={{ base: '100%', sm: 'auto' }}>
           <UserAvatar
             username={profile.username}
             displayName={profile.displayName}
             size="lg"
             data-testid="profile-avatar"
           />
-          <Stack gap={4}>
-            <Title order={1} size="h2" data-testid="profile-display-name">
+          <Stack gap={4} style={{ minWidth: 0 }}>
+            <Title
+              order={1}
+              size="h2"
+              data-testid="profile-display-name"
+              // Long unbroken display names must wrap, not overflow (#151).
+              style={{ overflowWrap: 'anywhere' }}
+            >
               {profile.displayName}
             </Title>
             <Text size="sm" c="dimmed" data-testid="profile-username">
