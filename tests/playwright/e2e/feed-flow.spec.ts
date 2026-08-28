@@ -218,3 +218,94 @@ test('unfollowed accounts stop appearing in the feed', async ({ page, browser })
   await demo9.close();
   await demo10.close();
 });
+
+/** Create a post via the API (rate-limit paced) and return its id. */
+async function createPost(page: Page, token: string, text: string): Promise<string> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await page.request.post('/api/posts/v1/posts', {
+      headers: { authorization: `Bearer ${token}` },
+      data: { text, mediaIds: [], replyToId: null },
+    });
+    if (res.status() === 201) return ((await res.json()) as { id: string }).id;
+    if (res.status() === 429 && attempt < 10) {
+      await page.waitForTimeout(1_200);
+      continue;
+    }
+    throw new Error(`create post failed: ${res.status()} ${await res.text()}`);
+  }
+}
+
+/**
+ * #145 regression (live incident 2026-08-27): a reposted card must show the
+ * ORIGINAL author's byline with the reposter confined to the attribution
+ * line, and the delete affordance stays gated on the true author - the
+ * incident had the owner deleting their own post rendered under the
+ * reposter's identity.
+ */
+test('a reposted card shows the original author; delete stays owner-only', async ({
+  page,
+  browser,
+}) => {
+  const demo1 = await loggedInPage(browser, 'demo1'); // viewer + owner
+  const demo7 = await loggedInPage(browser, 'demo7'); // another author
+  const demo5 = await loggedInPage(browser, 'demo5'); // the reposter
+
+  // demo1 must follow demo5 for the reposts to fan out into demo1's feed;
+  // normalise the edge first (other specs never touch demo1/demo5, but the
+  // assertion depends on it).
+  await demo1.goto('/profile/demo5');
+  const follow = demo1.getByTestId('follow-button');
+  if (await follow.isVisible()) await follow.click();
+
+  const token1 = await accessToken(demo1);
+  const token7 = await accessToken(demo7);
+  const token5 = await accessToken(demo5);
+  const mineText = `t6 repost identity mine ${crypto.randomUUID()}`;
+  const otherText = `t6 repost identity other ${crypto.randomUUID()}`;
+  const mineId = await createPost(demo1, token1, mineText);
+  const otherId = await createPost(demo7, token7, otherText);
+  const repost = async (postId: string) => {
+    const res = await demo5.request.post(`/api/posts/v1/posts/${postId}/interactions`, {
+      headers: { authorization: `Bearer ${token5}` },
+      data: { kind: 'repost' },
+    });
+    if (res.status() >= 400) {
+      throw new Error(`repost failed: ${res.status()} ${await res.text()}`);
+    }
+  };
+  await repost(mineId);
+  await repost(otherId);
+
+  // Fanout is async (repost event -> worker -> feed): banner-click + reload
+  // poll until BOTH repost rows land, like every other convergence wait.
+  await demo1.goto('/feed');
+  const mineRow = demo1.locator(`[data-testid^="post-item-${mineId}-repost-"]`);
+  const otherRow = demo1.locator(`[data-testid^="post-item-${otherId}-repost-"]`);
+  const deadline = Date.now() + 20_000;
+  while (
+    (!(await mineRow.isVisible().catch(() => false)) ||
+      !(await otherRow.isVisible().catch(() => false))) &&
+    Date.now() < deadline
+  ) {
+    const show = demo1.getByTestId('feed-new-items').getByRole('button');
+    if (await show.isVisible().catch(() => false)) await show.click().catch(() => undefined);
+    await demo1.reload();
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  await expect(mineRow).toBeVisible();
+  await expect(otherRow).toBeVisible();
+
+  // Own post reposted: the byline is @demo1 (the true author), the reposter
+  // only on the attribution line, and the owner keeps the delete affordance.
+  await expect(mineRow).toContainText('@demo1');
+  await expect(mineRow.getByTestId(`post-repost-attribution-${mineId}`)).toContainText('reposted');
+  await expect(mineRow.getByTestId(`post-overflow-${mineId}`)).toBeVisible();
+
+  // Someone else's reposted post: their byline, and NO delete affordance.
+  await expect(otherRow).toContainText('@demo7');
+  await expect(otherRow.getByTestId(`post-overflow-${otherId}`)).toHaveCount(0);
+
+  await demo1.close();
+  await demo7.close();
+  await demo5.close();
+});

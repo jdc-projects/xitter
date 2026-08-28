@@ -173,7 +173,7 @@
             "bearerAuth": []
           }
         ],
-        "description": "Materialised home timeline (followed + own posts and reposts, newest first), hydrated server-side; deleted posts and blocked authors are excluded. Repost entries carry the reposter profile (`repostedBy`) for attribution.",
+        "description": "Materialised home timeline (followed + own posts and reposts, newest first), hydrated server-side; deleted posts and blocked authors are excluded. `author` is always the post’s own author - repost entries carry the reposter profile separately (`repostedBy`) for attribution.",
         "parameters": [
           {
             "schema": {
@@ -389,7 +389,8 @@
                                 "format": "date-time"
                               }
                             },
-                            "required": ["id", "username", "displayName", "bio", "createdAt"]
+                            "required": ["id", "username", "displayName", "bio", "createdAt"],
+                            "description": "The post's author (the ORIGINAL author for repost entries; the reposter rides `repostedBy` for attribution)."
                           },
                           "reason": {
                             "type": "string",

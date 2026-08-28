@@ -1,8 +1,7 @@
 'use client';
 
-import { Stack } from '@mantine/core';
+import { Box } from '@mantine/core';
 import type { Post } from '@xitter/api-contracts';
-import { DeletePostButton } from './delete-post-button';
 import { PostInteractions } from './post-interactions';
 
 export interface PostListItemProps {
@@ -16,18 +15,21 @@ export interface PostListItemProps {
   replyToAuthor?: { id: string; username: string; displayName: string };
   /** #148a: optimistic entry (own fresh post) - renders slightly dimmed. */
   pending?: boolean;
-  /** Viewer's own post: render the delete affordance. */
+  /** Viewer's own post: the card's overflow menu (⋯) shows delete (#146). */
   canDelete?: boolean;
   /** Profile to revalidate after a delete (the card's host page). */
   username?: string;
-  /** Redirect target after delete (detail pages navigate away). */
+  /** Redirect target after a delete (detail pages navigate away). */
   goTo?: string;
 }
 
 /**
- * Interactive post card + (own posts) delete, for every list surface. The
- * delete button sits below the card so it never nests a form inside the
- * card's own anchor. Lists render thumbs; the detail page passes originals.
+ * Interactive post card for every list surface (#142/#146): the owner's
+ * delete lives in the card's own overflow menu, and navigation rides the
+ * card's stretched overlay link. The row wrapper only carries the feed-entry
+ * testid - a post can appear twice in one feed (own entry + repost entry),
+ * so selectors stay unique per row. Lists render thumbs; the detail page
+ * passes originals.
  */
 export function PostListItem({
   post,
@@ -41,9 +43,7 @@ export function PostListItem({
   goTo,
 }: PostListItemProps) {
   return (
-    <Stack
-      // Disambiguated for the post-appears-twice case (own entry + repost
-      // entry): selectors stay unique per feed row.
+    <Box
       data-testid={`post-item-${post.id}${repostedBy ? `-repost-${repostedBy.id}` : ''}`}
       data-pending={pending ? 'true' : undefined}
       style={pending ? { opacity: 0.75 } : undefined}
@@ -56,8 +56,10 @@ export function PostListItem({
         replyToAuthor={replyToAuthor}
         variant="thumb"
         href={`/post/${post.id}`}
+        canDelete={canDelete}
+        username={username}
+        goTo={goTo}
       />
-      {canDelete ? <DeletePostButton postId={post.id} username={username} goTo={goTo} /> : null}
-    </Stack>
+    </Box>
   );
 }

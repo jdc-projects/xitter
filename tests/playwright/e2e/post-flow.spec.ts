@@ -64,7 +64,10 @@ test('post appears on feed + own profile + detail; delete removes it everywhere'
   await page.goto(`/post/${postId}`);
   await expect(page.getByTestId(`post-detail-${postId}`)).toContainText(text);
 
-  // Delete from the detail page redirects to the feed, empty-handed.
+  // Delete from the detail page via the overflow menu + confirmation
+  // (#146); the redirect lands on the feed, empty-handed.
+  await page.getByTestId(`post-overflow-${postId}`).click();
+  await page.getByTestId(`post-overflow-delete-${postId}`).click();
   await page.getByTestId(`delete-post-${postId}`).click();
   await page.waitForURL(/\/feed$/);
   await expect(page.locator(`[data-testid^="post-item-"]`, { hasText: text })).toHaveCount(0);

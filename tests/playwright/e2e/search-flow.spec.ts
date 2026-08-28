@@ -99,8 +99,11 @@ test('search finds a composed post and deletes remove it from results', async ({
   await expect(item).toBeVisible();
   const postId = (await item.getAttribute('data-testid'))!.replace('post-item-', '');
 
-  // Delete it; the tombstone must drop it from results (reload-poll out).
+  // Delete it (overflow menu + confirmation, #146); the tombstone must
+  // drop it from results (reload-poll out).
   await page.goto(`/post/${postId}`);
+  await page.getByTestId(`post-overflow-${postId}`).click();
+  await page.getByTestId(`post-overflow-delete-${postId}`).click();
   await page.getByTestId(`delete-post-${postId}`).click();
   await page.waitForURL(/\/feed$/);
 

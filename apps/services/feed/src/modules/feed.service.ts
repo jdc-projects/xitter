@@ -44,8 +44,9 @@ export class FeedService {
    * Newest-first page. Soft-deleted posts drop out during hydration; the
    * bounded refill keeps walking so a burst of deletions cannot shrink the
    * page below the requested size while older entries exist. Repost entries
-   * hydrate with the reposter's profile (`repostedBy`) for attribution;
-   * replies carry their target's author (`replyToAuthor`) for context.
+   * render the ORIGINAL author as `author` (product 6.6: the card shows the
+   * original post; the reposter rides `repostedBy` for attribution); replies
+   * carry their target's author (`replyToAuthor`) for context.
    */
   async getFeed(userId: string, page: FeedPageRequest): Promise<FeedPage> {
     assertValidCursor(page.cursor);
@@ -142,11 +143,16 @@ export class FeedService {
     const parents = replyToIds.length
       ? await this.content.posts(replyToIds)
       : new Map<string, Post>();
+    // The rendered author is the POST's author (#145) - repost entries store
+    // the reposter as the surface `authorId` (fanout filtering), so the
+    // original author must join the profile batch alongside the reposter.
     const authorIds = [
-      ...new Set([
-        ...entries.flatMap((entry) => [entry.authorId, entry.repostedById ?? entry.authorId]),
-        ...[...parents.values()].map((parent) => parent.authorId),
-      ]),
+      ...new Set(
+        [
+          ...entries.flatMap((entry) => [posts.get(entry.postId)?.authorId, entry.repostedById]),
+          ...[...parents.values()].map((parent) => parent.authorId),
+        ].filter((id): id is string => Boolean(id)),
+      ),
     ];
     const profiles = await this.content.profiles(authorIds);
     const blocked = new Set(blockedAuthorIds);
@@ -178,7 +184,11 @@ export class FeedService {
     const parent = post.replyToId ? parents.get(post.replyToId) : undefined;
     return {
       post,
-      author: profileOrPlaceholder(entry.authorId, profiles),
+      // The POST's author, never the entry's surface author (#145): a
+      // reposted card shows the original author's identity while the
+      // reposter renders separately via `repostedBy` - the web gates delete
+      // on post.authorId, so identity and permission stay paired.
+      author: profileOrPlaceholder(post.authorId, profiles),
       reason: entry.reason === 'repost' ? 'repost' : 'post',
       repostedBy: entry.repostedById
         ? (repostedBy ?? profileOrPlaceholder(entry.repostedById, profiles))

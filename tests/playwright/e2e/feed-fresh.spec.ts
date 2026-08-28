@@ -75,14 +75,16 @@ test('replies in the feed carry a "Replying to @x" context line (#147)', async (
   });
   expect(reply.status()).toBe(201);
 
-  // Entries land asynchronously via fanout; click through the banner like a
-  // user would (same pattern as feed-flow's waitForFeedItem).
+  // Entries land asynchronously via fanout. The ws banner is at-most-once
+  // (a missed notify means no banner) and #148b's polling only covers a
+  // CLOSED socket - so refresh like a user would, same as feed-flow's
+  // backfill wait, until the reply lands.
   const item = page.locator('[data-testid^="post-item-"]', { hasText: replyText }).first();
   const deadline = Date.now() + 20_000;
-  while (!(await item.isVisible().catch(() => false))) {
-    if (Date.now() > deadline) break;
+  while (!(await item.isVisible().catch(() => false)) && Date.now() < deadline) {
     const show = page.getByTestId('feed-new-items').getByRole('button');
     if (await show.isVisible().catch(() => false)) await show.click().catch(() => undefined);
+    else await page.reload();
     await page.waitForTimeout(400);
   }
   await expect(item).toBeVisible();

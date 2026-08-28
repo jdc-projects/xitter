@@ -49,7 +49,7 @@ feedApi.registerPath({
   tags: ['feed'],
   security: [{ bearerAuth: [] }],
   description:
-    'Materialised home timeline (followed + own posts and reposts, newest first), hydrated server-side; deleted posts and blocked authors are excluded. Repost entries carry the reposter profile (`repostedBy`) for attribution.',
+    'Materialised home timeline (followed + own posts and reposts, newest first), hydrated server-side; deleted posts and blocked authors are excluded. `author` is always the post\u2019s own author - repost entries carry the reposter profile separately (`repostedBy`) for attribution.',
   request: { query: pageQuerySchema },
   responses: {
     200: { description: 'Feed page', content: { 'application/json': { schema: feedPage } } },
