@@ -1,15 +1,44 @@
-# Browser-level load test using Artillery's Playwright engine.
+# Browser-level load via Artillery's Playwright engine: real journeys, not
+# just the landing page - public landing + CMS About, and login -> feed ->
+# post detail (functions in processors.ts; `testMatch` is not a thing in
+# Artillery 2.0.x, flow functions resolve from config.processor exports).
+#
+# Budgets are enforced per journey step via `browser.step.<name>` histograms
+# (p95 < 1s - measured local page p95s are <=55ms; 1s absorbs CI jitter
+# without admitting 3-5x regressions the old 2s aspirational budget would).
+# Flow-level failures (missing content, timeouts) fail virtual users and
+# trip maxErrorRate. Local budgets; run via `npm run test:load` - the
+# deployed nightly only runs the API flow (no browser budget baseline yet).
 config:
-  target: "{{ $processEnvironment.E2E_BASE_URL || 'http://localhost:8080' }}"
+  target: '{{ $processEnvironment.E2E_BASE_URL }}'
+  processor: ./processors.ts
   engines:
     playwright:
-      testMatch: '**/*.playwright.ts'
+      extendedMetrics: true
+  plugins:
+    ensure: {}
+  ensure:
+    maxErrorRate: 1
+    thresholds:
+      - browser.step.landing.p95: 1000
+      - browser.step.about.p95: 1000
+      - browser.step.login.p95: 1000
+      - browser.step.feed.p95: 1000
+      - browser.step.post.p95: 1000
+    conditions:
+      # Vacuous-run guard (#158): a browser run that loads nothing fails.
+      - expression: 'browser.http_requests >= 100'
   phases:
     - name: browse
-      duration: 120
+      duration: 90
       arrivalRate: 1
-      rampTo: 5
+      rampTo: 3
 scenarios:
-  - engine: playwright
-    testFunction: browseFeedFlow
-    name: browse feed (browser)
+  - name: public browse
+    weight: 1
+    engine: playwright
+    testFunction: publicBrowseFlow
+  - name: authed journey
+    weight: 3
+    engine: playwright
+    testFunction: authedJourneyFlow

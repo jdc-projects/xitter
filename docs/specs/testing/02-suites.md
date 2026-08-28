@@ -39,20 +39,25 @@ Per-suite detail. For philosophy and ownership see [01-strategy.md](01-strategy.
 
 ## Artillery — load
 
-| Aspect   | Detail                                                                                                              |
-| -------- | ------------------------------------------------------------------------------------------------------------------- |
-| Location | `tests/artillery`: `feed-flow.yml` (HTTP flows) and `browser-flow.yml` (browser flows via the Playwright engine)    |
-| Runs     | `npm run test:load` (feed flow by default) against prod-like local, or against deployed envs for absolute numbers   |
-| Shape    | Phased load (ramp → sustain → ramp-down) with mixed scenarios (anonymous browse, authenticated feed, post creation) |
+| Aspect   | Detail                                                                                                                                                                                                                       |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Location | `tests/artillery`: `feed-flow.yml` (HTTP flows), `browser-flow.yml` (browser journeys via the Playwright engine), `processors.ts` (shared processor: demo-user rotation, password-grant token cache, browser flow functions) |
+| Runs     | `npm run test:load` — both flows in sequence, exit-code gated; needs the prod-like stack (`deps:up` + `bootstrap`, like e2e). Absolute numbers for deployed envs come from the nightly (`-e deployed`)                       |
+| Shape    | Phased load (warm-up → ramp) with a read-heavy mix (feed browse + post create), rotated across `demo1..demoN` so the per-user rate limiter sees spread load instead of throttling one user (#158)                            |
+| Gating   | Budgets live in the configs (`ensure:` + the ensure plugin) and **fail the run**: breaches, error-rate excess, or a vacuous run (zero requests) exit non-zero — the suite cannot pass by doing nothing                       |
 
-Thresholds (SLAs at target load):
+Thresholds (SLAs at target load — local budgets):
 
-| Flow                      | Threshold            |
-| ------------------------- | -------------------- |
-| API endpoints             | p95 latency < 500 ms |
-| Pages (web/browser flows) | p95 < 2 s            |
+| Flow                      | Threshold                                                      |
+| ------------------------- | -------------------------------------------------------------- |
+| API endpoints (feed flow) | p95 < 150 ms · p99 < 400 ms · error rate < 1% · ≥ 200 requests |
+| Pages (browser flow)      | per-page p95 < 1 s · error rate < 1%                           |
 
-Load runs never target dev mode and are excluded from per-PR gates ([03-coverage-and-gates.md](03-coverage-and-gates.md)). Nightly, a smoke run against the deployed dev environment publishes its report as a CI artifact ([../operations/04-release-pipeline.md](../operations/04-release-pipeline.md)).
+- The budgets are anchored to measured idle-stack baselines (API p95 ≈ 13 ms steady @5 rps, page p95 ≤ 55 ms): ~10× headroom for CI jitter while still catching 3–5× regressions. Tighten from measurements, never aspiration.
+- The nightly deployed smoke runs the feed flow with WAN-scaled tripwire budgets (`environments.deployed` in `feed-flow.yml`); replace them with measured baselines once a few nightly reports exist. Browser budgets stay local until a deployed browser baseline is recorded.
+- `config.target` reads `E2E_BASE_URL` via bare `$processEnvironment` lookup — the only interpolation Artillery supports there. `packages/scripts/src/load.ts` computes the offset-aware local URLs; deployed runs export `E2E_BASE_URL` directly.
+
+Load runs never target dev mode and are excluded from per-PR gates ([03-coverage-and-gates.md](03-coverage-and-gates.md)); `npm run check:load` runs the suite on demand against a local stack. Nightly, a smoke run against the deployed dev environment publishes its report as a CI artifact ([../operations/04-release-pipeline.md](../operations/04-release-pipeline.md)).
 
 ## Stryker — mutation
 

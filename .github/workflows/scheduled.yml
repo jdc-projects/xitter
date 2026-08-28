@@ -76,7 +76,11 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - name: Smoke load run (feed flow)
-        run: npx artillery run --output tests/artillery/report.json tests/artillery/feed-flow.yml
+        # -e deployed: WAN-scaled tripwire budgets (see feed-flow.yml) until
+        # the nightly publishes measured baselines. Gating is live - a broken
+        # target, zero requests, or an error-rate breach fails this step
+        # (the old config sent zero requests and still exited 0, #158).
+        run: npx artillery run -e deployed --output tests/artillery/report.json tests/artillery/feed-flow.yml
       - name: Publish run summary
         if: always()
         uses: actions/upload-artifact@v7
