@@ -24,9 +24,12 @@ function chromiumDevice<T extends { defaultBrowserType?: string }>(device: T) {
 }
 
 // Mobile matrix (#151): the core journey specs re-run at iPhone 13
-// (390x844) and iPhone SE (375x667) widths. mobile.spec.ts (the
-// horizontal-overflow guard) lives here too; everything else stays desktop.
+// (390x844); iPhone SE (375x667) is the 320px-class geometry guard - nav +
+// the overflow spec - not a second concurrent pass over the stateful flow
+// specs (they share fixed demo accounts, and two device projects racing
+// them against one stack fight over follow/block edges).
 const MOBILE_MATCH = /(nav|feed-flow|post-flow|profile|search-flow|mobile)\.spec\.ts/;
+const MOBILE_SE_MATCH = /(nav|mobile)\.spec\.ts/;
 
 export default defineConfig({
   testDir: '.',
@@ -53,14 +56,12 @@ export default defineConfig({
       testMatch: MOBILE_MATCH,
     },
     {
-      // Runs AFTER `mobile` (#151): the flow specs share fixed demo-account
-      // pairs, so two device projects racing the same spec against one stack
-      // fight over follow/block state. Serial device passes keep the matrix
-      // deterministic; the desktop projects still run alongside.
+      // The 320px-class guard (#151): nav behaviour + the horizontal
+      // overflow spec at iPhone SE width. Deliberately NOT the flow specs -
+      // see MOBILE_SE_MATCH above.
       name: 'mobile-se',
       use: { ...chromiumDevice(devices['iPhone SE']) },
-      testMatch: MOBILE_MATCH,
-      dependencies: ['mobile'],
+      testMatch: MOBILE_SE_MATCH,
     },
     {
       // The axe set re-scanned at an iPhone-class viewport (#151) - where
