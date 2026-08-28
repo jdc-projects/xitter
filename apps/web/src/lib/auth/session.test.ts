@@ -146,6 +146,78 @@ describe('resolveSession', () => {
     });
   });
 
+  it('serves the current token near expiry while a background refresh runs (#155)', async () => {
+    const { sessions } = memoryStores();
+    const id = await sessions.create({
+      subject: 'user-1',
+      username: 'demo1',
+      accessToken: 'still-valid',
+      refreshToken: 'old-refresh',
+      expiresAt: clockNow + 30_000, // inside the 60s proactive window
+    });
+    let resolveGrant: (tokens: unknown) => void = () => {};
+    refreshTokenGrantMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveGrant = resolve;
+      }) as never,
+    );
+
+    // The request does NOT wait for the grant: it returns the valid token.
+    await expect(resolveSession(sessions, id)).resolves.toMatchObject({
+      accessToken: 'still-valid',
+    });
+
+    // The background refresh completes and persists the new tokens.
+    resolveGrant(tokenResponse());
+    await vi.waitFor(() => expect(refreshTokenGrantMock).toHaveBeenCalledTimes(1));
+    const stored = await sessions.get(id);
+    expect(stored).toMatchObject({ accessToken: 'new-access', refreshToken: 'new-refresh' });
+  });
+
+  it('a failed background refresh does not destroy a still-valid session (#155)', async () => {
+    const { sessions } = memoryStores();
+    const id = await sessions.create({
+      subject: 'user-1',
+      username: 'demo1',
+      accessToken: 'still-valid',
+      refreshToken: 'old-refresh',
+      expiresAt: clockNow + 30_000,
+    });
+    refreshTokenGrantMock.mockRejectedValue(new Error('kc briefly down') as never);
+
+    await expect(resolveSession(sessions, id)).resolves.toMatchObject({
+      accessToken: 'still-valid',
+    });
+    await vi.waitFor(() => expect(refreshTokenGrantMock).toHaveBeenCalledTimes(1));
+
+    // The record survives: the token is valid and the failure was in the
+    // background, not on the request path.
+    const stored = await sessions.get(id);
+    expect(stored).toMatchObject({ accessToken: 'still-valid' });
+  });
+
+  it('does not double-schedule the background refresh while one is in flight', async () => {
+    const { sessions } = memoryStores();
+    const id = await sessions.create({
+      subject: 'user-1',
+      username: 'demo1',
+      accessToken: 'still-valid',
+      refreshToken: 'old-refresh',
+      expiresAt: clockNow + 30_000,
+    });
+    let resolveGrant: (tokens: unknown) => void = () => {};
+    refreshTokenGrantMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveGrant = resolve;
+      }) as never,
+    );
+
+    await resolveSession(sessions, id);
+    await resolveSession(sessions, id);
+    resolveGrant(tokenResponse());
+    await vi.waitFor(() => expect(refreshTokenGrantMock).toHaveBeenCalledTimes(1));
+  });
+
   it('shares one in-flight refresh between concurrent callers (layout + page)', async () => {
     const { sessions } = memoryStores();
     const id = await sessions.create({
