@@ -147,11 +147,12 @@ export class FeedService {
     // the reposter as the surface `authorId` (fanout filtering), so the
     // original author must join the profile batch alongside the reposter.
     const authorIds = [
-      ...new Set([
-        ...entries.flatMap((entry) => [posts.get(entry.postId)?.authorId, entry.repostedById]),
-        ...[...parents.values()].map((parent) => parent.authorId),
-      ].filter((id): id is string => Boolean(id))),
-    ];
+      ...new Set(
+        [
+          ...entries.flatMap((entry) => [posts.get(entry.postId)?.authorId, entry.repostedById]),
+          ...[...parents.values()].map((parent) => parent.authorId),
+        ].filter((id): id is string => Boolean(id)),
+      ),
     ];
     const profiles = await this.content.profiles(authorIds);
     const blocked = new Set(blockedAuthorIds);
