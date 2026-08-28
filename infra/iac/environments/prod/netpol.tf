@@ -296,8 +296,21 @@ resource "kubernetes_network_policy" "allow_keycloak_egress" {
         }
       }
 
+      # 80 is the service port; 8080/9000 are the container ports the
+      # service DNATs to. This cluster's Calico evaluates egress policy
+      # AFTER DNAT, so the rule must match the real destination ports too
+      # - without them every in-cluster Keycloak call (KEYCLOAK_BASE_URL,
+      # main.tf's keycloak_incluster_url) times out silently.
       ports {
         port     = 80
+        protocol = "TCP"
+      }
+      ports {
+        port     = 8080
+        protocol = "TCP"
+      }
+      ports {
+        port     = 9000
         protocol = "TCP"
       }
     }
@@ -502,6 +515,9 @@ resource "kubernetes_network_policy" "allow_kafka_egress" {
 # creation + interactions → posts, follows/blocks → social, upload slots →
 # media). Cap.js (login captcha) and the ws-token broker also live in web
 # and store through Valkey, so web needs egress too - login 500s without it.
+# The three workers read the reset epoch from it to pause/resume themselves
+# around a wipe (ADR 0010; prod runs no nightly reset yet - #13 - but the
+# workers carry VALKEY_URL and must reach the store either way).
 resource "kubernetes_network_policy" "allow_valkey_egress" {
   metadata {
     name      = "xitter-allow-valkey-egress"
@@ -515,7 +531,7 @@ resource "kubernetes_network_policy" "allow_valkey_egress" {
       match_expressions {
         key      = "app.kubernetes.io/name"
         operator = "In"
-        values   = ["feed", "posts", "social", "media", "web"]
+        values   = concat(["feed", "posts", "social", "media", "web"], local.workers)
       }
       match_labels = {
         "app.kubernetes.io/instance" = var.environment
@@ -722,7 +738,9 @@ resource "kubernetes_network_policy" "kafka_ingress" {
   }
 }
 
-# Valkey: its users only (mirrors allow_valkey_egress) + Prometheus
+# Valkey: its users only (mirrors allow_valkey_egress - web included: its
+# session store and rate-limit reads land here, and the ingress policy wins
+# over the egress allow on a default-deny+allow pair) + Prometheus
 # (metrics exporter).
 resource "kubernetes_network_policy" "valkey_ingress" {
   metadata {
@@ -743,7 +761,7 @@ resource "kubernetes_network_policy" "valkey_ingress" {
           match_expressions {
             key      = "app.kubernetes.io/name"
             operator = "In"
-            values   = ["feed", "posts", "social", "media"]
+            values   = concat(["feed", "posts", "social", "media", "web"], local.workers)
           }
           match_labels = {
             "app.kubernetes.io/instance" = var.environment

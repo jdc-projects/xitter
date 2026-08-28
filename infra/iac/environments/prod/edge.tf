@@ -6,7 +6,8 @@
 #   - `/api/{service}` routes use auth_mode=oidc-api: the edge validates the
 #     Keycloak access token, checks aud contains the receiving service's
 #     client id, and injects identity headers. The module provisions its own
-#     `<name>-api` client per route in the xitter-demo realm.
+#     `<name>-api` client per route in this environment's demo realm
+#     (xitter-demo-prod, ADR 0012).
 #   - `/cms` + `/admin` use auth_mode=oidc-interactive against the homelab
 #     primary realm (the module provisions the clients xitter-prod-cms /
 #     xitter-prod-admin); role gating (app-admin / system-admin) per spec.
@@ -49,8 +50,8 @@ module "ingress_api" {
 
   do_enable_geoblock = false
 
-  # xitter-demo is a literal realm this environment creates (verified above);
-  # the module's known-realms list only covers primary/master aliases.
+  # xitter-demo-prod is a literal realm this environment creates (verified
+  # above); the module's known-realms list only covers primary/master aliases.
   silenced_checks = ["keycloak_auth_realm_known"]
 
   kubeconfig_path = local.kubeconfig
@@ -195,7 +196,7 @@ module "ingress_media_uploads" {
 
 # Keycloak demo-realm path routes on the idp host. The homelab edge
 # geo-blocks non-UK traffic host-wide on *.jd-chapman.dev, but the demo is
-# global, so exactly three paths are opened - realms/xitter-demo (the demo
+# global, so exactly three paths are opened - realms/<demo realm> (the demo
 # realm's endpoints: well-known, token, login flows) plus the `resources` and
 # `js` theme-asset paths the login page loads from realm-agnostic paths
 # (missing these breaks the login page for non-UK visitors). auth_mode is
@@ -203,14 +204,17 @@ module "ingress_media_uploads" {
 # realms/primary, /admin - stays UK-only via homelab's route; do NOT widen
 # these paths. Crowdsec's token-endpoint exception lives in the homelab.
 #
-# Priority is 190, NOT dev's 200: dev already geo-opens these exact matchers
-# against the same canonical Keycloak service, and two matching routes at
-# equal priority is an undefined Traefik tie. At 190, dev's routes win while
-# they exist and these stay armed as a standby - if the dev environment is
-# ever destroyed, prod's routes still beat the homelab's geo-blocked
-# host-level route (priority 0), so global demo login survives.
-# Resource names are derived from `name` (see the /api/media collision note
-# above), hence the -demo/-assets/-js suffixes.
+# The realm route opens exactly THIS environment's realm
+# (xitter-demo-prod, ADR 0012): dev's route geo-opens dev's xitter-demo at
+# priority 200, and the anchored regexes are disjoint, so the two never
+# collide - each env's demo login survives independently of the other.
+# Priority stays 190 for the assets/js routes: those paths DO overlap with
+# dev's 200-priority routes, and two matching routes at equal priority is
+# an undefined Traefik tie - dev's win while they exist and these stay
+# armed as a standby (if dev is ever destroyed, prod's routes still beat
+# the homelab's geo-blocked host-level route at priority 0). Resource names
+# are derived from `name` (see the /api/media collision note above), hence
+# the -demo/-assets/-js suffixes.
 module "ingress_keycloak_demo" {
   source = "github.com/jdc-projects/homelab//iac/modules/ingress"
 
@@ -221,7 +225,7 @@ module "ingress_keycloak_demo" {
   # names like /realms/xitter-demo-backup. PathRegexp treats `path` as the
   # verbatim Traefik regex (no automatic leading slash), keeping the
   # geo-open surface exactly this realm.
-  path         = "^/realms/xitter-demo(/.*)?$"
+  path         = "^/realms/${local.demo_realm}(/.*)?$"
   path_matcher = "PathRegexp"
   priority     = 190
 

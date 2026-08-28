@@ -161,6 +161,16 @@ locals {
   # keycloak-config remote state, same source the ingress module uses.
   keycloak_url = data.terraform_remote_state.keycloak.outputs.keycloak_url
 
+  # Runtime (services/workers) reaches Keycloak in-cluster: pods egress via
+  # the home IP, so M2M token grants against the public URL present the
+  # home IP at Cloudflare - and bursts of client-credential grants trip
+  # CrowdSec's out-of-band rules, banning the IP and 403ing the very next
+  # grant (dev's nightly reset reliably banned itself; live-proven
+  # 2026-08-25). The in-cluster service has no edge in the path. The public
+  # keycloak_url stays for the tofu provider override and the web app's
+  # browser-facing OIDC discovery (XITTER_KEYCLOAK_URL).
+  keycloak_incluster_url = "http://keycloak-keycloakx-http.keycloak:80"
+
   otel_endpoint = "http://otel-collector.otel.svc:4318"
 
   kafka_bootstrap = "kafka.${local.ns}.svc:9092"
@@ -171,7 +181,8 @@ locals {
 # deps.tf (Postgres/Kafka/Valkey/OpenSearch/RustFS), databases.tf (per-service
 # DBs + secrets), keycloak.tf (realm + clients), workloads.tf (11
 # xitter-service instances), edge.tf (ingress routing), netpol.tf (default-deny
-# + allows), observability.tf (Sentry + monitors + alerts + dashboards).
-# Deltas from dev are commented in place (Postgres/OpenSearch sizing, pinned
-# image tags, reset wiring pending #13).
+# + allows), observability.tf (Sentry + monitors + alerts + dashboards),
+# reset.tf (deploy-path demo-user provisioning; the nightly reset CronJob is
+# pending #13). Deltas from dev are commented in place (Postgres/OpenSearch
+# sizing, pinned image tags, realm-per-environment).
 # ---------------------------------------------------------------------------

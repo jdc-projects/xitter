@@ -95,6 +95,12 @@ jobs:
             dockerfile: apps/workers/media-process/Dockerfile
           - image: xitter-search-index
             dockerfile: apps/workers/search-index/Dockerfile
+          # The reset image is part of the prod contract too: the
+          # ensure-demo-users Job (reset.tf) runs it on every apply, so a
+          # release must publish the version tag it will deploy - without it
+          # the job has no prod-tagged image to pull (#159).
+          - image: xitter-reset
+            dockerfile: packages/scripts/Dockerfile
     steps:
       - uses: actions/checkout@v7
 
