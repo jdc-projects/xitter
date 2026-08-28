@@ -6,11 +6,11 @@ import type { AboutEntry } from '@/lib/cms/content';
  * titled section - what this is, why it exists, how it works. Shared by the
  * server page and the live-preview client component.
  *
- * The slug is the anchor id (`about-what` -> `#what`) so deep links (e.g.
- * the reset notice's read-more) can target a section; the prefix is the
- * collection's stable promotion key, so it cannot drift per environment.
+ * The slug is the anchor id (`about-what` -> `#what`) so deep links can
+ * target a section; the prefix is the collection's stable promotion key, so
+ * it cannot drift per environment.
  */
-export function aboutSectionAnchor(slug: string): string {
+function aboutSectionAnchor(slug: string): string {
   return slug.replace(/^about-/, '');
 }
 

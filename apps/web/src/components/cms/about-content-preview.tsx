@@ -1,17 +1,10 @@
 'use client';
 
-import { useLivePreview } from '@payloadcms/live-preview-react';
 import type { AboutEntry } from '@/lib/cms/content';
 import { AboutSections } from './about-sections';
-import { cmsPopulateRequest, patchEntry } from './live-preview-utils';
+import { useLiveCollection } from './live-preview-collection';
 
-/**
- * Live preview (/about?preview=<docId>): renders the draft About sections
- * server-side, then applies the doc Payload pushes over postMessage as the
- * admin edits. `serverURL` is the browser-facing CMS origin (postMessage
- * source check). FAQ docs preview on the same page - a live doc without
- * About fields is ignored rather than appended as an empty section.
- */
+/** Live preview (/about?preview=<docId>) for the About intro sections. */
 export function AboutContentPreview({
   entries,
   previewId,
@@ -21,22 +14,7 @@ export function AboutContentPreview({
   previewId: string;
   serverURL: string;
 }) {
-  const match = entries.find((entry) => String(entry.id ?? '') === previewId);
-  const initialData = (match ?? { id: Number.parseInt(previewId, 10) || 0 }) as unknown as Record<
-    string,
-    unknown
-  >;
-
-  const { data } = useLivePreview({
-    serverURL,
-    depth: 0,
-    initialData,
-    // Route Payload's population call to the CMS itself - the app shares the
-    // origin but not Payload's /api paths.
-    requestHandler: cmsPopulateRequest(serverURL),
-  });
-
-  const live = data as Partial<AboutEntry> | null;
-  const isAboutDoc = live?.intro !== undefined || live?.title !== undefined;
-  return <AboutSections entries={isAboutDoc ? patchEntry(entries, data) : entries} />;
+  // `intro` marks an About-section doc; FAQ docs preview on the same page.
+  const live = useLiveCollection(entries, previewId, serverURL, 'intro');
+  return <AboutSections entries={live} />;
 }
