@@ -1,15 +1,19 @@
-import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Query } from '@nestjs/common';
 import { Internal } from '@xitter/auth-nest';
 import {
   internalAuthorPostsRequestSchema,
   internalCreatePostRequestSchema,
+  internalViewerStateQuerySchema,
   postLookupRequestSchema,
   type InternalAuthorPostsRequest,
   type InternalCreatePostRequest,
+  type InternalViewerStateQuery,
   type PostLookupRequest,
 } from '@xitter/api-contracts';
 import { ZodValidationPipe } from '@xitter/service-kit';
 import { PostsService } from './posts.service.js';
+
+const internalViewerStateQuery = new ZodValidationPipe(internalViewerStateQuerySchema);
 
 /**
  * Service-to-service endpoints (spec 03 internal table). No version segment -
@@ -26,6 +30,18 @@ export class InternalController {
   @HttpCode(200)
   reseed(): Promise<{ ok: boolean }> {
     return this.posts.reseed().then(() => ({ ok: true }));
+  }
+
+  /**
+   * Batched viewer flags by user id (#157): the feed service folds these
+   * into its pages so the web renders a feed in one hop instead of
+   * feed-then-viewer-state. M2M (svc-* audience), same service method the
+   * user-facing endpoint uses.
+   */
+  @Get('posts/viewer-state')
+  @Internal()
+  viewerState(@Query(internalViewerStateQuery) query: InternalViewerStateQuery) {
+    return this.posts.viewerState(query.userId, query.postIds).then((items) => ({ items }));
   }
 
   /**

@@ -136,6 +136,16 @@ export const viewerStateQuerySchema = z
   })
   .openapi('ViewerStateQuery');
 
+/** Internal viewer-state query (#157): same id list, addressed by userId. */
+export const internalViewerStateQuerySchema = z
+  .object({
+    userId: z.string().uuid(),
+    postIds: viewerStateQuerySchema.shape.postIds,
+  })
+  .openapi('InternalViewerStateQuery');
+
+export type InternalViewerStateQuery = z.infer<typeof internalViewerStateQuerySchema>;
+
 export const viewerStateResponseSchema = z
   .object({
     items: z.array(postViewerStateSchema),

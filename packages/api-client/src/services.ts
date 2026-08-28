@@ -71,14 +71,24 @@ function cleanQuery(query: Record<string, string | undefined>): Record<string, s
  * crossServiceUrlSchema - required when XITTER_ENV is dev/prod, defaulted
  * locally (#113). No second enforcement layer here.
  */
-export const localServiceUrls = () => ({
-  social: process.env.XITTER_SOCIAL_URL ?? localUrl('social'),
-  posts: process.env.XITTER_POSTS_URL ?? localUrl('posts'),
-  media: process.env.XITTER_MEDIA_URL ?? localUrl('media'),
-  feed: process.env.XITTER_FEED_URL ?? localUrl('feed'),
-  search: process.env.XITTER_SEARCH_URL ?? localUrl('search'),
-  keycloak: process.env.XITTER_KEYCLOAK_URL ?? localUrl('keycloak'),
-});
+type ServiceName = 'social' | 'posts' | 'media' | 'feed' | 'search' | 'keycloak';
+
+const SERVICE_URL_ENV: Record<ServiceName, string> = {
+  social: 'XITTER_SOCIAL_URL',
+  posts: 'XITTER_POSTS_URL',
+  media: 'XITTER_MEDIA_URL',
+  feed: 'XITTER_FEED_URL',
+  search: 'XITTER_SEARCH_URL',
+  keycloak: 'XITTER_KEYCLOAK_URL',
+};
+
+export const localServiceUrls = (): Record<ServiceName, string> => {
+  const urls = {} as Record<ServiceName, string>;
+  for (const name of Object.keys(SERVICE_URL_ENV) as ServiceName[]) {
+    urls[name] = process.env[SERVICE_URL_ENV[name]] ?? localUrl(name);
+  }
+  return urls;
+};
 
 export class SocialClient extends ServiceClient {
   constructor(options: ServiceClientOptions) {
@@ -292,6 +302,20 @@ export class PostsClient extends ServiceClient {
     return this.post(`${V1}/posts/internal/posts/lookup`, { postIds }).then(
       postLookupResponseSchema.parse,
     );
+  }
+
+  /**
+   * Internal (#157): batched viewer flags by user id - the feed service
+   * folds them into its pages so the web renders in one hop. Same shape as
+   * the user-facing GET /v1/posts/viewer-state, addressed by userId for the
+   * M2M caller.
+   */
+  // fallow-ignore-next-line unused-class-member -- consumed via ServiceContentSource.viewerState (cross-package graph blind spot)
+  internalViewerState(userId: string, postIds: string[]): Promise<{ items: PostViewerState[] }> {
+    return this.get(`${V1}/posts/internal/posts/viewer-state`, {
+      userId,
+      postIds: postIds.join(','),
+    }).then(viewerStateResponseSchema.parse);
   }
 
   /** Internal (fanout worker #7): author timeline for the follow backfill. */
