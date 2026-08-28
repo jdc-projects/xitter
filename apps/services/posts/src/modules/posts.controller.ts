@@ -23,6 +23,7 @@ import {
   type CreatePostRequest,
   type InteractionKind,
   type Post as PostDto,
+  type ThreadResponse,
 } from '@xitter/api-contracts';
 import { ZodValidationPipe } from '@xitter/service-kit';
 import { PostsService, type PostPage } from './posts.service.js';
@@ -85,6 +86,15 @@ export class PostsController {
     @Query(pageQuery) page: { cursor?: string; limit: number },
   ): Promise<PostPage> {
     return this.posts.postReplies(postId, page);
+  }
+
+  /** Composed thread read (#152): ancestors, focus, nested reply tree. */
+  @Get('posts/:postId/thread')
+  thread(
+    @Param('postId', uuidParam) postId: string,
+    @Query(pageQuery) page: { cursor?: string; limit: number },
+  ): Promise<ThreadResponse> {
+    return this.posts.getThread(postId, page);
   }
 
   /** Like/bookmark/repost: idempotent; blocked callers 403 (#8, product 6.4). */

@@ -69,7 +69,8 @@
     "apps/workers/fanout/package.json:@stryker-mutator/vitest-runner",
     "apps/workers/media-process/package.json:@stryker-mutator/vitest-runner",
     "apps/workers/search-index/package.json:@stryker-mutator/vitest-runner",
-    "package.json:@usebruno/cli"
+    "package.json:@usebruno/cli",
+    "packages/scripts/package.json:@stryker-mutator/vitest-runner"
   ],
   "circular_dependencies": [],
   "re_export_cycles": [],

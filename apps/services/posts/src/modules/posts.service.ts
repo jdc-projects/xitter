@@ -1,5 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  THREAD_ANCESTORS_MAX,
+  THREAD_CHILDREN_PREVIEW,
+  THREAD_DEPTH_MAX,
   createPostRequestSchema,
   type AdminPostsListQuery,
   type CreatePostRequest,
@@ -8,6 +11,8 @@ import {
   type MediaAsset,
   type Post,
   type PostViewerState,
+  type ThreadNode,
+  type ThreadResponse,
 } from '@xitter/api-contracts';
 import { createLogger } from '@xitter/observability';
 import { assertValidCursor, badRequest, forbidden, notFound } from '@xitter/service-kit';
@@ -158,6 +163,29 @@ export class PostsService {
     assertValidCursor(page.cursor);
     const result = await this.repo.replies(postId, page.cursor, page.limit);
     return { items: result.items.map((row) => this.toPost(row)), nextCursor: result.nextCursor };
+  }
+
+  /**
+   * The composed thread read (#152): ancestor chain above the focus post,
+   * the focus, and a bounded nested reply tree below it - bare posts, no
+   * author hydration (callers join profiles exactly as for every other
+   * posts read). 404 semantics match `getPost`.
+   */
+  async getThread(postId: string, page: PageRequest): Promise<ThreadResponse> {
+    assertValidCursor(page.cursor);
+    const focus = await this.repo.findVisiblePost(postId);
+    if (!focus) throw notFound('Post not found');
+
+    const { ancestors, truncated } = await this.ancestorChain(focus);
+    const replies = await this.repo.replies(postId, page.cursor, page.limit);
+
+    return {
+      ancestors: ancestors.map((row) => this.toPost(row)),
+      ancestorsTruncated: truncated,
+      focus: this.toPost(focus),
+      replies: await this.buildThreadNodes(replies.items, 1),
+      repliesCursor: replies.nextCursor,
+    };
   }
 
   /** Internal (feed hydration): visible posts by id, any author. */
@@ -357,6 +385,75 @@ export class PostsService {
       }
     }
     return parent;
+  }
+
+  /**
+   * Walk `replyToId` hops from the focus towards the root (#152): one
+   * visible-post lookup per hop (PK hits), a visited-set cycle guard for
+   * corrupt chains, capped at `THREAD_ANCESTORS_MAX`. A soft-deleted
+   * ancestor ends the walk with no tombstone row - the same silent-gap
+   * semantics the one-hop parent fetch always had. Returns root → parent
+   * order; `truncated` is only true when the *visible* chain continues
+   * past the cap (one extra hop decides it - deleted 26th, no flag).
+   */
+  private async ancestorChain(focus: PostRow): Promise<{
+    ancestors: PostRow[];
+    truncated: boolean;
+  }> {
+    const ancestors: PostRow[] = [];
+    const visited = new Set<string>([focus.id]);
+    let next = focus.replyToId;
+    while (next && ancestors.length < THREAD_ANCESTORS_MAX) {
+      const row = await this.repo.findVisiblePost(next);
+      if (!row || visited.has(row.id)) break;
+      visited.add(row.id);
+      ancestors.push(row);
+      next = row.replyToId;
+    }
+    // Collected parent → root; the contract order is root → parent.
+    ancestors.reverse();
+
+    // Truncated only when the *visible* chain continues past the cap: one
+    // extra hop decides it (a deleted 26th ancestor is a gap, not a flag).
+    let truncated = false;
+    if (ancestors.length === THREAD_ANCESTORS_MAX && next) {
+      truncated = Boolean(await this.repo.findVisiblePost(next));
+    }
+    return { ancestors, truncated };
+  }
+
+  /**
+   * Bounded BFS for the reply tree (#152): the top level honours the page
+   * request; nested levels embed `THREAD_CHILDREN_PREVIEW` oldest children
+   * per node, descending at most `THREAD_DEPTH_MAX` below the focus.
+   * `childrenTruncated` follows the counts read-model (direct replies vs
+   * embedded) so clients can label "N replies - show" without another call;
+   * at the depth cap nodes embed no children and the flag just reports
+   * whether the conversation continues (clients navigate, not expand).
+   */
+  private async buildThreadNodes(rows: PostRow[], depth: number): Promise<ThreadNode[]> {
+    if (rows.length === 0) return [];
+    if (depth >= THREAD_DEPTH_MAX) {
+      return rows.map((row) => ({
+        post: this.toPost(row),
+        children: [],
+        childrenTruncated: row.replyCount > 0,
+      }));
+    }
+
+    const childPages = await Promise.all(
+      rows.map((row) => this.repo.replies(row.id, undefined, THREAD_CHILDREN_PREVIEW)),
+    );
+    return Promise.all(
+      rows.map(async (row, index) => {
+        const children = childPages[index]!.items;
+        return {
+          post: this.toPost(row),
+          children: await this.buildThreadNodes(children, depth + 1),
+          childrenTruncated: row.replyCount > children.length,
+        };
+      }),
+    );
   }
 
   /**

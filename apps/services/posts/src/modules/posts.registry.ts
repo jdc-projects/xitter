@@ -14,6 +14,7 @@ import {
   postLookupResponseSchema,
   postIdSchema,
   postSchema,
+  threadResponseSchema,
   userIdSchema,
   viewerStateResponseSchema,
 } from '@xitter/api-contracts';
@@ -120,6 +121,20 @@ postsApi.registerPath({
   responses: {
     200: jsonResponse('Replies page', postPage),
     404: jsonResponse('Parent not found (or deleted)', errorSchema),
+  },
+});
+
+postsApi.registerPath({
+  method: 'get',
+  path: '/posts/{postId}/thread',
+  tags: ['posts'],
+  security: [{ bearerAuth: [] }],
+  description:
+    'The composed thread read (#152): ancestor chain (root → direct parent, capped at 25 with `ancestorsTruncated` flagging a longer visible chain; a soft-deleted ancestor ends the chain), the focus post, and direct replies (oldest first, top-level page limit respected) each embedding a bounded preview subtree - 2 oldest children per node, nesting at most 3 deep, `childrenTruncated` following the direct-reply counts. `repliesCursor` pages more top-level replies (same keyset as /replies). Bare posts only: callers hydrate authors and viewer state as for every other posts read.',
+  request: { params: postParams, query: pageQuerySchema },
+  responses: {
+    200: jsonResponse('Thread (ancestors, focus, nested replies)', threadResponseSchema),
+    404: jsonResponse('Focus not found (or deleted)', errorSchema),
   },
 });
 

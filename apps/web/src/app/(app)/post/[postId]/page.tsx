@@ -1,15 +1,16 @@
-import { Anchor, Container, Divider, Stack, Text, Title } from '@mantine/core';
+import { Container, Divider, Stack, Title, Text } from '@mantine/core';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { postIdSchema, type Post } from '@xitter/api-contracts';
+import { postIdSchema, type ThreadResponse } from '@xitter/api-contracts';
 import { ApiError } from '@xitter/api-client';
 import { requireSession } from '@/lib/auth/session';
 import { PostComposer } from '@/components/post-composer';
 import { PostInteractions } from '@/components/post-interactions';
 import { DeletePostButton } from '@/components/delete-post-button';
-import { toPostCardItems } from '@/lib/posts/cards';
+import { toThreadItems, threadTreePosts } from '@/lib/posts/cards';
 import { clientsForSession, profilesByAuthorIds, viewerStateByPostId } from '@/lib/posts/server';
-import { ReplyThread } from './reply-thread';
+import { AncestorChain } from './ancestor-chain';
+import { ThreadTree } from './thread-tree';
 
 export const metadata: Metadata = { title: 'Post' };
 
@@ -19,10 +20,12 @@ const cardAuthor = (profile: { username: string; displayName: string } | undefin
     : { id, username: 'unknown', displayName: 'Unknown' };
 
 /**
- * Post detail: the post, its reply thread (chronological, spec 03), an
- * inline reply composer, and delete for the author. Deleted/missing posts
- * render the 404 page - soft-deleted is indistinguishable from absent.
- * Load more appends in place on the shared cursor pattern (#41).
+ * Post detail (#152 thread view): the full ancestor chain above the focus
+ * ("showing this thread" - compact linked cards with connector guides),
+ * the focus card, one reply composer, and the nested reply tree below.
+ * Deleted/missing posts render the 404 page - soft-deleted is
+ * indistinguishable from absent. Load more appends in place on the shared
+ * cursor pattern (#41).
  */
 export default async function PostDetailPage({ params }: { params: Promise<{ postId: string }> }) {
   const { postId } = await params;
@@ -34,31 +37,28 @@ export default async function PostDetailPage({ params }: { params: Promise<{ pos
 
   const { posts, social } = clientsForSession(session);
 
-  let post: Post;
+  // One composed read replaces the getPost + parent getPost + getReplies
+  // trio; a deleted ancestor simply ends the chain (no tombstone row).
+  let thread: ThreadResponse;
   try {
-    post = await posts.getPost(postId);
+    thread = await posts.getThread(postId);
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) notFound();
     throw error;
   }
 
-  // Parent context ("Replying to @x") for replies opened directly; fetched
-  // before author hydration so its author joins the same profile batch.
-  const parentPost = post.replyToId ? await posts.getPost(post.replyToId).catch(() => null) : null;
-
-  const replies = await posts
-    .getReplies(postId)
-    .catch(() => ({ items: [] as Post[], nextCursor: null }));
-  const authors = await profilesByAuthorIds(social, [
-    post.authorId,
-    ...(parentPost ? [parentPost.authorId] : []),
-    ...replies.items.map((reply) => reply.authorId),
-  ]);
-
-  // Interaction flags for the detail card + the visible replies (#8).
-  const states = await viewerStateByPostId(posts, [
-    post.id,
-    ...replies.items.map((reply) => reply.id),
+  const treePosts = threadTreePosts(thread.replies);
+  // Author + viewer hydration are independent - run them together.
+  const [authors, states] = await Promise.all([
+    profilesByAuthorIds(social, [
+      thread.focus.authorId,
+      ...thread.ancestors.map((ancestor) => ancestor.authorId),
+      ...treePosts.map((post) => post.authorId),
+    ]),
+    // Interaction flags for the detail card + the visible tree nodes (#8).
+    // The focus post rides first so the batch cap always covers it; deeper
+    // nodes past the cap render with default-false flags (a tap reconciles).
+    viewerStateByPostId(posts, [thread.focus.id, ...treePosts.map((post) => post.id)]),
   ]);
   const flagsOf = (id: string) => {
     const state = states.get(id);
@@ -69,7 +69,8 @@ export default async function PostDetailPage({ params }: { params: Promise<{ pos
     };
   };
 
-  const author = cardAuthor(authors.get(post.authorId), post.authorId);
+  const author = cardAuthor(authors.get(thread.focus.authorId), thread.focus.authorId);
+  const treeItems = toThreadItems(thread.replies, authors, states, session.subject);
 
   return (
     <Container size="sm" py="xl">
@@ -78,31 +79,28 @@ export default async function PostDetailPage({ params }: { params: Promise<{ pos
           Post
         </Title>
 
-        {parentPost ? (
-          <Text size="sm" c="dimmed">
-            Reply to{' '}
-            <Anchor href={`/post/${parentPost.id}`} size="sm" data-testid="parent-post-link">
-              @{cardAuthor(authors.get(parentPost.authorId), parentPost.authorId).username}
-            </Anchor>
-          </Text>
-        ) : null}
+        <AncestorChain
+          ancestors={thread.ancestors}
+          authors={authors}
+          truncated={thread.ancestorsTruncated}
+        />
 
-        <div data-testid={`post-detail-${post.id}`}>
+        <div data-testid={`post-detail-${thread.focus.id}`}>
           <PostInteractions
-            post={post}
+            post={thread.focus}
             author={author}
-            viewer={flagsOf(post.id)}
+            viewer={flagsOf(thread.focus.id)}
             variant="original"
           />
         </div>
-        {post.authorId === session.subject ? (
-          <DeletePostButton postId={post.id} username={author.username} goTo="/feed" />
+        {thread.focus.authorId === session.subject ? (
+          <DeletePostButton postId={thread.focus.id} username={author.username} goTo="/feed" />
         ) : null}
 
         <Divider my="xs" />
 
         <PostComposer
-          replyToId={post.id}
+          replyToId={thread.focus.id}
           placeholder="Post your reply"
           submitLabel="Reply"
           testId="reply-composer"
@@ -110,15 +108,15 @@ export default async function PostDetailPage({ params }: { params: Promise<{ pos
 
         <Divider my="xs" />
 
-        {replies.items.length === 0 ? (
+        {treeItems.length === 0 ? (
           <Text size="sm" c="dimmed" data-testid="replies-empty">
             No replies yet.
           </Text>
         ) : (
-          <ReplyThread
-            postId={postId}
-            initialItems={toPostCardItems(replies.items, authors, states, session.subject)}
-            initialCursor={replies.nextCursor}
+          <ThreadTree
+            focusId={thread.focus.id}
+            initialNodes={treeItems}
+            initialCursor={thread.repliesCursor}
           />
         )}
       </Stack>

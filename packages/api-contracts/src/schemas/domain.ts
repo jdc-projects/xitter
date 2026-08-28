@@ -122,6 +122,45 @@ export const postSchema = z.object({
 
 export type Post = z.infer<typeof postSchema>;
 
+// Thread-view tunables (#152). Product constants, not per-request knobs: the
+// endpoint shape (how deep `replies` nests, how many children preview per
+// node, how far the ancestor walk goes) is fixed so clients can reason about
+// a bounded payload; deep conversation is reached by navigation, not larger
+// responses.
+/** Max ancestors returned by the thread endpoint (root → parent chain cap). */
+export const THREAD_ANCESTORS_MAX = 25;
+/** Max nesting depth of `replies` nodes below the focus post. */
+export const THREAD_DEPTH_MAX = 3;
+/** Children embedded per tree node beyond the top-level page limit. */
+export const THREAD_CHILDREN_PREVIEW = 2;
+
+export interface ThreadNode {
+  post: Post;
+  /** Preview children (depth-capped server-side; `THREAD_CHILDREN_PREVIEW` each). */
+  children: ThreadNode[];
+  /** The node has more direct replies than were embedded (`counts.replies`). */
+  childrenTruncated: boolean;
+}
+
+/**
+ * One node of a thread's reply tree (#152): a post plus a bounded slice of
+ * its subtree. `z.lazy` recursion needs the explicit type annotation and an
+ * `.openapi` name for the self-referencing $ref.
+ */
+export const threadNodeSchema: z.ZodType<ThreadNode> = z
+  .lazy(() =>
+    z
+      .object({
+        post: postSchema,
+        children: z.array(threadNodeSchema),
+        childrenTruncated: z.boolean(),
+      })
+      .strict(),
+  )
+  .openapi('ThreadNode');
+
+export type ThreadNodeDto = z.infer<typeof threadNodeSchema>;
+
 export const interactionKindSchema = z.enum(['like', 'bookmark', 'repost']);
 export type InteractionKind = z.infer<typeof interactionKindSchema>;
 
