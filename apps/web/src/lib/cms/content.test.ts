@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { FALLBACK_FAQ, FALLBACK_LANDING, loadFaq, loadLandingContent } from './content';
+import { FALLBACK_ABOUT, FALLBACK_FAQ, loadAboutContent, loadFaq } from './content';
 
 interface RecordedRequest {
   url: string;
@@ -24,20 +24,20 @@ function fakeCms(docs: unknown[], opts: { status?: number } = {}) {
   return { fetchImpl, requests };
 }
 
-const landingDocs = [
-  { id: 2, slug: 'second', title: 'Second', intro: 'intro-2', order: 1 },
-  { id: 1, slug: 'first', title: 'First', intro: 'intro-1', order: 0 },
+const aboutDocs = [
+  { id: 2, slug: 'about-second', title: 'Second', intro: 'intro-2', order: 1 },
+  { id: 1, slug: 'about-first', title: 'First', intro: 'intro-1', order: 0 },
 ];
 
 describe('CMS content loading', () => {
-  it('maps and orders published landing content', async () => {
-    const { fetchImpl } = fakeCms(landingDocs);
-    const entries = await loadLandingContent({ fetchImpl });
+  it('maps and orders published About sections', async () => {
+    const { fetchImpl } = fakeCms(aboutDocs);
+    const entries = await loadAboutContent({ fetchImpl });
 
-    expect(entries.map((e) => e.slug)).toEqual(['first', 'second']);
+    expect(entries.map((e) => e.slug)).toEqual(['about-first', 'about-second']);
     expect(entries[0]).toMatchObject({ id: 1, title: 'First', intro: 'intro-1' });
     const [call] = [fetchImpl.mock.calls[0]!];
-    expect(String(call[0])).toContain('/cms/api/landing-content');
+    expect(String(call[0])).toContain('/cms/api/about-content');
     expect(String(call[0])).toContain('sort=order');
     expect(String(call[0])).not.toContain('draft=true');
   });
@@ -55,28 +55,28 @@ describe('CMS content loading', () => {
     const fetchImpl = vi.fn(async () => {
       throw new Error('ECONNREFUSED - cms down');
     });
-    await expect(loadLandingContent({ fetchImpl })).resolves.toEqual(FALLBACK_LANDING);
+    await expect(loadAboutContent({ fetchImpl })).resolves.toEqual(FALLBACK_ABOUT);
     await expect(loadFaq({ fetchImpl })).resolves.toEqual(FALLBACK_FAQ);
   });
 
   it('falls back when the CMS errors or returns malformed/empty payloads', async () => {
     const errorStatus = vi.fn(async () => new Response('boom', { status: 503 }));
-    await expect(loadLandingContent({ fetchImpl: errorStatus })).resolves.toEqual(FALLBACK_LANDING);
+    await expect(loadAboutContent({ fetchImpl: errorStatus })).resolves.toEqual(FALLBACK_ABOUT);
 
     const malformed = vi.fn(async () => new Response('<html>not json</html>', { status: 200 }));
     await expect(loadFaq({ fetchImpl: malformed })).resolves.toEqual(FALLBACK_FAQ);
 
     const empty = vi.fn(async () => new Response(JSON.stringify({ docs: [] }), { status: 200 }));
-    await expect(loadLandingContent({ fetchImpl: empty })).resolves.toEqual(FALLBACK_LANDING);
+    await expect(loadAboutContent({ fetchImpl: empty })).resolves.toEqual(FALLBACK_ABOUT);
   });
 
   it('draft fetches authenticate with a client-credentials token and skip caching', async () => {
-    const { fetchImpl, requests } = fakeCms(landingDocs);
-    const entries = await loadLandingContent({ draft: true, fetchImpl });
+    const { fetchImpl, requests } = fakeCms(aboutDocs);
+    const entries = await loadAboutContent({ draft: true, fetchImpl });
 
-    expect(entries[0]!.slug).toBe('first');
+    expect(entries[0]!.slug).toBe('about-first');
     const tokenCall = requests.find((r) => r.url.includes('/protocol/openid-connect/token'));
-    const contentCall = requests.find((r) => r.url.includes('/cms/api/landing-content'));
+    const contentCall = requests.find((r) => r.url.includes('/cms/api/about-content'));
     expect(tokenCall).toBeDefined();
     expect(contentCall!.url).toContain('draft=true');
     expect((contentCall!.init.headers as Record<string, string>).authorization).toBe('Bearer tok');
@@ -91,6 +91,6 @@ describe('CMS content loading', () => {
       }
       throw new Error('unreachable');
     });
-    await expect(loadLandingContent({ draft: true, fetchImpl })).resolves.toEqual(FALLBACK_LANDING);
+    await expect(loadAboutContent({ draft: true, fetchImpl })).resolves.toEqual(FALLBACK_ABOUT);
   });
 });

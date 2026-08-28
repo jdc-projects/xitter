@@ -49,13 +49,14 @@ async function expectNoCaptchaCopy(page: Page) {
 // ---------------------------------------------------------------------------
 
 test.describe('a fresh visitor, not logged in', () => {
-  test('landing introduces the demo, warns about resets and shows the way in', async ({ page }) => {
+  test('landing says what this is, warns about resets and shows the way in', async ({ page }) => {
     await page.goto('/');
 
+    // The front door (#37, slimmed by #153): wordmark, one code-owned line,
+    // the unmissable reset notice. The how-it-works material lives on About.
+    await expect(page.getByRole('heading', { level: 1, name: 'xitter' })).toBeVisible();
+    await expect(page.getByText(/running on a realistic microservices homelab/i)).toBeVisible();
     await expect(page.getByTestId('reset-notice')).toBeVisible();
-    // CMS copy applied by the seed's content phase - the reseed end state,
-    // not the hardcoded fallback ("microservices playground").
-    await expect(page.getByText(/microservices homelab/i)).toBeVisible();
 
     // Credentials are public by design: a first-time visitor can find them
     // without hunting (#37).
@@ -73,6 +74,13 @@ test.describe('a fresh visitor, not logged in', () => {
 
     await expect(page.getByRole('heading', { level: 1, name: 'About' })).toBeVisible();
     await expect(page.getByTestId('reset-notice')).toBeVisible();
+
+    // The intro sections moved here from the landing (#153): CMS copy
+    // applied by the seed's content phase - the reseed end state, not the
+    // hardcoded fallback (which never says "microservices homelab").
+    await expect(page.locator('#why')).toContainText('microservices homelab');
+    // The under-the-hood strip moved with them - code-rendered facts.
+    await expect(page.getByTestId('stack-strip')).toBeVisible();
 
     // The seeded FAQ answers the question the fresh state raises ("will
     // content come back?") with what actually happens - reseed, not wishful

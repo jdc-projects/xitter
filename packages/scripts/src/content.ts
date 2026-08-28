@@ -25,7 +25,7 @@ import {
 } from './lib/api.js';
 import { serviceBase } from './lib/targets.js';
 
-export interface LandingContentSeed {
+export interface AboutContentSeed {
   slug: string;
   title: string;
   intro: string;
@@ -40,7 +40,7 @@ export interface FaqSeed {
 }
 
 export interface CmsContentFiles {
-  landingContent: LandingContentSeed[];
+  aboutContent: AboutContentSeed[];
   faq: FaqSeed[];
 }
 
@@ -90,7 +90,7 @@ async function api(
 }
 
 async function listExisting(
-  collection: 'landing-content' | 'faq',
+  collection: 'about-content' | 'faq',
   token: string,
   fetchImpl: typeof fetch,
   purpose: 'export' | 'apply',
@@ -112,7 +112,7 @@ async function listExisting(
 
 /** Slug -> id for the docs that carry a slug (slug is the promotion key). */
 async function existingBySlug(
-  collection: 'landing-content' | 'faq',
+  collection: 'about-content' | 'faq',
   token: string,
   fetchImpl: typeof fetch,
   purpose: 'export' | 'apply',
@@ -128,7 +128,7 @@ async function existingBySlug(
 const PUBLISHED = { _status: 'published' } as const;
 
 async function upsertCollection(
-  collection: 'landing-content' | 'faq',
+  collection: 'about-content' | 'faq',
   seeds: Array<Record<string, unknown>>,
   token: string,
   fetchImpl: typeof fetch,
@@ -172,7 +172,7 @@ async function upsertCollection(
  * post-create reconciliation.
  */
 async function createDoc(
-  collection: 'landing-content' | 'faq',
+  collection: 'about-content' | 'faq',
   data: Record<string, unknown>,
   token: string,
   fetchImpl: typeof fetch,
@@ -213,16 +213,16 @@ export async function applyCmsContent(
   const files = await readContentFiles();
   const token = await cmsToken(options.fetchImpl).get();
 
-  const landing = await upsertCollection(
-    'landing-content',
-    files.landingContent as never,
+  const about = await upsertCollection(
+    'about-content',
+    files.aboutContent as never,
     token,
     doFetch,
   );
   const faq = await upsertCollection('faq', files.faq as never, token, doFetch);
   return {
-    created: landing.created + faq.created,
-    updated: landing.updated + faq.updated,
+    created: about.created + faq.created,
+    updated: about.updated + faq.updated,
   };
 }
 
@@ -240,7 +240,7 @@ export async function resetCmsContent(
   const token = await cmsToken(doFetch).get();
 
   let deleted = 0;
-  for (const collection of ['landing-content', 'faq'] as const) {
+  for (const collection of ['about-content', 'faq'] as const) {
     const docs = await listExisting(collection, token, doFetch, 'apply');
     for (const doc of docs) {
       await api(`/cms/api/${collection}/${doc.id}`, { method: 'DELETE' }, token, doFetch);
@@ -253,12 +253,12 @@ export async function resetCmsContent(
 
 /** Read the committed seed files (also the export target). */
 export async function readContentFiles(): Promise<CmsContentFiles> {
-  const [landingContent, faq] = await Promise.all([
-    readFile(resolve(CONTENT_DIR, 'landing-content.json'), 'utf8'),
+  const [aboutContent, faq] = await Promise.all([
+    readFile(resolve(CONTENT_DIR, 'about-content.json'), 'utf8'),
     readFile(resolve(CONTENT_DIR, 'faq.json'), 'utf8'),
   ]);
   return {
-    landingContent: JSON.parse(landingContent) as LandingContentSeed[],
+    aboutContent: JSON.parse(aboutContent) as AboutContentSeed[],
     faq: JSON.parse(faq) as FaqSeed[],
   };
 }
@@ -276,21 +276,21 @@ export async function exportCmsContent(
   const targetDir = options.targetDir ?? CONTENT_DIR;
   const token = await cmsToken(options.fetchImpl).get();
 
-  const landing = (await listExisting('landing-content', token, doFetch, 'export')).slice();
+  const about = (await listExisting('about-content', token, doFetch, 'export')).slice();
   const faq = (await listExisting('faq', token, doFetch, 'export')).slice();
 
-  const landingJson = landing.map((doc) => doc as unknown as ExportDoc);
+  const aboutJson = about.map((doc) => doc as unknown as ExportDoc);
   const faqJson = faq.map((doc) => doc as unknown as ExportDoc);
   const byOrder = (a: ExportDoc, b: ExportDoc): number =>
     (a.order ?? 0) - (b.order ?? 0) || a.slug.localeCompare(b.slug);
-  landingJson.sort(byOrder);
+  aboutJson.sort(byOrder);
   faqJson.sort(byOrder);
 
   await mkdir(targetDir, { recursive: true });
   await writeFile(
-    resolve(targetDir, 'landing-content.json'),
+    resolve(targetDir, 'about-content.json'),
     `${JSON.stringify(
-      landingJson.map(({ slug, title, intro, order }) => ({
+      aboutJson.map(({ slug, title, intro, order }) => ({
         slug,
         title,
         intro,
@@ -313,7 +313,7 @@ export async function exportCmsContent(
       2,
     )}\n`,
   );
-  console.log(`exported ${landingJson.length} landing entries, ${faqJson.length} faq entries`);
+  console.log(`exported ${aboutJson.length} about entries, ${faqJson.length} faq entries`);
 }
 
 const command = process.argv[2] ?? 'apply';

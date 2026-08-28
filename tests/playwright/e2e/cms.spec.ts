@@ -58,12 +58,15 @@ test.beforeAll(async () => {
   expect(revalidated.ok).toBeTruthy();
 });
 
-test('landing page renders CMS copy', async ({ page }) => {
-  await page.goto('/');
+test('about page renders CMS sections and FAQ', async ({ page }) => {
+  await page.goto('/about');
 
-  await expect(page.getByRole('heading', { level: 1, name: 'xitter' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'About' })).toBeVisible();
+  // The intro sections moved from the landing (#153): seeded CMS copy, not
+  // the fallback (which never says "microservices homelab"). `.first()`: the
+  // FAQ answer below uses the same phrase.
   await expect(page.getByText(/microservices homelab/i).first()).toBeVisible();
-  await expect(page.getByText(/nightly reset that wipes everything/i)).toBeVisible();
+  await expect(page.getByText(/wipes everything back to a seeded state/i)).toBeVisible();
 });
 
 test('about page renders the CMS-managed FAQ', async ({ page }) => {
@@ -78,13 +81,13 @@ test('about page renders the CMS-managed FAQ', async ({ page }) => {
 });
 
 test('published CMS content is public; drafts require an admin token', async ({ request }) => {
-  const published = await request.get('/cms/api/landing-content?limit=10');
+  const published = await request.get('/cms/api/about-content?limit=10');
   expect(published.ok()).toBeTruthy();
   // Anonymous reads are where-constrained: never-published drafts never leak.
   const publishedDocs = (await published.json()) as { docs: Array<{ _status?: string }> };
   expect(publishedDocs.docs.every((doc) => doc._status === 'published')).toBe(true);
 
-  const draft = await request.get('/cms/api/landing-content?limit=10&draft=true');
+  const draft = await request.get('/cms/api/about-content?limit=10&draft=true');
   expect(draft.status()).toBe(403);
 
   // Client-credentials token for the cms client (admin realm, app-admin).
@@ -101,7 +104,7 @@ test('published CMS content is public; drafts require an admin token', async ({ 
   expect(tokenRes.ok()).toBeTruthy();
   const { access_token: accessToken } = (await tokenRes.json()) as { access_token: string };
 
-  const authedDraft = await request.get('/cms/api/landing-content?limit=10&draft=true', {
+  const authedDraft = await request.get('/cms/api/about-content?limit=10&draft=true', {
     headers: { authorization: `Bearer ${accessToken}` },
   });
   expect(authedDraft.ok()).toBeTruthy();

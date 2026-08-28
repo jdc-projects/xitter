@@ -9,9 +9,9 @@ sequenceDiagram
     participant V as Visitor
     participant W as Web
     V->>W: GET /
-    W-->>V: Landing page: public header (home / About / Log in), hero with CMS intro, reset notice, demo credentials, under-the-hood stack strip
+    W-->>V: Landing page: public header (home / About / Log in), wordmark + one-line value prop, reset notice, demo credentials
     V->>W: GET /about
-    W-->>V: About page: what/why/how, reset schedule, demo credentials, FAQ, PII warning
+    W-->>V: About page: what/why/how (CMS sections), under-the-hood stack strip, reset schedule, demo credentials, FAQ, PII warning
     Note over V,W: Any attempt to open /feed, /post, /profile/* etc. redirects to login
 ```
 

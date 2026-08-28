@@ -1,10 +1,10 @@
 /**
- * Shared landing/About preview-param handling (Payload live preview).
+ * About preview-param handling (Payload live preview, #153): the About page
+ * hosts both CMS collections (sections + FAQ), so both live-preview there.
  *
- * Both pages accept `?preview=<docId>`: present means render the DRAFT
- * (uncached; an accepted-exposure preview link - see spec 04); absent means
- * the cached published copy. Extracted
- * because the two pages otherwise duplicated the parsing.
+ * `/about?preview=<docId>`: present means render the DRAFT (uncached; an
+ * accepted-exposure preview link - see spec 04); absent means the cached
+ * published copy.
  */
 export async function resolvePreviewId(
   searchParams: Promise<{ preview?: string | string[] }>,

@@ -1,0 +1,20 @@
+[
+  {
+    "slug": "about-what",
+    "title": "What is this?",
+    "intro": "xitter is a small Twitter/X-style demo - posts, follows, replies, likes, bookmarks and reposts - that tidies itself up: a nightly reset wipes everything back to a seeded state.",
+    "order": 0
+  },
+  {
+    "slug": "about-why",
+    "title": "Why does it exist?",
+    "intro": "It is a playground for building and demonstrating a realistic microservices homelab - service decomposition, event-driven workers, infrastructure as code, testing and observability - on a home Kubernetes cluster, without any real users or data at stake.",
+    "order": 1
+  },
+  {
+    "slug": "about-how",
+    "title": "How does it work?",
+    "intro": "A Next.js frontend talks to a set of backend APIs (profiles and relationships, posts and interactions, media, feed, search). Events flow through Kafka to workers that build feeds and search indices. Content is stored in per-service databases and an object store. Login uses demo accounts only - there is no signup and no account management.",
+    "order": 2
+  }
+]

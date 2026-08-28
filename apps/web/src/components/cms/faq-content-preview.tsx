@@ -1,14 +1,10 @@
 'use client';
 
-import { useLivePreview } from '@payloadcms/live-preview-react';
 import type { FaqEntry } from '@/lib/cms/content';
 import { FaqList } from './faq-list';
-import { cmsPopulateRequest, patchEntry } from './live-preview-utils';
+import { useLiveCollection } from './live-preview-collection';
 
-/**
- * Live preview (/about?preview=<docId>): renders draft FAQ entries
- * server-side, then applies the doc Payload pushes as the admin edits.
- */
+/** Live preview (/about?preview=<docId>) for the CMS-managed FAQ entries. */
 export function FaqContentPreview({
   entries,
   previewId,
@@ -18,20 +14,7 @@ export function FaqContentPreview({
   previewId: string;
   serverURL: string;
 }) {
-  const match = entries.find((entry) => String(entry.id ?? '') === previewId);
-  const initialData = match ?? {
-    id: Number.parseInt(previewId, 10) || 0,
-    slug: '',
-    question: '',
-    answer: '',
-  };
-
-  const { data } = useLivePreview({
-    serverURL,
-    depth: 0,
-    initialData: initialData as unknown as Record<string, unknown>,
-    requestHandler: cmsPopulateRequest(serverURL),
-  });
-
-  return <FaqList entries={patchEntry(entries, data)} />;
+  // `question` marks a FAQ doc; About sections preview on the same page.
+  const live = useLiveCollection(entries, previewId, serverURL, 'question');
+  return <FaqList entries={live} />;
 }

@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 
-test('landing page introduces the app and warns about resets', async ({ page }) => {
+test('landing is the front door: wordmark, one-line value prop, reset warning', async ({
+  page,
+}) => {
   await page.goto('/');
 
   await expect(page.getByRole('heading', { level: 1, name: 'xitter' })).toBeVisible();
@@ -8,7 +10,17 @@ test('landing page introduces the app and warns about resets', async ({ page }) 
   await expect(page.getByRole('link', { name: 'About', exact: true })).toBeVisible();
 });
 
-test('landing page links to login', async ({ page }) => {
+test('landing says what this is in one line and hands off to About (#153)', async ({ page }) => {
+  await page.goto('/');
+
+  // The how-it-works material (CMS intro, stack strip) moved to About -
+  // the landing keeps a single code-owned line that points there.
+  await expect(page.getByText(/running on a realistic microservices homelab/i)).toBeVisible();
+  await page.getByRole('link', { name: 'Read how it works' }).click();
+  await expect(page).toHaveURL(/\/about$/);
+});
+
+test('landing links to login', async ({ page }) => {
   await page.goto('/');
 
   // The public header carries the nav Log in; the body CTA duplicates the
@@ -35,17 +47,7 @@ test('public header navigates between landing, About and login', async ({ page }
   await expect(page).toHaveURL(/\/login$/);
 });
 
-// This suite runs the web app alone (no CMS) - which is exactly the
-// "CMS unreachable" case: the page must render the hardcoded fallback copy.
-test('landing renders fallback copy when the CMS is down', async ({ page }) => {
-  await page.goto('/');
-
-  await expect(page.getByText(/microservices playground for learning/i)).toBeVisible();
-});
-
-test('landing carries the demo: credentials entry point and stack strip (#37)', async ({
-  page,
-}) => {
+test('landing carries the demo-credentials entry point (#37)', async ({ page }) => {
   await page.goto('/');
 
   // Demo credentials are public by design (spec 04) - surfaced on the
@@ -56,14 +58,4 @@ test('landing carries the demo: credentials entry point and stack strip (#37)', 
   await expect(credentials.getByText('DemoPass123!')).toBeVisible();
   await credentials.getByTestId('landing-login-cta').click();
   await expect(page).toHaveURL(/\/login$/);
-
-  // Under-the-hood strip: code-rendered facts about the platform.
-  await page.goto('/');
-  const stack = page.getByTestId('landing-stack');
-  await expect(stack).toBeVisible();
-  await expect(stack.getByText('5 NestJS services')).toBeVisible();
-  await expect(stack.getByText('3 Kafka workers')).toBeVisible();
-  await expect(stack.getByText(/OpenTofu deploys/)).toBeVisible();
-  await stack.getByTestId('landing-stack-about-link').click();
-  await expect(page).toHaveURL(/\/about$/);
 });

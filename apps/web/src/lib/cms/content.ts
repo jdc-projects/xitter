@@ -1,7 +1,7 @@
 import { createJwtCache, realmUrls } from '@xitter/auth';
 import { envString, localUrl } from '@xitter/config';
 
-export interface LandingEntry {
+export interface AboutEntry {
   id?: number;
   slug: string;
   title: string;
@@ -16,17 +16,27 @@ export interface FaqEntry {
 }
 
 /**
- * Hardcoded fallbacks (spec 04): landing/About must never fail because the
- * CMS is unreachable - demo resilience over freshness. Reset/PII warnings
- * are NOT part of CMS content and always render from code.
+ * Hardcoded fallbacks (spec 04): the About page must never fail because the
+ * CMS is unreachable - demo resilience over freshness. Deliberately shorter
+ * than the promoted copy so tests can tell seeded CMS content from the
+ * fallback. Reset/PII warnings are NOT part of CMS content and always render
+ * from code.
  */
-export const FALLBACK_LANDING: LandingEntry[] = [
+export const FALLBACK_ABOUT: AboutEntry[] = [
   {
-    slug: 'landing-intro',
-    title: '',
-    intro:
-      'A small Twitter/X-style demo app: posts, follows, replies, likes, bookmarks and reposts - ' +
-      'built as a microservices playground for learning and experimentation.',
+    slug: 'about-what',
+    title: 'What is this?',
+    intro: 'A small Twitter/X-style demo - posts, follows, replies, likes and reposts.',
+  },
+  {
+    slug: 'about-why',
+    title: 'Why does it exist?',
+    intro: 'A playground for building and demonstrating a realistic microservices system.',
+  },
+  {
+    slug: 'about-how',
+    title: 'How does it work?',
+    intro: 'A web app over small service APIs, with Kafka-driven workers behind them.',
   },
 ];
 
@@ -65,7 +75,7 @@ export function cmsEnv() {
 }
 
 /** Data-cache tags for published CMS content (see /api/cms/revalidate). */
-export const CMS_CACHE_TAGS = ['cms-landing-content', 'cms-faq'] as const;
+export const CMS_CACHE_TAGS = ['cms-about-content', 'cms-faq'] as const;
 
 export function adminRealmIssuer(): string {
   return `${cmsEnv().keycloakBaseUrl.replace(/\/$/, '')}/realms/${cmsEnv().adminRealm}`;
@@ -112,7 +122,7 @@ function draftToken(fetchImpl?: typeof fetch) {
 }
 
 async function fetchDocs(
-  collection: 'landing-content' | 'faq',
+  collection: 'about-content' | 'faq',
   options: CmsFetchOptions,
 ): Promise<PayloadDoc[]> {
   const doFetch = options.fetchImpl ?? fetch;
@@ -158,13 +168,13 @@ function byOrderThenSlug(a: PayloadDoc, b: PayloadDoc): number {
   return (a.order ?? 0) - (b.order ?? 0) || (a.slug ?? '').localeCompare(b.slug ?? '');
 }
 
-function mapLanding(docs: PayloadDoc[]): LandingEntry[] {
+function mapAbout(docs: PayloadDoc[]): AboutEntry[] {
   return docs
     .slice()
     .sort(byOrderThenSlug)
     .map((doc, i) => ({
       id: doc.id,
-      slug: doc.slug ?? `landing-${i}`,
+      slug: doc.slug ?? `about-${i}`,
       title: doc.title ?? '',
       intro: doc.intro ?? '',
     }));
@@ -183,15 +193,16 @@ function mapFaq(docs: PayloadDoc[]): FaqEntry[] {
 }
 
 /**
- * Landing intro copy from the CMS. Falls back to hardcoded defaults whenever
- * the CMS is unreachable, unhappy, or empty - the landing page must never 500.
+ * About intro sections (About page) from the CMS. Falls back to hardcoded
+ * defaults whenever the CMS is unreachable, unhappy, or empty - the About
+ * page must never 500.
  */
-export async function loadLandingContent(options: CmsFetchOptions = {}): Promise<LandingEntry[]> {
+export async function loadAboutContent(options: CmsFetchOptions = {}): Promise<AboutEntry[]> {
   try {
-    const mapped = mapLanding(await fetchDocsWithEmptyRetry('landing-content', options));
-    return mapped.length > 0 ? mapped : FALLBACK_LANDING;
+    const mapped = mapAbout(await fetchDocsWithEmptyRetry('about-content', options));
+    return mapped.length > 0 ? mapped : FALLBACK_ABOUT;
   } catch {
-    return FALLBACK_LANDING;
+    return FALLBACK_ABOUT;
   }
 }
 
@@ -213,7 +224,7 @@ export async function loadFaq(options: CmsFetchOptions = {}): Promise<FaqEntry[]
  * extra round-trip only happens on the empty path, absent in steady state.
  */
 async function fetchDocsWithEmptyRetry(
-  collection: 'landing-content' | 'faq',
+  collection: 'about-content' | 'faq',
   options: CmsFetchOptions,
 ): Promise<PayloadDoc[]> {
   const docs = await fetchDocs(collection, options);

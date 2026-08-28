@@ -1,36 +1,21 @@
-import { connection } from 'next/server';
-import { Container, Divider, Stack, Text, Title } from '@mantine/core';
+import { Anchor, Container, Stack, Text, Title } from '@mantine/core';
 import { ResetNotice } from '@xitter/ui';
 import { DemoCredentials } from '@/components/demo-credentials';
-import { LandingContentPreview } from '@/components/cms/landing-content-preview';
-import { LandingCopy } from '@/components/cms/landing-copy';
 import { PublicHeader } from '@/components/public-header';
-import { StackStrip } from '@/components/stack-strip';
 import { getSessionUsername } from '@/lib/auth/session';
-import { cmsEnv, loadLandingContent } from '@/lib/cms/content';
-import { resolvePreviewId } from '@/lib/cms/preview';
-
-interface LandingPageProps {
-  searchParams: Promise<{ preview?: string | string[] }>;
-}
 
 /**
- * The site's front door (#37): a hero that carries the demo - the gradient
- * wordmark, the CMS intro - plus the unmissable reset notice, a
- * demo-credentials entry point, and the under-the-hood stack strip. No
+ * The site's front door (#37, slimmed by #153): the gradient wordmark, a
+ * one-line value prop, the unmissable reset notice, a demo-credentials entry
+ * point, and the way in. The how-it-works material (CMS intro, stack strip)
+ * lives on the About page - X's front door doesn't explain itself. No
  * user-generated content renders pre-login (spec 02 §1.4).
  */
-export default async function LandingPage({ searchParams }: LandingPageProps) {
-  const previewId = await resolvePreviewId(searchParams);
-
-  // Preview renders are per-request (drafts, uncached - spec 04 exposure).
-  if (previewId !== undefined) await connection();
-  // Session-aware public header (#38): the page is already per-request
-  // (searchParams), so resolving the cookie adds no further dynamism; the
-  // CMS fetch keeps its own 60s data cache. Signed-out visitors (and a
-  // Valkey outage) resolve to null without touching the store.
+export default async function LandingPage() {
+  // Session-aware public header (#38): resolving the cookie makes the page
+  // per-request. Signed-out visitors (and a Valkey outage) resolve to null
+  // without touching the store.
   const username = await getSessionUsername();
-  const entries = await loadLandingContent({ draft: previewId !== undefined });
 
   return (
     <>
@@ -45,25 +30,22 @@ export default async function LandingPage({ searchParams }: LandingPageProps) {
             </Text>
           </Title>
 
-          {previewId !== undefined ? (
-            <LandingContentPreview
-              entries={entries}
-              previewId={previewId}
-              serverURL={cmsEnv().publicUrl}
-            />
-          ) : (
-            <LandingCopy entries={entries} />
-          )}
+          {/* One line, code-owned (#153): everything explanatory moved to
+              About; this just says what the visitor is looking at. */}
+          <Text size="lg" c="dimmed">
+            A small Twitter/X-style demo - posts, follows, replies, likes and reposts - running on a
+            realistic microservices homelab.{' '}
+            <Anchor href="/about" size="lg" underline="always">
+              Read how it works
+            </Anchor>
+            .
+          </Text>
 
           {/* Code-rendered by design (spec 04): never CMS-editable away.
               Stays above the fold, unmissable. */}
           <ResetNotice />
 
           <DemoCredentials />
-
-          <Divider />
-
-          <StackStrip />
         </Stack>
       </Container>
     </>

@@ -4,7 +4,7 @@ import { buildConfig } from 'payload';
 import { isDeployedEnv } from '@xitter/config';
 import { env } from './env';
 import { Users } from './collections/users';
-import { LandingContent } from './collections/landing-content';
+import { AboutContent } from './collections/about-content';
 import { Faq } from './collections/faq';
 
 /**
@@ -21,7 +21,7 @@ export default buildConfig({
     // disposable demo database); deployed environments manage migrations.
     push: !isDeployedEnv(),
   }),
-  collections: [Users, LandingContent, Faq],
+  collections: [Users, AboutContent, Faq],
   typescript: { outputFile: 'src/payload-types.ts' },
   admin: {
     user: Users.slug,
@@ -30,14 +30,13 @@ export default buildConfig({
     // metadata, not resolved against the app router.
     meta: { icons: { icon: '/cms/brand-mark.svg' } },
     livePreview: {
-      url: ({ data, collectionConfig }) => {
+      // Both content collections render on the About page (#153) - the web
+      // app shows drafts there when a preview param is present.
+      url: ({ data }) => {
         const id = (data as { id?: number | string }).id ?? '';
-        // The web app renders drafts when a preview param is present.
-        return collectionConfig?.slug === Faq.slug
-          ? `${env.WEB_URL}/about?preview=${id}`
-          : `${env.WEB_URL}/?preview=${id}`;
+        return `${env.WEB_URL}/about?preview=${id}`;
       },
-      collections: [LandingContent.slug, Faq.slug],
+      collections: [AboutContent.slug, Faq.slug],
     },
   },
 });
