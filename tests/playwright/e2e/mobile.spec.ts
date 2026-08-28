@@ -78,8 +78,14 @@ test('the search page renders a fluid search box', async ({ page }) => {
   await page.getByTestId('search-input').fill('feed');
   await page.getByTestId('search-input').press('Enter');
   await page.waitForURL(/\/search\?q=feed$/);
+  // Any settled results render is a valid target: a cold index answers
+  // with the honest degraded state, and the geometry under test (fluid
+  // box + no sideways scroll) is identical in all three.
   await expect(
-    page.getByTestId('search-results').or(page.getByTestId('search-empty')),
+    page
+      .getByTestId('search-results')
+      .or(page.getByTestId('search-empty'))
+      .or(page.getByTestId('search-degraded')),
   ).toBeVisible();
   await expectNoHorizontalOverflow(page);
 });

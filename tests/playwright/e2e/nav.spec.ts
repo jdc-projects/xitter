@@ -20,9 +20,13 @@ async function login(page: Page, username = 'demo4') {
 async function navLink(page: Page, name: string) {
   const header = page.getByTestId(`header-nav-${name}`);
   if (await header.isVisible()) return header;
-  const burger = page.getByTestId('nav-burger');
-  if (await burger.isVisible()) await burger.click();
-  return page.getByTestId(`drawer-nav-${name}`);
+  // The drawer may already be open from a previous lookup - its overlay
+  // covers the burger, so only open it when it is actually closed.
+  const drawer = page.getByTestId(`drawer-nav-${name}`);
+  if (!(await drawer.isVisible())) {
+    await page.getByTestId('nav-burger').click();
+  }
+  return drawer;
 }
 
 test('nav marks the current page, not its siblings', async ({ page }) => {
