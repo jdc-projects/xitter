@@ -30,6 +30,12 @@ export function createStrykerConfig(
     mutateExclude?: string[];
     /** Score floor (`thresholds.break`); set from a measured baseline, never invented. */
     thresholds?: { break: number };
+    /**
+     * Per-run timeout for dry runs AND mutant runs (default 5000 + 1.5x
+     * factor). Raise for suites with legitimately slow tests under
+     * instrumentation - e.g. image rasterisation.
+     */
+    timeoutMS?: number;
   } = {},
 ) {
   return {
@@ -60,6 +66,7 @@ export function createStrykerConfig(
       fileName: `reports/mutation/${projectName}.json`,
     },
     incremental: true,
+    timeoutMS: options.timeoutMS,
     incrementalFile: `reports/mutation/${projectName}.incr`,
     thresholds: options.thresholds,
     mutate: [
