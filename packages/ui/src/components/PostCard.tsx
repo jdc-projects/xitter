@@ -104,6 +104,131 @@ function interactionName(
   return count === null ? label : `${label} (${count})`;
 }
 
+/** One interaction control; branch-free via per-kind lookup tables. */
+const KIND_ACTIVE_FLAG: Record<PostCardInteractionKind, 'reposted' | 'liked' | 'bookmarked'> = {
+  repost: 'reposted',
+  like: 'liked',
+  bookmark: 'bookmarked',
+};
+const KIND_ICON = { repost: IconRepeat, like: IconHeart, bookmark: IconBookmark } as const;
+
+function interactControl(
+  kind: PostCardInteractionKind,
+  count: number | null,
+  testId: string,
+  viewer: PostCardViewer | undefined,
+  onInteract: PostCardProps['onInteract'],
+  busyKinds: PostCardInteractionKind[],
+) {
+  const active = viewer?.[KIND_ACTIVE_FLAG[kind]];
+  const color = active ? KIND_COLOR[kind] : 'dimmed';
+  // Filled heart/bookmark glyphs read as "active" at a glance; the repeat
+  // glyph has no filled variant, so colour + aria-pressed carry the state.
+  const fill = active && kind !== 'repost' ? 'currentColor' : 'none';
+  const Icon = KIND_ICON[kind];
+  const body = (
+    <>
+      <Icon {...iconProps} fill={fill} /> {count}
+    </>
+  );
+  const label = interactionName(kind, Boolean(active), count);
+
+  if (!onInteract) {
+    return (
+      <Text component="span" size="sm" c={color} data-testid={testId} key={testId}>
+        {body}
+      </Text>
+    );
+  }
+  return (
+    <UnstyledButton
+      key={testId}
+      size="sm"
+      c={color}
+      disabled={busyKinds.includes(kind)}
+      aria-pressed={Boolean(active)}
+      aria-label={label}
+      title={label}
+      data-testid={testId}
+      // Above the stretched overlay link (#142): a positioned element so
+      // clicks reach the button, not the card's navigation link.
+      // min-width/height are load-bearing: WCAG 2.5.8 / axe target-size
+      // floor is 24x24 - the compact sm button renders ~18px otherwise.
+      style={{ position: 'relative', zIndex: 2, minWidth: 24, minHeight: 24 }}
+      onClick={() => onInteract(kind, Boolean(active))}
+    >
+      {body}
+    </UnstyledButton>
+  );
+}
+
+/** The counts row: reply count + the three interaction controls. */
+function CountsRow({
+  post,
+  viewer,
+  onInteract,
+  busyKinds = [],
+}: Pick<PostCardProps, 'post' | 'viewer' | 'onInteract' | 'busyKinds'>) {
+  return (
+    <Group mt="sm" gap="lg">
+      <Text
+        component="span"
+        size="sm"
+        c="dimmed"
+        data-testid="count-replies"
+        aria-label={`${post.counts.replies} ${post.counts.replies === 1 ? 'reply' : 'replies'}`}
+      >
+        <IconMessageCircle {...iconProps} /> {post.counts.replies}
+      </Text>
+      {interactControl(
+        'repost',
+        post.counts.reposts,
+        'count-reposts',
+        viewer,
+        onInteract,
+        busyKinds,
+      )}
+      {interactControl('like', post.counts.likes, 'count-likes', viewer, onInteract, busyKinds)}
+      {/* Bookmark counts are private to the viewer - icon state only. */}
+      {interactControl('bookmark', null, 'count-bookmarks', viewer, onInteract, busyKinds)}
+    </Group>
+  );
+}
+
+/** The ancestor variant: a compact thread-context card (#152). */
+function AncestorCard({ author, post, href }: Pick<PostCardProps, 'author' | 'post' | 'href'>) {
+  return (
+    <Card withBorder padding="xs" radius="md" data-testid={`post-ancestor-${post.id}`}>
+      <Anchor
+        href={href}
+        unstyled
+        style={{ textDecoration: 'none', display: 'block' }}
+        aria-label={`${author.displayName}: ${post.text}`}
+      >
+        <Group wrap="nowrap" gap="sm" align="flex-start">
+          <UserAvatar size="sm" username={author.username} displayName={author.displayName} />
+          <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+            <Group wrap="nowrap" gap="xs" justify="space-between">
+              <Group wrap="nowrap" gap="xs" style={{ minWidth: 0 }}>
+                <Text size="sm" fw={600} truncate="end">
+                  {author.displayName}
+                </Text>
+                <Text size="xs" c="dimmed" truncate="end">
+                  @{author.username}
+                </Text>
+              </Group>
+              <RelativeTime date={post.createdAt} />
+            </Group>
+            <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
+              {post.text}
+            </Text>
+          </Stack>
+        </Group>
+      </Anchor>
+    </Card>
+  );
+}
+
 /**
  * Feed / profile post card. Interaction buttons are presentational here -
  * the web app wires them to its own handlers via `onInteract` (server
@@ -122,50 +247,6 @@ export function PostCard({
   variant,
   actions,
 }: PostCardProps) {
-  const interactButton = (kind: PostCardInteractionKind, count: number | null, testId: string) => {
-    const active =
-      kind === 'repost' ? viewer?.reposted : kind === 'like' ? viewer?.liked : viewer?.bookmarked;
-    const color = active ? KIND_COLOR[kind] : 'dimmed';
-    // Filled heart/bookmark glyphs read as "active" at a glance; the repeat
-    // glyph has no filled variant, so colour + aria-pressed carry the state.
-    const fill = active && kind !== 'repost' ? 'currentColor' : 'none';
-    const Icon = kind === 'repost' ? IconRepeat : kind === 'like' ? IconHeart : IconBookmark;
-    const body = (
-      <>
-        <Icon {...iconProps} fill={fill} /> {count}
-      </>
-    );
-    const label = interactionName(kind, Boolean(active), count);
-
-    if (!onInteract) {
-      return (
-        <Text component="span" size="sm" c={color} data-testid={testId} key={testId}>
-          {body}
-        </Text>
-      );
-    }
-    return (
-      <UnstyledButton
-        key={testId}
-        size="sm"
-        c={color}
-        disabled={busyKinds.includes(kind)}
-        aria-pressed={Boolean(active)}
-        aria-label={label}
-        title={label}
-        data-testid={testId}
-        // Above the stretched overlay link (#142): a positioned element so
-        // clicks reach the button, not the card's navigation link.
-        // min-width/height are load-bearing: WCAG 2.5.8 / axe target-size
-        // floor is 24x24 - the compact sm button renders ~18px otherwise.
-        style={{ position: 'relative', zIndex: 2, minWidth: 24, minHeight: 24 }}
-        onClick={() => onInteract(kind, Boolean(active))}
-      >
-        {body}
-      </UnstyledButton>
-    );
-  };
-
   const content = (
     <>
       <Group wrap="nowrap" align="flex-start" justify="space-between">
@@ -234,36 +315,7 @@ export function PostCard({
   // Thread ancestor context (#152): compact card, no counts row, the whole
   // card links to the ancestor's own detail page ("showing this thread").
   if (variant === 'ancestor') {
-    return (
-      <Card withBorder padding="xs" radius="md" data-testid={`post-ancestor-${post.id}`}>
-        <Anchor
-          href={href}
-          unstyled
-          style={{ textDecoration: 'none', display: 'block' }}
-          aria-label={`${author.displayName}: ${post.text}`}
-        >
-          <Group wrap="nowrap" gap="sm" align="flex-start">
-            <UserAvatar size="sm" username={author.username} displayName={author.displayName} />
-            <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
-              <Group wrap="nowrap" gap="xs" justify="space-between">
-                <Group wrap="nowrap" gap="xs" style={{ minWidth: 0 }}>
-                  <Text size="sm" fw={600} truncate="end">
-                    {author.displayName}
-                  </Text>
-                  <Text size="xs" c="dimmed" truncate="end">
-                    @{author.username}
-                  </Text>
-                </Group>
-                <RelativeTime date={post.createdAt} />
-              </Group>
-              <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
-                {post.text}
-              </Text>
-            </Stack>
-          </Group>
-        </Anchor>
-      </Card>
-    );
+    return <AncestorCard author={author} post={post} href={href} />;
   }
 
   return (
@@ -291,21 +343,7 @@ export function PostCard({
       ) : null}
       {content}
 
-      <Group mt="sm" gap="lg">
-        <Text
-          component="span"
-          size="sm"
-          c="dimmed"
-          data-testid="count-replies"
-          aria-label={`${post.counts.replies} ${post.counts.replies === 1 ? 'reply' : 'replies'}`}
-        >
-          <IconMessageCircle {...iconProps} /> {post.counts.replies}
-        </Text>
-        {interactButton('repost', post.counts.reposts, 'count-reposts')}
-        {interactButton('like', post.counts.likes, 'count-likes')}
-        {/* Bookmark counts are private to the viewer - icon state only. */}
-        {interactButton('bookmark', null, 'count-bookmarks')}
-      </Group>
+      <CountsRow post={post} viewer={viewer} onInteract={onInteract} busyKinds={busyKinds} />
     </Card>
   );
 }

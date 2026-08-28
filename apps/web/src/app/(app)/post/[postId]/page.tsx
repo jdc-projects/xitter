@@ -96,7 +96,6 @@ export default async function PostDetailPage({ params }: { params: Promise<{ pos
           />
         </div>
 
-
         <Divider my="xs" />
 
         <PostComposer

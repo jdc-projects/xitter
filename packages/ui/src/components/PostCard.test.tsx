@@ -87,24 +87,16 @@ describe('PostCard actions slot (#146)', () => {
   it('renders the repost attribution line (the reposter, not the author)', () => {
     renderCard({ repostedBy: { id: 'r1', username: 'riko', displayName: 'Riko' } });
     expect(screen.getByTestId('post-repost-attribution-p1').textContent).toContain(
-      'Riko (@riko) reposted', (fix(e2e,ui,a11y): repost attribution carries the handle; e2e asserts #145's true-author semantics; 24px menu trigger)
+      'Riko (@riko) reposted',
     );
   });
 });
 
-<<<<<<< HEAD
 // #147: replies in lists carry a "Replying to @x" context line in the same
 // visual language as the repost attribution - present only when supplied.
 describe('PostCard reply context (#147)', () => {
   it('renders "Replying to @x" above the text when replyingTo is present', () => {
     renderCard({
-=======
-describe('PostCard reply context (#147)', () => {
-  it('renders "Replying to @x" above the text when replyingTo is present', () => {
-    renderCard({
-      author,
-      post,
->>>>>>> 711538f (fix(e2e,ui,a11y): repost attribution carries the handle; e2e asserts #145's true-author semantics; 24px menu trigger)
       replyingTo: { id: 'a2', username: 'parent', displayName: 'Parent' },
     });
 
@@ -116,7 +108,6 @@ describe('PostCard reply context (#147)', () => {
   });
 
   it('renders no context line for top-level posts', () => {
-<<<<<<< HEAD
     renderCard();
     expect(screen.queryByTestId('post-reply-context-p1')).toBeNull();
   });
@@ -151,10 +142,5 @@ describe('PostCard variant="ancestor" (#152)', () => {
     );
     expect(screen.getByTestId('post-p1')).toBeTruthy();
     expect(screen.getByTestId('count-replies')).toBeTruthy();
-=======
-    renderCard({ author, post });
-
-    expect(screen.queryByTestId('post-reply-context-p1')).toBeNull();
->>>>>>> 711538f (fix(e2e,ui,a11y): repost attribution carries the handle; e2e asserts #145's true-author semantics; 24px menu trigger)
   });
 });
