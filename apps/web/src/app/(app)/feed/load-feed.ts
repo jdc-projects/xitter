@@ -1,4 +1,4 @@
-import { FeedClient, PostsClient, localServiceUrls } from '@xitter/api-client';
+import { FeedClient, localServiceUrls } from '@xitter/api-client';
 import type { HydratedFeedItem, Post } from '@xitter/api-contracts';
 import type { Session } from '@/lib/auth/session';
 
@@ -60,14 +60,15 @@ export async function loadFeed(
 ): Promise<{ entries: TimelineEntry[]; nextCursor: string | null }> {
   const urls = localServiceUrls();
   const feed = new FeedClient({ baseUrl: urls.feed, token: session.accessToken });
-  const posts = new PostsClient({ baseUrl: urls.posts, token: session.accessToken });
 
+  // #157: viewer flags ride the feed page (fetched in parallel with the
+  // hydration joins inside the service) - one hop where the web used to
+  // serialize feed-then-viewer-state. Items without flags (posts outage on
+  // the fold) render un-filled but usable, the same best-effort contract.
   const page = await feed.getFeed(cursor, FEED_PAGE_SIZE);
-  // Best-effort: without flags the cards render un-filled but usable.
-  const flags = await posts
-    .getViewerState(page.items.map((item) => item.post.id))
-    .then(({ items }) => new Map(items.map((s) => [s.postId, s])))
-    .catch(() => new Map<string, { liked: boolean; reposted: boolean; bookmarked: boolean }>());
+  const flags = new Map(
+    page.items.filter((item) => item.viewer).map((item) => [item.post.id, item.viewer!] as const),
+  );
 
   return { entries: toTimelineEntries(page.items, flags), nextCursor: page.nextCursor };
 }

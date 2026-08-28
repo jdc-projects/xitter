@@ -1,5 +1,5 @@
 import { PostsClient, SocialClient } from '@xitter/api-client';
-import type { Post, Profile } from '@xitter/api-contracts';
+import type { Post, PostViewerState, Profile } from '@xitter/api-contracts';
 import { createLogger } from '@xitter/observability';
 import { ServiceUnavailableException } from '@nestjs/common';
 
@@ -67,6 +67,24 @@ export class ServiceContentSource {
     } catch (err) {
       logger.error({ err }, 'social hydration lookup failed');
       throw this.unavailable();
+    }
+  }
+
+  /**
+   * Viewer interaction flags by user id (#157). FAILS OPEN, unlike the
+   * hydration lookups: flags are presentation-only (filled vs un-filled
+   * cards), so a posts outage must not 503 the feed - callers get an empty
+   * map and render un-filled, the same contract the web's separate hop had.
+   */
+  // fallow-ignore-next-line unused-class-member -- consumed through the ContentHydrator interface (duck-typed inject)
+  async viewerState(userId: string, postIds: string[]): Promise<Map<string, PostViewerState>> {
+    if (postIds.length === 0) return new Map();
+    try {
+      const { items } = await this.postsClient.internalViewerState(userId, postIds);
+      return new Map(items.map((state) => [state.postId, state]));
+    } catch (err) {
+      logger.warn({ err }, 'posts viewer-state lookup failed (best-effort)');
+      return new Map();
     }
   }
 

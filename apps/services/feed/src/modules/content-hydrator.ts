@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ServiceContentSource } from '@xitter/service-kit';
-import type { Post, Profile } from '@xitter/api-contracts';
+import type { Post, PostViewerState, Profile } from '@xitter/api-contracts';
 
 /** Server-side hydration seam (spec 03: feed joins posts + social). */
 export interface ContentHydrator {
@@ -10,6 +10,11 @@ export interface ContentHydrator {
   profiles(userIds: string[]): Promise<Map<string, Profile>>;
   /** Ids of authors the user has blocked (feed filtering). */
   blockedAuthorIds(userId: string): Promise<string[]>;
+  /**
+   * Viewer interaction flags (#157) - fails open by contract: flags are
+   * presentation-only, so an outage yields an empty map, not a 503.
+   */
+  viewerState(userId: string, postIds: string[]): Promise<Map<string, PostViewerState>>;
 }
 
 /** Injection token (string token so test doubles are easy to provide). */

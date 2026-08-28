@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import { startPostgres } from '@xitter/testing';
-import type { FeedEntryInput, Post, Profile } from '@xitter/api-contracts';
+import type { FeedEntryInput, Post, PostViewerState, Profile } from '@xitter/api-contracts';
 import { FeedService } from './feed.service.js';
 import { CheckpointRepository } from './checkpoint.repository.js';
 import { FeedRepository, type FeedPrismaClient } from './feed.repository.js';
@@ -80,6 +80,8 @@ describe.skipIf(!hasGeneratedClient)('feed integration (testcontainers postgres)
           new Map(ids.filter((id) => profiles.has(id)).map((id) => [id, profiles.get(id)!])),
         ),
       blockedAuthorIds: (userId) => Promise.resolve(userId === OWNER ? [...blocked] : []),
+      // #157: fold seam - empty by default (un-filled flags).
+      viewerState: () => Promise.resolve(new Map<string, PostViewerState>()),
       store: { posts, profiles, blocked },
     };
     notified = [];

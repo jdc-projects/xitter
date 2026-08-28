@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type {
   FeedCheckpointPosition,
+  PostViewerState,
   FeedEntryInput,
   HydratedFeedItem,
   Post,
@@ -60,7 +61,34 @@ export class FeedService {
     for (let walk = 0; walk < 4 && items.length < limit; walk++) {
       const space = limit - items.length;
       const result = await this.repo.page(userId, cursor, space, blocked);
-      items.push(...(await this.hydrate(result.items, blocked)));
+      // #157: viewer flags ride the page - fetched in PARALLEL with the
+      // hydration joins (both only need the page's post ids), so the web's
+      // feed render is one hop instead of feed-then-viewer-state.
+      const [hydrated, flags] = await Promise.all([
+        this.hydrate(result.items, blocked),
+        // The hydrator's viewerState fails open by contract; the catch
+        // makes that hold for ANY implementation (defense for a
+        // presentation-only field - never 503 a feed over flag styling).
+        this.content
+          .viewerState(
+            userId,
+            result.items.map((entry) => entry.postId),
+          )
+          .catch(() => new Map<string, PostViewerState>()),
+      ]);
+      for (const item of hydrated) {
+        const flag = flags.get(item.post.id);
+        items.push(
+          flag
+            ? {
+                ...item,
+                // The response shape carries the three flags only - the
+                // postId is redundant inside a keyed item.
+                viewer: { liked: flag.liked, reposted: flag.reposted, bookmarked: flag.bookmarked },
+              }
+            : item,
+        );
+      }
       cursor = result.nextCursor ?? undefined;
       nextCursor = result.nextCursor;
       if (!result.nextCursor) break;

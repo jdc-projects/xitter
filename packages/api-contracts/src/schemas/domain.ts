@@ -243,6 +243,20 @@ export const feedItemSchema = z.object({
 export type FeedItem = z.infer<typeof feedItemSchema>;
 
 /** Feed page item as served by `GET /v1/feed`: entry hydrated server-side. */
+/**
+ * The caller's interaction flags for one post (batched viewer state): which
+ * of like/repost/bookmark the viewer already has. Missing ids in the
+ * response mean "no interactions" and default to false on clients.
+ */
+export const postViewerStateSchema = z.object({
+  postId: postIdSchema,
+  liked: z.boolean(),
+  reposted: z.boolean(),
+  bookmarked: z.boolean(),
+});
+
+export type PostViewerState = z.infer<typeof postViewerStateSchema>;
+
 export const hydratedFeedItemSchema = z.object({
   post: postSchema,
   /**
@@ -261,23 +275,17 @@ export const hydratedFeedItemSchema = z.object({
    * whose parent is gone (deleted posts are indistinguishable from absent).
    */
   replyToAuthor: profileSchema.nullable(),
+  /**
+   * The viewer's interaction flags, folded into the feed page (#157): the
+   * feed service fetches them in parallel with hydration, so the web's
+   * render is a single hop instead of feed-then-viewer-state. Optional and
+   * best-effort - a viewer-state outage serves the page with un-filled
+   * cards (the same contract the web's separate hop had).
+   */
+  viewer: postViewerStateSchema.pick({ liked: true, reposted: true, bookmarked: true }).optional(),
 });
 
 export type HydratedFeedItem = z.infer<typeof hydratedFeedItemSchema>;
-
-/**
- * The caller's interaction flags for one post (batched viewer state): which
- * of like/repost/bookmark the viewer already has. Missing ids in the
- * response mean "no interactions" and default to false on clients.
- */
-export const postViewerStateSchema = z.object({
-  postId: postIdSchema,
-  liked: z.boolean(),
-  reposted: z.boolean(),
-  bookmarked: z.boolean(),
-});
-
-export type PostViewerState = z.infer<typeof postViewerStateSchema>;
 
 /** WS notification (spec 03): a hint to refetch, never a data channel. */
 export const feedNewItemsMessageSchema = z.object({

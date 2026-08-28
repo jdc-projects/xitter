@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { FeedEntryInput, HydratedFeedItem, Post, Profile } from '@xitter/api-contracts';
+import type {
+  FeedEntryInput,
+  HydratedFeedItem,
+  Post,
+  PostViewerState,
+  Profile,
+} from '@xitter/api-contracts';
 import { FeedService, FEED_PAGE_MAX } from './feed.service.js';
 import {
   CheckpointRepository,
@@ -182,6 +188,8 @@ function fakeHydrator(
     posts: byId(posts),
     profiles: byId(profiles),
     blockedAuthorIds: () => Promise.resolve([]),
+    // #157: flags fold - empty by default (un-filled cards), overridable.
+    viewerState: () => Promise.resolve(new Map<string, PostViewerState>()),
     ...overrides,
     store: { posts, profiles },
   };
@@ -486,6 +494,60 @@ describe('FeedService.getFeed', () => {
     expect(item.author.id).toBe(OWNER);
     expect(item.post.authorId).toBe(OWNER);
     expect(item.repostedBy?.id).toBe(FOLLOWEE);
+  });
+
+  it('folds viewer flags into the page (#157)', async () => {
+    const { repo } = fakeRepo();
+    const hydrator = fakeHydrator({
+      viewerState: (userId, postIds) =>
+        Promise.resolve(
+          new Map(
+            postIds.map((id) => [
+              id,
+              { postId: id, liked: userId === OWNER, reposted: false, bookmarked: true },
+            ]),
+          ),
+        ),
+    });
+    const at = new Date('2026-08-18T12:00:00Z');
+    const id = '00000000-0000-4000-8000-000000000011';
+    await repo.upsertEntries([entry({ postId: id, postCreatedAt: at })]);
+    hydrator.store.posts.set(id, post(id, FOLLOWEE, at));
+    hydrator.store.profiles.set(FOLLOWEE, profile(FOLLOWEE));
+
+    const service = new FeedService(
+      repo,
+      hydrator,
+      spyRealtime(),
+      new CheckpointRepository(fakeCheckpointDb()),
+    );
+    const page = await service.getFeed(OWNER, { limit: 10 });
+
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0]!.viewer).toEqual({ liked: true, reposted: false, bookmarked: true });
+  });
+
+  it('serves the page un-filled when the viewer-state fold fails (#157 fails-open)', async () => {
+    const { repo } = fakeRepo();
+    const hydrator = fakeHydrator({
+      viewerState: () => Promise.reject(new Error('posts briefly down')),
+    });
+    const at = new Date('2026-08-18T12:00:00Z');
+    const id = '00000000-0000-4000-8000-000000000012';
+    await repo.upsertEntries([entry({ postId: id, postCreatedAt: at })]);
+    hydrator.store.posts.set(id, post(id, FOLLOWEE, at));
+    hydrator.store.profiles.set(FOLLOWEE, profile(FOLLOWEE));
+
+    const service = new FeedService(
+      repo,
+      hydrator,
+      spyRealtime(),
+      new CheckpointRepository(fakeCheckpointDb()),
+    );
+    const page = await service.getFeed(OWNER, { limit: 10 });
+
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0]!.viewer).toBeUndefined();
   });
 
   it('hydrates the reply-target author for replies, batched (#147)', async () => {
