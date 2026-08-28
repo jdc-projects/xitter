@@ -13,6 +13,8 @@ import {
 import { ZodValidationPipe } from '@xitter/service-kit';
 import { PostsService } from './posts.service.js';
 
+const internalViewerStateQuery = new ZodValidationPipe(internalViewerStateQuerySchema);
+
 /**
  * Service-to-service endpoints (spec 03 internal table). No version segment -
  * they sit at /api/posts/internal/... and require a service token whose
@@ -38,7 +40,7 @@ export class InternalController {
    */
   @Get('posts/viewer-state')
   @Internal()
-  viewerState(@Query(internalViewerStateQuerySchema) query: InternalViewerStateQuery) {
+  viewerState(@Query(internalViewerStateQuery) query: InternalViewerStateQuery) {
     return this.posts.viewerState(query.userId, query.postIds).then((items) => ({ items }));
   }
 
