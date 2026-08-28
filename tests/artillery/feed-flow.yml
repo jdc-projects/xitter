@@ -1,8 +1,50 @@
-# Load tests run against prod-like mode locally, or a deployed environment
-# when absolute numbers matter. See docs/specs/testing/02-suites.md.
+# API load flow: authenticated feed reads + post creation, spread across the
+# seeded demo users (see processors.ts - rotation defeats the per-user rate
+# limiter's 429s). Budgets are ENFORCED via `ensure` + the ensure plugin:
+# the run exits non-zero when any budget breaks, including the vacuous-run
+# guards (a run that sends no requests fails on `http.requests >= 200`).
+# Local budgets only; the nightly deployed smoke selects the `deployed`
+# environment for WAN-scaled tripwires. See docs/specs/testing/02-suites.md.
+#
+# Run through `npm run test:load` (packages/scripts/src/load.ts resolves the
+# offset-aware edge URL and Keycloak URL). Direct `artillery run` needs
+# E2E_BASE_URL in the environment - bare `$processEnvironment` lookup is the
+# only interpolation Artillery supports for config.target (the old
+# `{{ $env.VAR || 'default' }}`-style fallbacks become a literal URL and
+# every request fails - issue #158).
 config:
-  target: "{{ $processEnvironment.E2E_BASE_URL || 'http://localhost:8080' }}"
+  target: "{{ $processEnvironment.E2E_BASE_URL }}"
   processor: ./processors.ts
+  plugins:
+    ensure: {}
+  ensure:
+    # Measured steady-state on an idle local stack: p95 ~13ms, p99 ~15ms.
+    # 150ms/400ms catch >=3x regressions with ~10x headroom for CI jitter.
+    p95: 150
+    p99: 400
+    # Percent of virtual users that fail (login/connect/iteration errors).
+    maxErrorRate: 1
+    conditions:
+      # Vacuous-run guard (#158): zero or near-zero requests must FAIL, not
+      # pass on empty metrics.
+      - expression: "http.requests >= 200"
+      # HTTP error budget: >=99% of requests must be 2xx (missing code
+      # counters resolve to 0, so this is safe when a code never occurs).
+      - expression: "(http.codes.200 + http.codes.201) / http.requests * 100 >= 99"
+  environments:
+    deployed:
+      # Nightly smoke against the deployed dev env (scheduled.yml). WAN RTT
+      # + shared Keycloak make the local absolute budgets meaningless, but
+      # the run still gates on error rate and volume. Replace p95/p99 with
+      # measured baselines once the nightly has published a few reports
+      # (perf report #158 §4.4). NOTE: environments deep-merge into the
+      # base - the conditions below stay index-aligned with the base list.
+      ensure:
+        p95: 750
+        p99: 2000
+        conditions:
+          - expression: "http.requests >= 200"
+          - expression: "(http.codes.200 + http.codes.201) / http.requests * 100 >= 99"
   phases:
     - name: warm-up
       duration: 30
@@ -12,20 +54,24 @@ config:
       arrivalRate: 2
       rampTo: 10
 scenarios:
+  # Read-heavy mix (a timeline is read far more often than written); weights
+  # keep create-post well under the rate limiter's per-user refill even at
+  # full ramp with all traffic from one IP.
   - name: browse feed
+    weight: 3
     flow:
       - function: loginDemo
       - get:
           url: /api/feed/v1/feed
           headers:
-            authorization: 'Bearer {{ token }}'
+            authorization: "Bearer {{ token }}"
   - name: create post
-    weight: 2
+    weight: 1
     flow:
       - function: loginDemo
       - post:
           url: /api/posts/v1/posts
           headers:
-            authorization: 'Bearer {{ token }}'
+            authorization: "Bearer {{ token }}"
           json:
-            text: 'load test post'
+            text: "load test post"
