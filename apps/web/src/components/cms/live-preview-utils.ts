@@ -1,5 +1,5 @@
 /**
- * Payload live-preview helpers shared by the landing and FAQ preview
+ * Payload live-preview helpers shared by the About-section and FAQ preview
  * components (kept out of the component files so they stay component-only).
  */
 

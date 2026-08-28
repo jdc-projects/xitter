@@ -8,6 +8,8 @@ import { cmsPopulateRequest, patchEntry } from './live-preview-utils';
 /**
  * Live preview (/about?preview=<docId>): renders draft FAQ entries
  * server-side, then applies the doc Payload pushes as the admin edits.
+ * About-section docs preview on the same page (#153) - a live doc without
+ * FAQ fields is ignored rather than appended as an empty entry.
  */
 export function FaqContentPreview({
   entries,
@@ -19,19 +21,19 @@ export function FaqContentPreview({
   serverURL: string;
 }) {
   const match = entries.find((entry) => String(entry.id ?? '') === previewId);
-  const initialData = match ?? {
-    id: Number.parseInt(previewId, 10) || 0,
-    slug: '',
-    question: '',
-    answer: '',
-  };
+  const initialData = (match ?? { id: Number.parseInt(previewId, 10) || 0 }) as unknown as Record<
+    string,
+    unknown
+  >;
 
   const { data } = useLivePreview({
     serverURL,
     depth: 0,
-    initialData: initialData as unknown as Record<string, unknown>,
+    initialData,
     requestHandler: cmsPopulateRequest(serverURL),
   });
 
-  return <FaqList entries={patchEntry(entries, data)} />;
+  const live = data as Partial<FaqEntry> | null;
+  const isFaqDoc = live?.question !== undefined || live?.answer !== undefined;
+  return <FaqList entries={isFaqDoc ? patchEntry(entries, data) : entries} />;
 }

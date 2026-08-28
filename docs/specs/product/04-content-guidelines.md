@@ -4,21 +4,22 @@ Site content strategy: what text lives where, in what tone, and the non-negotiab
 
 ## CMS vs code
 
-| Content                                  | Lives in | Notes                                                                                                                                                        |
-| ---------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Landing intro                            | CMS      | Short, editable, live preview                                                                                                                                |
-| FAQ entries                              | CMS      | Ordered list, editable, live preview                                                                                                                         |
-| Page shells, navigation, labels, buttons | Code     | Product UI is not CMS-editable                                                                                                                               |
-| Reset notice / PII warning _wording_     | Code     | Shown on every required surface; must not be accidentally editable away                                                                                      |
-| Under-the-hood stack facts               | Code     | Facts about the deployed platform (services, workers, stores, IaC) - code-rendered so they cannot drift from reality; the CMS intro stays the editable prose |
+| Content                                  | Lives in | Notes                                                                                                                                                                            |
+| ---------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| About intro sections (what/why/how)      | CMS      | Ordered, editable, live preview; slugs double as anchors (#153 — moved from the landing intro)                                                                                   |
+| FAQ entries                              | CMS      | Ordered list, editable, live preview                                                                                                                                             |
+| Landing value prop                       | Code     | One line, code-owned — the front door does not explain the app (#153)                                                                                                            |
+| Page shells, navigation, labels, buttons | Code     | Product UI is not CMS-editable                                                                                                                                                   |
+| Reset notice / PII warning _wording_     | Code     | Shown on every required surface; must not be accidentally editable away                                                                                                          |
+| Under-the-hood stack facts               | Code     | Facts about the deployed platform (services, workers, stores, IaC) - code-rendered on the About page so they cannot drift from reality; the CMS sections stay the editable prose |
 
 Rule of thumb: _prose about the site_ is CMS; _the product itself_ is code. Anything that must survive the nightly reset and be version-controlled is promoted from CMS back to repo seed files (see [../data/02-seeding.md](../data/02-seeding.md)).
 
 ## Rendering and resilience
 
-The web app SSR-fetches landing intro and FAQ entries from the Payload REST API (`/api/landing-content`, `/api/faq`, ordered by `order`), with:
+The web app SSR-fetches the About intro sections and FAQ entries from the Payload REST API (`/api/about-content`, `/api/faq`, ordered by `order`), with:
 
-- **Hardcoded code fallbacks** whenever the CMS is unreachable, erroring, or empty — the landing and About pages must never fail because the CMS is down (demo resilience beats freshness).
+- **Hardcoded code fallbacks** whenever the CMS is unreachable, erroring, or empty — the About page must never fail because the CMS is down (demo resilience beats freshness). The landing page no longer fetches CMS content at all (#153).
 - **Caching**: published content rides the Next data cache with a short revalidate + tags; draft renders (`?preview=` param, live preview) are per-request and never cached.
 - **Draft access**: the CMS API itself gates `?draft=true` behind an authenticated CMS principal (admin session or the `cms` service client). The web's preview URL is deliberately **not** further gated (accepted exposure, demo threat model): anyone holding a `?preview=` link can read the current drafts of site copy (pre-publication marketing/FAQ text only — no user data). Never publish sensitive copy through the CMS drafts.
 

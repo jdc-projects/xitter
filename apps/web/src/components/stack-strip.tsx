@@ -1,4 +1,4 @@
-import { Anchor, Group, Stack, ThemeIcon, Text, Title } from '@mantine/core';
+import { Group, Stack, ThemeIcon, Text, Title } from '@mantine/core';
 import type { MantineColor } from '@mantine/core';
 import {
   IconArrowsExchange,
@@ -17,9 +17,10 @@ interface StackFact {
 }
 
 /**
- * "Under the hood" facts about the platform (#37). Facts about the product
+ * "Under the hood" facts about the platform (#37, moved to the About page by
+ * #153 - X's front door doesn't explain itself). Facts about the product
  * live in code (spec 04 rule of thumb: prose about the site is CMS, the
- * product itself is code) - the CMS intro above stays the editable prose.
+ * product itself is code) - the CMS sections above stay the editable prose.
  */
 const STACK_FACTS: StackFact[] = [
   {
@@ -55,23 +56,20 @@ const STACK_FACTS: StackFact[] = [
 ];
 
 /**
- * The stack strip (#37): xitter is a portfolio piece and the landing page
- * says so - what it is, what it runs on, how it ships. Code-rendered so it
- * can never drift from the deployed reality.
+ * The stack strip (#37): xitter is a portfolio piece and the About page says
+ * so - what it is, what it runs on, how it ships. Code-rendered so it can
+ * never drift from the deployed reality. No link back to About: it renders
+ * there (spec 02 §2.7, no self-referential links).
  */
 export function StackStrip() {
   return (
-    <Stack gap="sm" data-testid="landing-stack">
+    <Stack gap="sm" data-testid="stack-strip">
       <Title order={2} size="h4">
         Under the hood
       </Title>
       <Text size="sm" c="dimmed">
         A microservices demo, end to end: a browser app, APIs with their own data, event-driven
-        workers behind them, and infrastructure as code.{' '}
-        <Anchor href="/about" size="sm" underline="always" data-testid="landing-stack-about-link">
-          Read how it works
-        </Anchor>
-        .
+        workers behind them, and infrastructure as code.
       </Text>
       <Group justify="flex-start" align="flex-start" gap="lg" wrap="wrap">
         {STACK_FACTS.map((fact) => (

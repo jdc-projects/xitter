@@ -4,14 +4,14 @@ Per-service data ownership. Each service owns exactly one store and is the only 
 
 ## Ownership matrix
 
-| Domain                    | Owning service | Store                                             | Notes                                                                                 |
-| ------------------------- | -------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Profiles, follows, blocks | social         | Postgres (`social`)                               | Identity-adjacent data; user info itself lives in Keycloak                            |
-| Posts, interactions       | posts          | Postgres (`posts`)                                | Source of truth for posts, replies, likes, bookmarks, reposts                         |
-| Media assets              | media          | Postgres (`media`) + RustFS bucket `xitter-media` | Objects keyed `{userId}/{mediaId}/{original\|thumb}.{ext}`                            |
-| Feed entries              | feed           | Postgres (`feed`)                                 | Materialised per-user timeline (event-fed) + the fanout worker's resume checkpoints   |
-| Search                    | search         | Postgres (`search`) + OpenSearch `posts` index    | Postgres holds only checkpoints; OpenSearch holds the index                           |
-| Site content              | cms (Payload)  | Postgres (`cms`)                                  | Payload-managed tables: landing intro, FAQ entries, users/sessions for the CMS itself |
+| Domain                    | Owning service | Store                                             | Notes                                                                                  |
+| ------------------------- | -------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Profiles, follows, blocks | social         | Postgres (`social`)                               | Identity-adjacent data; user info itself lives in Keycloak                             |
+| Posts, interactions       | posts          | Postgres (`posts`)                                | Source of truth for posts, replies, likes, bookmarks, reposts                          |
+| Media assets              | media          | Postgres (`media`) + RustFS bucket `xitter-media` | Objects keyed `{userId}/{mediaId}/{original\|thumb}.{ext}`                             |
+| Feed entries              | feed           | Postgres (`feed`)                                 | Materialised per-user timeline (event-fed) + the fanout worker's resume checkpoints    |
+| Search                    | search         | Postgres (`search`) + OpenSearch `posts` index    | Postgres holds only checkpoints; OpenSearch holds the index                            |
+| Site content              | cms (Payload)  | Postgres (`cms`)                                  | Payload-managed tables: About sections, FAQ entries, users/sessions for the CMS itself |
 
 Shared, non-service-owned stores: Kafka (event bus), Valkey (ephemeral: ws pub/sub, rate limits — never a source of truth), Keycloak (identity).
 
@@ -149,7 +149,7 @@ Unique: `SearchCheckpoint(consumerKey, topicPartition)` — one resume position 
 
 ### cms
 
-Payload-managed tables (schema owned by Payload collections/migrations): landing intro content, FAQ entries (question, answer, order), and Payload's own admin users/sessions. No product services read this DB directly; the web app reads via the CMS API.
+Payload-managed tables (schema owned by Payload collections/migrations): About section content (title, intro, order), FAQ entries (question, answer, order), and Payload's own admin users/sessions. No product services read this DB directly; the web app reads via the CMS API.
 
 ## Field-level tables
 

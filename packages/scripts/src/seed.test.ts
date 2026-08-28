@@ -232,10 +232,10 @@ describe('runSeed retry hardening (#85)', () => {
         test: /\/protocol\/openid-connect\/token$/,
         respond: () => ({ access_token: 'seed-test-token', expires_in: 300 }),
       },
-      { method: 'GET', test: /\/cms\/api\/(landing-content|faq)/, respond: () => ({ docs: [] }) },
+      { method: 'GET', test: /\/cms\/api\/(about-content|faq)/, respond: () => ({ docs: [] }) },
       {
         method: 'POST',
-        test: /\/cms\/api\/(landing-content|faq)/,
+        test: /\/cms\/api\/(about-content|faq)/,
         respond: () => ({ doc: {} }),
       },
       {
@@ -488,7 +488,7 @@ describe('runSeed retry hardening (#85)', () => {
     vi.stubEnv('XITTER_RESET_SKIP_CMS', '');
     let cmsListsSeen = 0;
     const { fetch, state } = seedSurface((method, path) => {
-      if (method === 'GET' && /\/cms\/api\/(landing-content|faq)/.test(path)) {
+      if (method === 'GET' && /\/cms\/api\/(about-content|faq)/.test(path)) {
         cmsListsSeen += 1;
         // First listing of the first collection rides one 503 out.
         return cmsListsSeen === 1 ? 503 : undefined;

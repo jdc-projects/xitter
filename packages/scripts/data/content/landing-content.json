@@ -1,8 +1,0 @@
-[
-  {
-    "slug": "landing-intro",
-    "title": "A Twitter/X-style demo that tidies itself up",
-    "intro": "xitter is a small Twitter/X-style demo - posts, follows, replies, likes, bookmarks and reposts - built as a realistic microservices homelab: service APIs, Kafka workers, and a nightly reset that wipes everything back to a seeded state.",
-    "order": 0
-  }
-]
