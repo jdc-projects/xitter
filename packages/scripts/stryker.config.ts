@@ -29,6 +29,10 @@ export default createStrykerConfig('scripts', {
   // drift without masking real regressions - a ratchet floor, not a
   // target (see testing spec 03: judged by value, not score-chasing).
   thresholds: { break: 30 },
+  // The demoPng palette-spec test rasterises every pattern x size (73ms
+  // plain) - coverage instrumentation on the zlib/raster hot loops blows
+  // Stryker's 5s dry-run default on the CI runner (#166's mutation job).
+  timeoutMS: 20_000,
   mutateExclude: [
     '!src/lib/exec.ts',
     '!src/lib/compose.ts',

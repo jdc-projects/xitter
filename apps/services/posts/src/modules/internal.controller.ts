@@ -2,8 +2,10 @@ import { Body, Controller, HttpCode, Post } from '@nestjs/common';
 import { Internal } from '@xitter/auth-nest';
 import {
   internalAuthorPostsRequestSchema,
+  internalCreatePostRequestSchema,
   postLookupRequestSchema,
   type InternalAuthorPostsRequest,
+  type InternalCreatePostRequest,
   type PostLookupRequest,
 } from '@xitter/api-contracts';
 import { ZodValidationPipe } from '@xitter/service-kit';
@@ -24,6 +26,23 @@ export class InternalController {
   @HttpCode(200)
   reseed(): Promise<{ ok: boolean }> {
     return this.posts.reseed().then(() => ({ ok: true }));
+  }
+
+  /**
+   * Seed-only create on behalf of a user with an explicit creation time
+   * (#150: the corpus's back-dated timestamps). Same rules as the public
+   * create (the service path is shared), plus a bounded past-only window on
+   * `createdAt`. Scoped to the seeder's machine client (svc-reset) - public
+   * callers keep the timestamp-less POST /v1/posts.
+   */
+  @Post('posts')
+  @Internal({ clients: ['svc-reset'] })
+  @HttpCode(201)
+  create(
+    @Body(new ZodValidationPipe(internalCreatePostRequestSchema)) body: InternalCreatePostRequest,
+  ) {
+    const { authorId, createdAt, ...post } = body;
+    return this.posts.create(authorId, post, { createdAt });
   }
 
   /** Bulk visible-post lookup (feed #7 hydration). Deleted ids are omitted. */

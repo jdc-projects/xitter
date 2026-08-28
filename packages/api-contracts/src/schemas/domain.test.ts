@@ -15,6 +15,7 @@ import {
 import {
   createPostRequestSchema,
   feedCheckpointPutRequestSchema,
+  internalCreatePostRequestSchema,
   mediaLookupRequestSchema,
   searchCheckpointPutRequestSchema,
   searchIndexDocumentSchema,
@@ -65,6 +66,58 @@ describe('createPostRequestSchema', () => {
     const parsed = createPostRequestSchema.parse({ text: 'hi' });
     expect(parsed.mediaIds).toEqual([]);
     expect(parsed.replyToId).toBeNull();
+  });
+
+  it('is strict: createdAt is NOT a public field (#150 - back-dating is internal)', () => {
+    expect(
+      createPostRequestSchema.safeParse({
+        text: 'hi',
+        createdAt: '2026-08-20T00:00:00.000Z',
+      }).success,
+    ).toBe(false);
+  });
+});
+
+// #150: the seed-only create with an explicit creation time. Shape mirrors
+// the public create plus authorId + createdAt; strict like its base.
+describe('internalCreatePostRequestSchema (#150)', () => {
+  const authorId = '00000000-0000-4000-8000-000000000a01';
+
+  it('requires authorId and createdAt on top of the public shape', () => {
+    const parsed = internalCreatePostRequestSchema.parse({
+      text: 'back-dated',
+      authorId,
+      createdAt: '2026-08-20T00:00:00.000Z',
+    });
+    expect(parsed).toEqual({
+      text: 'back-dated',
+      mediaIds: [],
+      replyToId: null,
+      authorId,
+      createdAt: '2026-08-20T00:00:00.000Z',
+    });
+  });
+
+  it('rejects a non-uuid authorId, a non-ISO timestamp, and unknown keys', () => {
+    expect(
+      internalCreatePostRequestSchema.safeParse({
+        text: 'x',
+        authorId: 'nope',
+        createdAt: '2026-08-20T00:00:00.000Z',
+      }).success,
+    ).toBe(false);
+    expect(
+      internalCreatePostRequestSchema.safeParse({ text: 'x', authorId, createdAt: 'yesterday' })
+        .success,
+    ).toBe(false);
+    expect(
+      internalCreatePostRequestSchema.safeParse({
+        text: 'x',
+        authorId,
+        createdAt: '2026-08-20T00:00:00.000Z',
+        actorName: 'spoof',
+      }).success,
+    ).toBe(false);
   });
 });
 

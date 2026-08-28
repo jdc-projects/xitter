@@ -68,7 +68,7 @@ describe('runSeed probe', () => {
         // probe/verify reads are user-gated: the grant hits the token endpoint
         method: 'POST',
         test: /\/protocol\/openid-connect\/token$/,
-        respond: () => ({ access_token: 'seed-test-token' }),
+        respond: () => ({ access_token: 'seed-test-token', expires_in: 300 }),
       },
       hasProfile(true),
       userPosts(expected),
@@ -170,7 +170,12 @@ describe('runSeed retry hardening (#85)', () => {
     /** Posts the fake services hold (author's timeline items). */
     posts: Array<{ id: string; text: string; author: number; deletedAt: string | null }>;
     /** Bodies of served (200-level) post creates, for wire assertions. */
-    postBodies: Array<{ text: string; mediaIds: unknown }>;
+    postBodies: Array<{
+      text: string;
+      mediaIds: unknown;
+      authorId?: string;
+      createdAt?: string;
+    }>;
     /** 200-level create responses served (excludes adopted/faulty attempts). */
     postCreates: number;
     /** Every POST /posts attempt, including thrown/reconciled ones. */
@@ -193,7 +198,8 @@ describe('runSeed retry hardening (#85)', () => {
     /** May throw to simulate a network-level failure. */
     respond(
       url: URL,
-      body: { text?: string; mediaIds?: unknown } | undefined,
+      body:
+        { text?: string; mediaIds?: unknown; authorId?: string; createdAt?: string } | undefined,
       outcome: unknown,
     ): unknown;
   }
@@ -224,7 +230,7 @@ describe('runSeed retry hardening (#85)', () => {
       {
         method: 'POST',
         test: /\/protocol\/openid-connect\/token$/,
-        respond: () => ({ access_token: 'seed-test-token' }),
+        respond: () => ({ access_token: 'seed-test-token', expires_in: 300 }),
       },
       { method: 'GET', test: /\/cms\/api\/(landing-content|faq)/, respond: () => ({ docs: [] }) },
       {
@@ -242,8 +248,10 @@ describe('runSeed retry hardening (#85)', () => {
         },
       },
       {
+        // #150: posts are created on the internal path (svc-reset) with an
+        // explicit createdAt derived from the corpus age offsets.
         method: 'POST',
-        test: /\/api\/posts\/v1\/posts$/,
+        test: /\/api\/posts\/internal\/posts$/,
         respond: (_url, body, outcome) => {
           // Corpus texts pin the slot (deterministic, unique per author).
           const text = body?.text;
@@ -260,7 +268,12 @@ describe('runSeed retry hardening (#85)', () => {
           state.postCreates += 1;
           const id = `created-${state.postCreates}`;
           state.posts.push({ id, text, author: slot.authorIndex, deletedAt: null });
-          state.postBodies.push({ text, mediaIds: body?.mediaIds });
+          state.postBodies.push({
+            text,
+            mediaIds: body?.mediaIds,
+            authorId: body?.authorId,
+            createdAt: body?.createdAt,
+          });
           return { id };
         },
       },
@@ -299,7 +312,7 @@ describe('runSeed retry hardening (#85)', () => {
 
     /** Attempt counters run BEFORE injection: a failed try is still a try. */
     const countAttempt = (method: string, path: string): void => {
-      if (method === 'POST' && path === '/api/posts/v1/posts') state.postAttempts += 1;
+      if (method === 'POST' && path === '/api/posts/internal/posts') state.postAttempts += 1;
       if (method === 'POST' && path === '/api/media/v1/uploads') state.uploadAttempts += 1;
       if (path.startsWith('/cms/api/')) {
         state.cmsCalls.push(`${method} ${path}`);
@@ -308,9 +321,13 @@ describe('runSeed retry hardening (#85)', () => {
     };
 
     /** Token grants post urlencoded bodies; only JSON requests carry one. */
-    const jsonBody = (init?: RequestInit): { text?: string } | undefined => {
+    const jsonBody = (
+      init?: RequestInit,
+    ): { text?: string; mediaIds?: unknown; authorId?: string; createdAt?: string } | undefined => {
       const raw = typeof init?.body === 'string' ? init.body : undefined;
-      return raw?.startsWith('{') ? (JSON.parse(raw) as { text: string }) : undefined;
+      return raw?.startsWith('{')
+        ? (JSON.parse(raw) as { text: string; authorId?: string; createdAt?: string })
+        : undefined;
     };
 
     const dispatch = async (method: string, url: URL, init?: RequestInit): Promise<Response> => {
@@ -339,6 +356,7 @@ describe('runSeed retry hardening (#85)', () => {
 
   it('rides out deploy churn on the idempotent phases (probe retry, full seed)', async () => {
     vi.stubEnv('XITTER_RESET_SKIP_CMS', '1');
+    const seedTime = Date.parse('2026-08-27T04:00:00.000Z');
     let profileReads = 0;
     const { fetch, state } = seedSurface((method, path) => {
       // First profile probe read dies in flight; the read is idempotent
@@ -354,6 +372,7 @@ describe('runSeed retry hardening (#85)', () => {
       corpus: tiny,
       users: tinyUsers,
       fetchImpl: fetch,
+      stampTimeMs: seedTime,
       convergenceTimeoutMs: 1_000,
       log: (m) => state.logs.push(m),
     });
@@ -362,7 +381,9 @@ describe('runSeed retry hardening (#85)', () => {
     expect(report.created.posts).toBe(tiny.counts.posts);
     expect(state.postCreates).toBe(tiny.counts.posts); // no duplicated creates
 
-    // The corpus image post carries its alt text onto the create wire (#133).
+    // The corpus image post carries its alt text onto the create wire (#133),
+    // and every create is back-dated on the internal path with the author's
+    // resolved id (#150).
     const withMedia = state.postBodies.filter(
       (b) => Array.isArray(b.mediaIds) && b.mediaIds.length > 0,
     );
@@ -372,13 +393,19 @@ describe('runSeed retry hardening (#85)', () => {
       expect(slot.imageAlt).toBeTruthy();
       expect(body.mediaIds).toEqual([{ mediaId: 'm-1', altText: slot.imageAlt }]);
     }
+    expect(state.postBodies).toHaveLength(tiny.counts.posts);
+    for (const body of state.postBodies) {
+      const slot = tiny.posts.find((p) => p.text === body.text)!;
+      expect(body.authorId).toBe(tinyUsers[slot.authorIndex]!.userId);
+      expect(body.createdAt).toBe(new Date(seedTime - slot.ageMs).toISOString());
+    }
   });
 
   it('reconciles an ambiguous post-create failure by adopting the committed post', async () => {
     vi.stubEnv('XITTER_RESET_SKIP_CMS', '1');
     let postsSeen = 0;
     const { fetch, state } = seedSurface((method, path) => {
-      if (method === 'POST' && path === '/api/posts/v1/posts') {
+      if (method === 'POST' && path === '/api/posts/internal/posts') {
         postsSeen += 1;
         // First create commits server-side, then the response is lost.
         return postsSeen === 1 ? 'commit-then-timeout' : undefined;
@@ -409,7 +436,7 @@ describe('runSeed retry hardening (#85)', () => {
     vi.stubEnv('XITTER_RESET_SKIP_CMS', '1');
     let postsSeen = 0;
     const { fetch, state } = seedSurface((method, path) => {
-      if (method === 'POST' && path === '/api/posts/v1/posts') {
+      if (method === 'POST' && path === '/api/posts/internal/posts') {
         postsSeen += 1;
         // Timeout with NO commit: the probe finds nothing, so exactly one
         // deliberate re-create follows.

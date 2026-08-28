@@ -30,7 +30,7 @@ import {
   SEED_RETRY_IDEMPOTENT,
   type RetryPolicy,
 } from './lib/api.js';
-import { PasswordGrant, serviceBase, type ApiTarget } from './lib/targets.js';
+import { PasswordGrant, resetServiceToken, serviceBase, type ApiTarget } from './lib/targets.js';
 
 const POSTS_PAGE_LIMIT = 50;
 const SEED_IMAGE_SEED = 0x5eed;
@@ -46,6 +46,11 @@ export interface SeedOptions {
   users?: SeedUser[];
   corpus?: SeedCorpus;
   fetchImpl?: typeof fetch;
+  /**
+   * The run's stamp time (#150): corpus ages are `stampTime - post.ageMs`.
+   * Defaults to now; tests pin it to assert the exact back-dated wire values.
+   */
+  stampTimeMs?: number;
   /** Wait budget for media processing + fanout convergence (ms). */
   convergenceTimeoutMs?: number;
   log?: (message: string) => void;
@@ -72,6 +77,14 @@ interface SeedContext {
   ids: Map<string, string>;
   doFetch: typeof fetch;
   grants: PasswordGrant;
+  /**
+   * svc-reset client-credentials token (#150): post creation goes through
+   * posts' internal create, the only path that accepts an explicit
+   * createdAt. Same credential the reset flow itself holds.
+   */
+  serviceToken: { get(): Promise<string> };
+  /** The run's stamp time: corpus ages are seedTime - post.ageMs. */
+  seedTime: number;
   convergenceTimeoutMs: number;
   log: (message: string) => void;
   call(
@@ -100,6 +113,10 @@ export async function runSeed(options: SeedOptions = {}): Promise<SeedReport> {
     ids: new Map(users.map((u) => [u.username, u.userId])),
     doFetch,
     grants: new PasswordGrant({ fetchImpl: doFetch }),
+    serviceToken: resetServiceToken(doFetch),
+    // One stamp time for the whole run: every post's createdAt derives from
+    // it minus the corpus age, so the seeded history is internally ordered.
+    seedTime: options.stampTimeMs ?? Date.now(),
     convergenceTimeoutMs: options.convergenceTimeoutMs ?? 90_000,
     log: options.log ?? console.log,
     // Retry policies (#82, split #85): rides out deploy pod-churn
@@ -207,7 +224,13 @@ async function seedMedia(
   return { bySlot, count: bySlot.size };
 }
 
-/** Phase 4: posts (standalone first, then thread replies). */
+/**
+ * Phase 4: posts (standalone first, then thread replies), back-dated (#150):
+ * each post's createdAt is `seedTime - post.ageMs` from the deterministic
+ * corpus, so the seeded timeline spans ~7 days instead of the run's ~16s.
+ * Creation goes through posts' internal create (svc-reset token) - the
+ * public API keeps minting timestamps server-side.
+ */
 async function seedPosts(
   ctx: SeedContext,
   mediaBySlot: Map<string, string>,
@@ -230,7 +253,12 @@ async function seedPosts(
     const createdPost = await createPost(
       ctx,
       author,
-      { text: post.text, mediaIds: media, replyToId: replyToId ?? null },
+      {
+        text: post.text,
+        mediaIds: media,
+        replyToId: replyToId ?? null,
+        createdAt: new Date(ctx.seedTime - post.ageMs).toISOString(),
+      },
       token,
     );
     idBySlot.set(slotKey(post), createdPost.id);
@@ -240,8 +268,8 @@ async function seedPosts(
 }
 
 /**
- * Post create with ambiguity reconciliation (#85). POST /posts mints a
- * fresh uuid, so a blind retry after an in-flight failure (ETIMEDOUT after
+ * Post create with ambiguity reconciliation (#85). The internal create mints
+ * a fresh uuid, so a blind retry after an in-flight failure (ETIMEDOUT after
  * the server committed) would double-create - per-user counts then fail
  * verifySeeded and the night is wasted. Only provably-unprocessed causes
  * retry inside the call (SEED_RETRY_CREATE); an ambiguous failure instead
@@ -256,21 +284,30 @@ async function createPost(
     text: string;
     mediaIds: (string | { mediaId: string; altText: string })[];
     replyToId: string | null;
+    createdAt: string;
   },
-  token: string,
+  authorToken: string,
 ): Promise<{ id: string }> {
   const create = () =>
-    ctx.call(
-      'posts',
-      { method: 'POST', path: '/api/posts/v1/posts', body },
-      token,
-      SEED_RETRY_CREATE,
+    ctx.serviceToken.get().then((serviceToken) =>
+      ctx.call(
+        'posts',
+        {
+          method: 'POST',
+          // Internal (svc-reset) path: the only create that accepts createdAt.
+          path: '/api/posts/internal/posts',
+          body: { ...body, authorId: ctx.ids.get(author.username) },
+        },
+        // Service token, not the author's: the internal route is machine-only.
+        serviceToken,
+        SEED_RETRY_CREATE,
+      ),
     ) as Promise<{ id: string }>;
   try {
     return await create();
   } catch (err) {
     if (!isAmbiguousFailure(err)) throw err;
-    const twinId = await findTwinPost(ctx, author, body.text, token);
+    const twinId = await findTwinPost(ctx, author, body.text, authorToken);
     if (twinId) {
       ctx.log(`seed: ambiguous post-create failure reconciled (adopted existing post for text)`);
       return { id: twinId };
@@ -471,7 +508,9 @@ async function ensureUploadSlot(
 async function uploadDemoImage(post: CorpusPost, ctx: SeedContext): Promise<string> {
   const author = ctx.corpus.users[post.authorIndex]!;
   const token = await ctx.grants.token(author.username);
-  const bytes = demoPng(SEED_IMAGE_SEED + post.authorIndex);
+  // The corpus pins the pattern/size (#150); bytes stay a pure function of
+  // (seed, spec) so every environment uploads identical objects.
+  const bytes = demoPng(SEED_IMAGE_SEED + post.authorIndex, post.imageSpec ?? undefined);
   const slot = await ensureUploadSlot(
     ctx,
     { mimeType: 'image/png', bytes: bytes.byteLength },

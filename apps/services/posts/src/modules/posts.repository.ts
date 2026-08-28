@@ -29,6 +29,40 @@ type PostPageOrder = 'newest-first' | 'oldest-first';
  * Prisma data access for posts and interactions. Business rules (validation,
  * block enforcement, events) live in PostsService; this layer is queries only.
  */
+
+/** Keyset scope: (createdAt, id) strictly after the cursor in page order. */
+function scopedWhere(
+  where: Prisma.PostWhereInput,
+  position: { createdAt: string; id: string } | null,
+  descending: boolean,
+): Prisma.PostWhereInput {
+  if (!position) return where;
+  const boundary = new Date(position.createdAt);
+  return {
+    ...where,
+    OR: [
+      { createdAt: descending ? { lt: boundary } : { gt: boundary } },
+      { createdAt: boundary, id: descending ? { lt: position.id } : { gt: position.id } },
+    ],
+  };
+}
+
+function orderByFor(descending: boolean): Prisma.PostOrderByWithRelationInput[] {
+  const dir = descending ? 'desc' : 'asc';
+  return [{ createdAt: dir }, { id: dir }];
+}
+
+/** Trim the over-fetch and emit the next cursor when a page continues. */
+function pageResult(
+  rows: PostRow[],
+  limit: number,
+): { items: PostRow[]; nextCursor: string | null } {
+  const hasMore = rows.length > limit;
+  const items = hasMore ? rows.slice(0, limit) : rows;
+  const last = items.at(-1);
+  return { items, nextCursor: hasMore && last ? encodeCursor(last) : null };
+}
+
 @Injectable()
 export class PostsRepository {
   constructor(@Inject(POSTS_PRISMA) private readonly db: PostsDb) {}
@@ -51,6 +85,8 @@ export class PostsRepository {
   /**
    * Create a post and, for replies, bump the parent's reply counter in one
    * transaction so the counts read-model can never drift from the rows.
+   * `createdAt` overrides the store's now-default for the seed's back-dated
+   * corpus (#150); absent, the row stamps itself as usual.
    */
   createPost(input: {
     authorId: string;
@@ -58,6 +94,7 @@ export class PostsRepository {
     mediaIds: string[];
     media: MediaAsset[];
     replyToId: string | null;
+    createdAt?: Date;
   }): Promise<PostRow> {
     return this.db.$transaction(async (tx) => {
       const post = await tx.post.create({ data: input });
@@ -128,31 +165,12 @@ export class PostsRepository {
   ): Promise<{ items: PostRow[]; nextCursor: string | null }> {
     const position = cursor ? decodeCursor(cursor) : null;
     const descending = order === 'newest-first';
-    const boundary = position ? new Date(position.createdAt) : null;
-    const scoped: Prisma.PostWhereInput = boundary
-      ? {
-          ...where,
-          OR: [
-            { createdAt: descending ? { lt: boundary } : { gt: boundary } },
-            { createdAt: boundary, id: descending ? { lt: position!.id } : { gt: position!.id } },
-          ],
-        }
-      : where;
-    const orderBy: Prisma.PostOrderByWithRelationInput[] = [
-      { createdAt: descending ? 'desc' : 'asc' },
-      { id: descending ? 'desc' : 'asc' },
-    ];
-
     const rows = await this.db.post.findMany({
-      where: scoped,
-      orderBy,
+      where: scopedWhere(where, position, descending),
+      orderBy: orderByFor(descending),
       take: limit + 1,
     });
-
-    const hasMore = rows.length > limit;
-    const items = hasMore ? rows.slice(0, limit) : rows;
-    const last = items.at(-1);
-    return { items, nextCursor: hasMore && last ? encodeCursor(last) : null };
+    return pageResult(rows, limit);
   }
 
   /** Nightly reset: posts and interactions go away together (reset job only). */
