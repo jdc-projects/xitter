@@ -333,25 +333,32 @@ describe('demoPng', () => {
     expect(Buffer.compare(demoPng(5), demoPng(6))).not.toBe(0);
   });
 
-  it('renders every palette spec as a structurally valid, distinct image (#150)', () => {
-    for (const [width, height] of DEMO_IMAGE_SIZES) {
-      for (const pattern of DEMO_IMAGE_PATTERNS) {
-        const png = demoPng(9, { pattern: pattern.id, width, height });
-        expect(png.subarray(0, 8).at(0)).toBe(0x89); // PNG magic
-        expect(png.readUInt32BE(16)).toBe(width);
-        expect(png.readUInt32BE(20)).toBe(height);
-        const idatLength = png.readUInt32BE(33);
-        expect(inflateSync(png.subarray(41, 41 + idatLength)).length).toBe(
-          height * (1 + width * 3),
-        );
-        expect(png.byteLength).toBeLessThan(64 * 1024); // stays tiny
+  // Stryker's instrumented dry run multiplies the zlib/raster hot loop past
+  // vitest's 5s default (73ms plain) - the explicit budget keeps mutation
+  // honest without loosening any other test.
+  it(
+    'renders every palette spec as a structurally valid, distinct image (#150)',
+    { timeout: 20_000 },
+    () => {
+      for (const [width, height] of DEMO_IMAGE_SIZES) {
+        for (const pattern of DEMO_IMAGE_PATTERNS) {
+          const png = demoPng(9, { pattern: pattern.id, width, height });
+          expect(png.subarray(0, 8).at(0)).toBe(0x89); // PNG magic
+          expect(png.readUInt32BE(16)).toBe(width);
+          expect(png.readUInt32BE(20)).toBe(height);
+          const idatLength = png.readUInt32BE(33);
+          expect(inflateSync(png.subarray(41, 41 + idatLength)).length).toBe(
+            height * (1 + width * 3),
+          );
+          expect(png.byteLength).toBeLessThan(64 * 1024); // stays tiny
+        }
       }
-    }
-    // Same size, different pattern -> different bytes (the looks differ).
-    const horizontal = demoPng(9, { pattern: 'gradient-h', width: 96, height: 64 });
-    const vertical = demoPng(9, { pattern: 'gradient-v', width: 96, height: 64 });
-    expect(Buffer.compare(horizontal, vertical)).not.toBe(0);
-  });
+      // Same size, different pattern -> different bytes (the looks differ).
+      const horizontal = demoPng(9, { pattern: 'gradient-h', width: 96, height: 64 });
+      const vertical = demoPng(9, { pattern: 'gradient-v', width: 96, height: 64 });
+      expect(Buffer.compare(horizontal, vertical)).not.toBe(0);
+    },
+  );
 
   it('stays well under the media size cap', () => {
     for (const seed of [0, 1, 2, 3, 9]) {
