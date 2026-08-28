@@ -23,18 +23,14 @@ for (const flow of flows) {
   const code = await new Promise<number>((resolve, reject) => {
     // E2E_BASE_URL is what the configs' bare `$processEnvironment` target
     // lookup reads; XITTER_KEYCLOAK_URL feeds the processors' token grants.
-    const child = spawn(
-      'npx',
-      ['artillery', 'run', join(suiteDir, flow)],
-      {
-        stdio: 'inherit',
-        env: {
-          ...process.env,
-          E2E_BASE_URL: edge,
-          XITTER_KEYCLOAK_URL: keycloak,
-        },
+    const child = spawn('npx', ['artillery', 'run', join(suiteDir, flow)], {
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        E2E_BASE_URL: edge,
+        XITTER_KEYCLOAK_URL: keycloak,
       },
-    );
+    });
     child.once('error', reject);
     child.once('exit', (exitCode) => resolve(exitCode ?? 1));
   });

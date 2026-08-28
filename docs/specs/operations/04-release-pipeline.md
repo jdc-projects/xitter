@@ -86,9 +86,9 @@ The reconciliation path is **exercised by the first release** (v0.1.0): a merge 
 
 Nightly at **02:30 UTC** — after the 00:30 UTC reset/reseed window — against the freshly reseeded dev environment:
 
-| Suite     | Command                                                                                         | Reporting                                          |
-| --------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| Bruno     | `npm run test:api -- --env dev` (the deployed dev env)                                          | `bruno-report-dev` artifact (14-day retention)     |
+| Suite     | Command                                                                                                                                                                                                                     | Reporting                                          |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Bruno     | `npm run test:api -- --env dev` (the deployed dev env)                                                                                                                                                                      | `bruno-report-dev` artifact (14-day retention)     |
 | Artillery | `npx artillery run -e deployed tests/artillery/feed-flow.yml` (modest phases: 30s warm-up + 2m ramp 2→10/s; WAN-scaled tripwire budgets until nightly baselines land — see [testing/02-suites.md](../testing/02-suites.md)) | `artillery-report-dev` artifact (14-day retention) |
 
 Both target the public edge (`https://xitter-dev.jd-chapman.dev`, Keycloak at `https://idp.jd-chapman.dev`) — no cluster credentials involved. Failures surface as the workflow run status (visible from the Actions tab; no separate paging — the observability alerts own production health). `workflow_dispatch` accepts `environment: dev|prod` for on-demand runs, including pre-release smoke against prod.

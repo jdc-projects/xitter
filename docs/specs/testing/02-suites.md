@@ -39,19 +39,19 @@ Per-suite detail. For philosophy and ownership see [01-strategy.md](01-strategy.
 
 ## Artillery — load
 
-| Aspect   | Detail                                                                                                                                               |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Aspect   | Detail                                                                                                                                                                                                                       |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Location | `tests/artillery`: `feed-flow.yml` (HTTP flows), `browser-flow.yml` (browser journeys via the Playwright engine), `processors.ts` (shared processor: demo-user rotation, password-grant token cache, browser flow functions) |
-| Runs     | `npm run test:load` — both flows in sequence, exit-code gated; needs the prod-like stack (`deps:up` + `bootstrap`, like e2e). Absolute numbers for deployed envs come from the nightly (`-e deployed`) |
-| Shape    | Phased load (warm-up → ramp) with a read-heavy mix (feed browse + post create), rotated across `demo1..demoN` so the per-user rate limiter sees spread load instead of throttling one user (#158) |
-| Gating   | Budgets live in the configs (`ensure:` + the ensure plugin) and **fail the run**: breaches, error-rate excess, or a vacuous run (zero requests) exit non-zero — the suite cannot pass by doing nothing |
+| Runs     | `npm run test:load` — both flows in sequence, exit-code gated; needs the prod-like stack (`deps:up` + `bootstrap`, like e2e). Absolute numbers for deployed envs come from the nightly (`-e deployed`)                       |
+| Shape    | Phased load (warm-up → ramp) with a read-heavy mix (feed browse + post create), rotated across `demo1..demoN` so the per-user rate limiter sees spread load instead of throttling one user (#158)                            |
+| Gating   | Budgets live in the configs (`ensure:` + the ensure plugin) and **fail the run**: breaches, error-rate excess, or a vacuous run (zero requests) exit non-zero — the suite cannot pass by doing nothing                       |
 
 Thresholds (SLAs at target load — local budgets):
 
-| Flow                       | Threshold                                                      |
-| -------------------------- | -------------------------------------------------------------- |
-| API endpoints (feed flow)  | p95 < 150 ms · p99 < 400 ms · error rate < 1% · ≥ 200 requests |
-| Pages (browser flow)       | per-page p95 < 1 s · error rate < 1%                           |
+| Flow                      | Threshold                                                      |
+| ------------------------- | -------------------------------------------------------------- |
+| API endpoints (feed flow) | p95 < 150 ms · p99 < 400 ms · error rate < 1% · ≥ 200 requests |
+| Pages (browser flow)      | per-page p95 < 1 s · error rate < 1%                           |
 
 - The budgets are anchored to measured idle-stack baselines (API p95 ≈ 13 ms steady @5 rps, page p95 ≤ 55 ms): ~10× headroom for CI jitter while still catching 3–5× regressions. Tighten from measurements, never aspiration.
 - The nightly deployed smoke runs the feed flow with WAN-scaled tripwire budgets (`environments.deployed` in `feed-flow.yml`); replace them with measured baselines once a few nightly reports exist. Browser budgets stay local until a deployed browser baseline is recorded.

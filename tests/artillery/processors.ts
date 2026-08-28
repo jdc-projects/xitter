@@ -54,11 +54,7 @@ type Done = (err?: unknown) => void;
 /** token cache: username -> in-flight promise or cached token with expiry */
 const tokens = new Map<string, Promise<string> | { token: string; expiresAt: number }>();
 
-export function loginDemo(
-  context: ArtilleryContext,
-  events: ArtilleryEvents,
-  done: Done,
-): void {
+export function loginDemo(context: ArtilleryContext, events: ArtilleryEvents, done: Done): void {
   const username = nextDemoUser();
   token(username)
     .then((t) => {

@@ -10,7 +10,7 @@
 # trip maxErrorRate. Local budgets; run via `npm run test:load` - the
 # deployed nightly only runs the API flow (no browser budget baseline yet).
 config:
-  target: "{{ $processEnvironment.E2E_BASE_URL }}"
+  target: '{{ $processEnvironment.E2E_BASE_URL }}'
   processor: ./processors.ts
   engines:
     playwright:
@@ -27,7 +27,7 @@ config:
       - browser.step.post.p95: 1000
     conditions:
       # Vacuous-run guard (#158): a browser run that loads nothing fails.
-      - expression: "browser.http_requests >= 100"
+      - expression: 'browser.http_requests >= 100'
   phases:
     - name: browse
       duration: 90

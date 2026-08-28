@@ -13,7 +13,7 @@
 # `{{ $env.VAR || 'default' }}`-style fallbacks become a literal URL and
 # every request fails - issue #158).
 config:
-  target: "{{ $processEnvironment.E2E_BASE_URL }}"
+  target: '{{ $processEnvironment.E2E_BASE_URL }}'
   processor: ./processors.ts
   plugins:
     ensure: {}
@@ -27,10 +27,10 @@ config:
     conditions:
       # Vacuous-run guard (#158): zero or near-zero requests must FAIL, not
       # pass on empty metrics.
-      - expression: "http.requests >= 200"
+      - expression: 'http.requests >= 200'
       # HTTP error budget: >=99% of requests must be 2xx (missing code
       # counters resolve to 0, so this is safe when a code never occurs).
-      - expression: "(http.codes.200 + http.codes.201) / http.requests * 100 >= 99"
+      - expression: '(http.codes.200 + http.codes.201) / http.requests * 100 >= 99'
   environments:
     deployed:
       # Nightly smoke against the deployed dev env (scheduled.yml). WAN RTT
@@ -43,8 +43,8 @@ config:
         p95: 750
         p99: 2000
         conditions:
-          - expression: "http.requests >= 200"
-          - expression: "(http.codes.200 + http.codes.201) / http.requests * 100 >= 99"
+          - expression: 'http.requests >= 200'
+          - expression: '(http.codes.200 + http.codes.201) / http.requests * 100 >= 99'
   phases:
     - name: warm-up
       duration: 30
@@ -64,7 +64,7 @@ scenarios:
       - get:
           url: /api/feed/v1/feed
           headers:
-            authorization: "Bearer {{ token }}"
+            authorization: 'Bearer {{ token }}'
   - name: create post
     weight: 1
     flow:
@@ -72,6 +72,6 @@ scenarios:
       - post:
           url: /api/posts/v1/posts
           headers:
-            authorization: "Bearer {{ token }}"
+            authorization: 'Bearer {{ token }}'
           json:
-            text: "load test post"
+            text: 'load test post'
