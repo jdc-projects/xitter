@@ -76,6 +76,14 @@ export interface StoreControls {
   writeStatus(status: ResetStatus): Promise<void>;
   /** Zero-state check used when the reseed flag is off (spec: verification). */
   countFeedItems(username: string): Promise<number>;
+  /**
+   * Post-reset warm-up (#156): hit the public pages once so the first
+   * human visitor does not pay the cold render (269-461ms measured).
+   * Optional - absent means no warm-up step runs (local/dev without an
+   * edge). Best-effort by contract: a warm-up failure never fails the
+   * reset.
+   */
+  warmPages?(): Promise<number>;
 }
 
 export interface ResetStepReport {
@@ -230,6 +238,26 @@ export async function runResetFlow(options: ResetFlowOptions = {}): Promise<Rese
         }
         steps.at(-1)!.detail = 'feed empty';
       });
+    }
+
+    const warmPages = stores.warmPages;
+    if (warmPages) {
+      // Best-effort by contract (#156): a warm-up failure is reported as a
+      // failed step but never fails the reset - a cold first render is a
+      // perf nit, not an outage. (step() marks failure by throwing, so
+      // catch swallows it after the step report is recorded.)
+      try {
+        const warmed = await step('warm-pages', async () => {
+          const count = await warmPages();
+          if (count === 0) throw new Error('warm-up reached no pages');
+          return count;
+        });
+        // step() appends its report after the action resolves - the detail
+        // lands by writing the (now last) step, matching the other steps.
+        steps.at(-1)!.detail = `${warmed} page(s) rendered warm`;
+      } catch {
+        log('reset: warm-pages failed (best-effort - reset still succeeds)');
+      }
     }
 
     success = true;
@@ -422,6 +450,24 @@ async function defaultStores(): Promise<StoreControls> {
         if (lastError) throw lastError;
       }
       return done;
+    },
+
+    async warmPages() {
+      // #156: the edge origin is env-driven (never a hardcoded URL). Only
+      // deployed runs set it - absent means the step stays out entirely.
+      const edge = process.env.XITTER_EDGE_URL;
+      if (!edge) return 0;
+      const pages = ['/', '/about', '/login'];
+      let warmed = 0;
+      for (const path of pages) {
+        try {
+          const res = await fetch(`${edge}${path}`, { redirect: 'manual' });
+          if (res.ok || res.status === 302) warmed++;
+        } catch {
+          // best-effort by contract
+        }
+      }
+      return warmed;
     },
 
     async resetCms() {
