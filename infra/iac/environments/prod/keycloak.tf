@@ -1,13 +1,21 @@
-# Keycloak: the xitter-demo realm and its clients. Mirrors the logic in
+# Keycloak: prod's own demo realm and its clients. Mirrors the logic in
 # packages/scripts/src/keycloak.ts (which stays local/reset-only), so the
 # local bootstrap and the deployed realm converge on the same contract -
 # enforced for the audience map by
 # packages/scripts/src/keycloak-parity.test.ts (#80).
-# Demo users themselves are NOT Tofu-managed - the reset/seeder job owns them
-# (see docs/specs/operations/02-data-reset.md).
+# Demo users themselves are NOT Tofu-managed - the ensure-demo-users deploy
+# job owns their existence (reset.tf); the nightly reset, when it lands in
+# prod (#13), will own wipe+reseed (docs/specs/operations/02-data-reset.md).
 
 locals {
-  demo_realm = "xitter-demo"
+  # Realm-per-environment (ADR 0012): dev and prod share ONE Keycloak, so a
+  # shared realm name would put both Tofu states on the same objects - the
+  # first prod apply 409s against dev-owned objects, and every later apply
+  # fights over redirect URIs and rotates the machine-client secrets out
+  # from under the other env's workload Secrets. A distinct realm gives each
+  # state disjoint ownership (client ids stay unprefixed: they are
+  # namespaced by realm). keycloak-parity.test.ts enforces the distinctness.
+  demo_realm = "xitter-demo-prod"
 
   # Receiver audiences: the five API services (guards validate aud = own id).
   service_clients = ["svc-social", "svc-posts", "svc-media", "svc-feed", "svc-search"]
@@ -66,16 +74,23 @@ resource "keycloak_realm" "demo" {
   # defence. The provider enables bruteForceProtected by rendering this
   # brute_force_detection block (there is no top-level flag in 5.9);
   # temporary lockout only (permanent_lockout = false) is friendlier for a
-  # demo - all timings below are Keycloak's own defaults, spelled out so
-  # the posture is explicit: after 30 failures (or 1 too-fast attempt) the
-  # account locks for 60s, ramping to a 15m max, and the counter resets
-  # after 12h. The nightly reset would clear permanent locks anyway.
+  # demo - all other timings are Keycloak's own defaults, spelled out so
+  # the posture is explicit: after 30 failures the account locks for 60s,
+  # ramping to a 15m max, and the counter resets after 12h. The quick-login
+  # check is DISABLED (0), matching dev and the shared keycloak.ts realm
+  # init (which the ensure-demo-users job runs against this realm): one
+  # value in all three sources, or every upsert and apply fight over it.
+  # Keycloak 25.0.3+ treats any two login attempts for the same user within
+  # the window as an attack signal and temporarily disables the account
+  # even when both succeed - legitimate automated bursts (parallel demo
+  # logins, password grants) trip it. Failure-count lockouts and concurrent
+  # request handling remain active.
   security_defenses {
     brute_force_detection {
       permanent_lockout                = false
       max_login_failures               = 30
       wait_increment_seconds           = 60
-      quick_login_check_milli_seconds  = 1000
+      quick_login_check_milli_seconds  = 0
       minimum_quick_login_wait_seconds = 60
       max_failure_wait_seconds         = 900
       failure_reset_time_seconds       = 43200
@@ -97,7 +112,7 @@ resource "keycloak_role" "demo_user" {
   realm_id = keycloak_realm.demo.id
   name     = "demo-user"
 
-  description = "Demo users seeded by the nightly reset (demo1..demo10)."
+  description = "Demo users (demo1..demo10), guaranteed by the ensure-demo-users deploy job; nightly reseed lands with #13."
 }
 
 # Browser client for the web app (PKCE, public). direct grants stay enabled

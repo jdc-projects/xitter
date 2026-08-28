@@ -124,7 +124,14 @@ module "api_service" {
 
   env = concat(local.common_env, [
     { name = "PORT", value = "8080" },
-    { name = "KEYCLOAK_BASE_URL", value = local.keycloak_url },
+    { name = "KEYCLOAK_BASE_URL", value = local.keycloak_incluster_url },
+    # Keycloak stamps `iss` with the realm's canonical (public) frontend URL
+    # no matter which URL served the grant - validation must match it, while
+    # the base URL above carries the in-cluster transport (grants + JWKS).
+    # The realm's canonical issuer is PLAIN http on this Keycloak (the realm's
+    # configured frontend URL; tokens minted in-cluster still carry it). Match
+    # the scheme exactly or every token fails iss validation.
+    { name = "KEYCLOAK_ISSUER", value = "${replace(local.keycloak_url, "https://", "http://")}/realms/${local.demo_realm}" },
     { name = "DEMO_REALM", value = local.demo_realm },
     { name = "KAFKA_BROKERS", value = local.kafka_bootstrap },
     { name = "KEYCLOAK_CLIENT_ID", value = "svc-${each.key}" },
@@ -199,7 +206,14 @@ module "worker" {
     { name = "METRICS_PORT", value = tostring(local.worker_metrics_ports[each.key]) },
     # M2M token issuer for internal API callbacks (the realm URLs the
     # services use; without it workers default to localhost).
-    { name = "KEYCLOAK_BASE_URL", value = local.keycloak_url },
+    { name = "KEYCLOAK_BASE_URL", value = local.keycloak_incluster_url },
+    # Keycloak stamps `iss` with the realm's canonical (public) frontend URL
+    # no matter which URL served the grant - validation must match it, while
+    # the base URL above carries the in-cluster transport (grants + JWKS).
+    # The realm's canonical issuer is PLAIN http on this Keycloak (the realm's
+    # configured frontend URL; tokens minted in-cluster still carry it). Match
+    # the scheme exactly or every token fails iss validation.
+    { name = "KEYCLOAK_ISSUER", value = "${replace(local.keycloak_url, "https://", "http://")}/realms/${local.demo_realm}" },
     { name = "DEMO_REALM", value = local.demo_realm },
     # KEYCLOAK_CLIENT_ID/SECRET both come from the client Secret (envFrom).
     # Service bases are BARE: each worker's client builds /api/{service}/...
@@ -207,6 +221,12 @@ module "worker" {
     { name = "FEED_INTERNAL_URL", value = local.svc_base.feed },
     { name = "SEARCH_INTERNAL_URL", value = local.svc_base.search },
     { name = "MEDIA_INTERNAL_URL", value = local.svc_base.media },
+    # Reset epoch gate (ADR 0010): workers watch the reset epoch flag in
+    # Valkey to pause/resume themselves around a wipe. Prod runs no nightly
+    # reset yet (#13), but the wiring is mirrored from dev so prod workers
+    # join the pause protocol the moment it lands - no second tofu change,
+    # and no silent localhost fallback in the meantime.
+    { name = "VALKEY_URL", value = local.valkey_url },
   ], lookup(local.worker_extra_env, each.key, []))
 
   secret_env = concat(
@@ -250,6 +270,11 @@ module "web" {
     { name = "XITTER_FEED_URL", value = local.svc_base.feed },
     { name = "XITTER_SEARCH_URL", value = local.svc_base.search },
     { name = "XITTER_KEYCLOAK_URL", value = local.keycloak_url },
+    # Realm-per-env (ADR 0012): web's OIDC realm is env-driven and its
+    # default is dev's `xitter-demo` - without this override prod's PKCE
+    # login would discover the DEV realm (wrong issuer, wrong redirect
+    # URIs). Dev needs no override: its realm IS the default.
+    { name = "XITTER_DEMO_REALM", value = local.demo_realm },
     # Session store (and rate-limit reads) - without it web defaults to a
     # localhost Valkey and login cannot persist sessions.
     { name = "XITTER_VALKEY_URL", value = local.valkey_url },

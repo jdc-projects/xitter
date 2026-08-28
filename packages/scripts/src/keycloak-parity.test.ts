@@ -48,6 +48,18 @@ const TOFU_ONLY_EXCLUSIONS: Record<string, string[]> = {
   prod: ['svc-admin', 'svc-reset'],
 };
 
+/**
+ * The realm each environment's keycloak.tf creates. Both envs target ONE
+ * Keycloak, so the realms MUST be distinct (ADR 0012): equal names would put
+ * both Tofu states on the same objects - the first prod apply 409s and every
+ * later apply fights over redirect URIs + client secrets. Client ids stay
+ * unprefixed (namespaced by realm), which is why only this local differs.
+ */
+const EXPECTED_DEMO_REALMS: Record<string, string> = {
+  dev: 'xitter-demo',
+  prod: 'xitter-demo-prod',
+};
+
 function readEnvironment(environment: string): string {
   return readFileSync(
     resolve(REPO_ROOT, 'infra/iac/environments', environment, 'keycloak.tf'),
@@ -115,6 +127,12 @@ describe('client audience registry', () => {
 
 describe.each(['dev', 'prod'])('keycloak.tf (%s)', (environment) => {
   const hcl = readEnvironment(environment);
+
+  it('creates the environment-scoped demo realm (realm-per-env, ADR 0012)', () => {
+    const realm = hcl.match(/demo_realm = "([^"]+)"/)?.[1];
+    expect(realm, 'demo_realm locals entry not found').toBeDefined();
+    expect(realm).toBe(EXPECTED_DEMO_REALMS[environment]);
+  });
 
   it('machine_clients mirror the registry exactly', () => {
     const tofu = parseMachineClients(hcl);

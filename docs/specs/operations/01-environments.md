@@ -2,11 +2,11 @@
 
 ## Environment model
 
-| Env   | Purpose                                                      | Namespace / domain                                              | Data lifespan                                                                   | Auth notes                                                                                              |
-| ----- | ------------------------------------------------------------ | --------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| local | Developer laptops; full stack via docker compose + turbo dev | `xitter-${XITTER_ENV}` compose project, no cluster              | Disposable; wiped by `npm run reset`                                            | Local Keycloak (`xitter-demo` realm) at :8090; local Traefik edge mirrors cluster routing, no edge auth |
-| dev   | Continuous-deployment target; demo/staging for merged work   | `xitter-dev` namespace; host-based ingress via homelab Traefik  | Disposable; nightly reset by default (see [02-data-reset.md](02-data-reset.md)) | Edge validates Keycloak OIDC tokens (`auth_mode: oidc-api`) and injects identity headers                |
-| prod  | Stable public demo                                           | `xitter-prod` namespace; host-based ingress via homelab Traefik | Disposable; reset CronJob configurable per env (schedule/enable)                | Same edge auth as dev; only the `xitter-demo` realm is app-facing                                       |
+| Env   | Purpose                                                      | Namespace / domain                                              | Data lifespan                                                                    | Auth notes                                                                                                                                             |
+| ----- | ------------------------------------------------------------ | --------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| local | Developer laptops; full stack via docker compose + turbo dev | `xitter-${XITTER_ENV}` compose project, no cluster              | Disposable; wiped by `npm run reset`                                             | Local Keycloak (`xitter-demo` realm) at :8090; local Traefik edge mirrors cluster routing, no edge auth                                                |
+| dev   | Continuous-deployment target; demo/staging for merged work   | `xitter-dev` namespace; host-based ingress via homelab Traefik  | Disposable; nightly reset by default (see [02-data-reset.md](02-data-reset.md))  | Edge validates Keycloak OIDC tokens (`auth_mode: oidc-api`) and injects identity headers                                                               |
+| prod  | Stable public demo                                           | `xitter-prod` namespace; host-based ingress via homelab Traefik | Disposable; nightly reset deferred to #13 (demo users still ensured per release) | Same edge auth as dev; each cluster env owns its realm (`xitter-demo` / `xitter-demo-prod`, [ADR 0012](../../decisions/0012-realm-per-environment.md)) |
 
 All environments run the same images and topology; they differ only in Tofu vars, secrets, and reset scheduling.
 
@@ -55,12 +55,12 @@ Local dependency lifecycle: `npm run deps:up` / `deps:down` / `deps:status`, `np
 
 ## Access control
 
-| Action                             | Who                          | How                                                                                                                  |
-| ---------------------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Deploy (tofu apply), kubectl admin | Owner only                   | Homelab kubeconfig (`cluster.yml`) referenced from env dirs                                                          |
-| Tofu state                         | Owner only                   | Kubernetes backend, per-env `secret_suffix`                                                                          |
-| Keycloak administration            | Owner only                   | Admin realm via homelab Keycloak; the app only ever touches `xitter-demo` (see [02-data-reset.md](02-data-reset.md)) |
-| Grafana / Sentry                   | Owner only                   | Homelab SSO; xitter dashboards/alerts read-only for everyone else                                                    |
-| App end-users                      | Anyone with demo credentials | Edge-validated OIDC tokens; `demo1..demo10`                                                                          |
+| Action                             | Who                          | How                                                                                                                                                                                                |
+| ---------------------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Deploy (tofu apply), kubectl admin | Owner only                   | Homelab kubeconfig (`cluster.yml`) referenced from env dirs                                                                                                                                        |
+| Tofu state                         | Owner only                   | Kubernetes backend, per-env `secret_suffix`                                                                                                                                                        |
+| Keycloak administration            | Owner only                   | Admin realm via homelab Keycloak; the app only ever touches its own demo realm — `xitter-demo` (dev/local) or `xitter-demo-prod` (prod), [ADR 0012](../../decisions/0012-realm-per-environment.md) |
+| Grafana / Sentry                   | Owner only                   | Homelab SSO; xitter dashboards/alerts read-only for everyone else                                                                                                                                  |
+| App end-users                      | Anyone with demo credentials | Edge-validated OIDC tokens; `demo1..demo10`                                                                                                                                                        |
 
 No shared accounts, no CI-held cluster credentials beyond what CI uses to deploy on merge to `dev`.

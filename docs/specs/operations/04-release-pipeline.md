@@ -51,7 +51,7 @@ Triggered by `push` to `prod` (a release-branch merge) and by `workflow_dispatch
 | Job              | What it does                                                                                                                                                                                                    |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `version`        | Derives the next version (or takes the explicit input), uploads the derivation + notes artifact.                                                                                                                |
-| `release-images` | Builds + pushes all 11 images tagged `vX.Y.Z` + `sha-<short>` (GHA cache per image).                                                                                                                            |
+| `release-images` | Builds + pushes all 12 images tagged `vX.Y.Z` + `sha-<short>` (GHA cache per image) — the 11 workload images plus `xitter-reset`, which the prod ensure-demo-users Job deploys.                                 |
 | `github-release` | `gh release create` with the generated notes, target = released SHA. Skipped on dry runs.                                                                                                                       |
 | `tofu-apply`     | `tofu apply` on `infra/iac/environments/prod` with `-var image_tag=vX.Y.Z`. Dry runs plan instead (detailed exit code 2 = changes = pass) and upload the plan. Self-hosted runner — the cluster API is private. |
 | `reconcile`      | Opens a `prod` → `dev` PR when `prod` holds commits `dev` lacks.                                                                                                                                                |
@@ -68,19 +68,21 @@ The reconciliation path is **exercised by the first release** (v0.1.0): a merge 
 
 `infra/iac/environments/prod` mirrors dev's topology (same modules, same file layout) with deliberate deltas:
 
-| Concern          | dev                                                                      | prod                                                                      |
-| ---------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
-| Domain           | `xitter-dev.jd-chapman.dev`                                              | `xitter.jd-chapman.dev`                                                   |
-| Image tag        | mutable `dev` (default)                                                  | **required** `image_tag` var — always an explicit release                 |
-| Postgres (CNPG)  | 1 instance                                                               | 2 instances (supervised switchover rolls)                                 |
-| OpenSearch       | 2 nodes (forced by the operator's restart guard; zero failure tolerance) | 3 nodes (majority quorum; tolerates one node down)                        |
-| Sentry           | owns the single `xitter` project (team `xitter`)                         | reads the same project via data sources; events tagged `environment=prod` |
-| Alerts           | incl. reset-job rules                                                    | same SLOs, env-interpolated; reset rules land with #13's prod wiring      |
-| Dashboards       | 4 (incl. reset job)                                                      | the 3 env-agnostic dashboards rendered from dev's JSON files              |
-| Reset (CronJob)  | nightly 00:30 UTC (#13, offset from deploy churn windows in #82)         | deferred to #13's follow-up (schedule/enable per env is its variable)     |
-| Keycloak clients | incl. `svc-reset`                                                        | no `svc-reset` until the reset job exists in prod                         |
+| Concern          | dev                                                                      | prod                                                                                                                              |
+| ---------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| Domain           | `xitter-dev.jd-chapman.dev`                                              | `xitter.jd-chapman.dev`                                                                                                           |
+| Image tag        | mutable `dev` (default)                                                  | **required** `image_tag` var — always an explicit release                                                                         |
+| Postgres (CNPG)  | 1 instance                                                               | 2 instances (supervised switchover rolls)                                                                                         |
+| OpenSearch       | 2 nodes (forced by the operator's restart guard; zero failure tolerance) | 3 nodes (majority quorum; tolerates one node down)                                                                                |
+| Sentry           | owns the single `xitter` project (team `xitter`)                         | reads the same project via data sources; events tagged `environment=prod`                                                         |
+| Alerts           | incl. reset-job rules                                                    | same SLOs, env-interpolated; reset rules land with #13's prod wiring                                                              |
+| Dashboards       | 4 (incl. reset job)                                                      | the 3 env-agnostic dashboards rendered from dev's JSON files                                                                      |
+| Reset (CronJob)  | nightly 00:30 UTC (#13, offset from deploy churn windows in #82)         | deferred to #13's follow-up (schedule/enable per env is its variable)                                                             |
+| Demo users       | ensured by the nightly reset's reseed                                    | `ensure-demo-users` deploy Job (reset.tf) — every release re-runs the idempotent realm-init upsert, so a first apply is loginable |
+| Keycloak realm   | `xitter-demo`                                                            | `xitter-demo-prod` (realm-per-environment, [ADR 0012](../../decisions/0012-realm-per-environment.md))                             |
+| Keycloak clients | incl. `svc-reset`                                                        | no `svc-reset` until the reset job exists in prod                                                                                 |
 
-**Ingress/realm wiring**: same host-based edge routing via the homelab ingress module — `/api/{service}` (oidc-api against the `xitter-demo` realm), `/cms` + `/admin` (oidc-interactive against `primary`), `/` + `/media` unauthenticated, plus the unauthenticated `/xitter-media` presign route. No dev values leak: the only literal domains are `var.domain` (`xitter.jd-chapman.dev`), the Keycloak host from homelab remote state, and in-cluster service DNS. The geo-open Keycloak path routes on `idp.jd-chapman.dev` use priority **190** (dev's are 200): dev's identical matchers win while dev exists, and prod's remain armed standbys so global demo login survives if dev is ever destroyed.
+**Ingress/realm wiring**: same host-based edge routing via the homelab ingress module — `/api/{service}` (oidc-api against prod's `xitter-demo-prod` realm), `/cms` + `/admin` (oidc-interactive against `primary`), `/` + `/media` unauthenticated, plus the unauthenticated `/xitter-media` presign route. No dev values leak: the only literal domains are `var.domain` (`xitter.jd-chapman.dev`), the Keycloak host from homelab remote state, and in-cluster service DNS. The geo-open Keycloak path routes on `idp.jd-chapman.dev` open exactly each env's own realm (anchored `PathRegexp`, disjoint — [ADR 0012](../../decisions/0012-realm-per-environment.md)); the shared `resources`/`js` asset routes use priority **190** (dev's are 200): dev's identical matchers win while dev exists, and prod's remain armed standbys so global demo login survives if dev is ever destroyed. Services and workers reach Keycloak over the in-cluster service (`KEYCLOAK_BASE_URL` + explicit `KEYCLOAK_ISSUER` for the canonical public issuer), mirroring dev — no prod M2M grant crosses the edge, so a CrowdSec ban on the home IP cannot 403 the fleet's tokens.
 
 ## Scheduled suites (`.github/workflows/scheduled.yml`)
 
@@ -119,10 +121,11 @@ Verification (owner): `gh api repos/jdc-projects/xitter/branches/dev/protection`
 ## First-release checklist
 
 1. Configure branch protection (above).
-2. Dry-run: Actions → Release → Run workflow with `dry_run=true`, `version=v0.1.0-rc.1` — verify the prod **plan** artifact is complete and non-destructive.
+2. Dry-run: Actions → Release → Run workflow with `dry_run=true`, `version=v0.1.0-rc.1` — verify the prod **plan** artifact is complete and non-destructive. Expect _creates_ of prod's own `xitter-demo-prod` realm/clients (never imports — [ADR 0012](../../decisions/0012-realm-per-environment.md)).
 3. Cut `release/v0.1` from dev, PR → `prod`, merge.
-4. Watch the Release run: tag `v0.1.0`, images on GHCR, prod apply, reconciliation PR.
+4. Watch the Release run: tag `v0.1.0`, images on GHCR (12, incl. `xitter-reset`), prod apply, reconciliation PR. The apply blocks on the `ensure-demo-users` Job completing — demo logins exist the moment it goes green.
 5. Merge the reconciliation PR; `git rev-list --count origin/prod ^origin/dev` → `0`.
+6. If the homelab's CrowdSec token-endpoint exception is scoped to `/realms/xitter-demo/*` (it lives in the homelab repo), extend it to `/realms/xitter-demo-prod/*` — browser-driven token exchanges through the public edge otherwise rate-limit the first login bursts.
 
 ## Related
 

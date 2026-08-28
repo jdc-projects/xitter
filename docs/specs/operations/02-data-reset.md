@@ -11,6 +11,9 @@ Demo data is disposable by design: every environment can be wiped to a known sta
 | Manual trigger  | `kubectl -n xitter-<env> create job --from=cronjob/xitter-reset xitter-reset-manual`                                       |
 | Idempotency     | Every step is safe to re-run; a repeated reset converges to the same state                                                 |
 
+Prod runs no nightly reset yet (the CronJob and its `svc-reset` client land with #13) — until then prod
+data persists until manually cleared, while the `ensure-demo-users` deploy Job keeps logins working.
+
 ## User provisioning ownership
 
 Wipe+reseed has exactly one owner: the nightly reset. But user _existence_ must
@@ -18,10 +21,10 @@ not depend on it — any realm (re)creation (first deploy of a fresh environment
 a realm state heal) used to leave zero logins until the next nightly (#67).
 The split:
 
-| Concern                    | Owner                  | Mechanism                                                                                                                                                                                                                               |
-| -------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Users EXIST                | The deploy path (Tofu) | One-shot `ensure-demo-users` Job (reset.tf), same `xitter-reset` image, `node dist/reset-job.js --ensure-users` — runs only the flow's realm-init step (`initDemoRealm`), an idempotent upsert that never wipes data or touches workers |
-| Users are CLEAN + reseeded | The nightly reset      | Full flow: `resetDemoRealm` (users deleted) + `initDemoRealm` + store wipes + optional seed                                                                                                                                             |
+| Concern                    | Owner                  | Mechanism                                                                                                                                                                                                                                          |
+| -------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Users EXIST                | The deploy path (Tofu) | One-shot `ensure-demo-users` Job (reset.tf, both envs), same `xitter-reset` image, `node dist/reset-job.js --ensure-users` — runs only the flow's realm-init step (`initDemoRealm`), an idempotent upsert that never wipes data or touches workers |
+| Users are CLEAN + reseeded | The nightly reset      | Full flow: `resetDemoRealm` (users deleted) + `initDemoRealm` + store wipes + optional seed (dev today; prod's CronJob lands with #13)                                                                                                             |
 
 The Job re-runs whenever its pod spec changes (CI pins `image_tag=sha-<short>`
 per deploy, and the pod template is ForceNew in the kubernetes provider — the
@@ -51,7 +54,7 @@ The reset never touches infrastructure: no scaling, no Kubernetes API access ([A
 | RustFS                      | Empty the `xitter-media` media bucket                                                                                                                                                                                              | Bucket wipe (delete all objects)                                                                                                                         |
 | Kafka                       | No broker-side action: groups `xitter-fanout-worker`, `xitter-media-process-worker`, `xitter-search-index-worker` keep their offsets, but workers seek to the log end when the epoch clears (retained messages are never replayed) | The workers' own seek-to-log-end on resume ([ADR 0010](../../decisions/0010-reset-epoch-pause.md)) - replaces the old topic-recreate + group-delete step |
 | OpenSearch                  | Delete the `posts` index                                                                                                                                                                                                           | Index delete (recreated on next indexing event)                                                                                                          |
-| Keycloak                    | Delete and recreate realm `xitter-demo` with users `demo1..demo10` (password `DemoPass123!`)                                                                                                                                       | Realm recreate via Keycloak admin API, preserving Tofu-managed client secrets                                                                            |
+| Keycloak                    | Delete and recreate the env's demo realm (`xitter-demo` dev, `xitter-demo-prod` prod) with users `demo1..demo10` (password `DemoPass123!`)                                                                                         | Realm recreate via Keycloak admin API, preserving Tofu-managed client secrets                                                                            |
 | Valkey                      | Flush ephemeral keys (pub/sub channels, rate limits), then hold the reset epoch (`xitter:reset:epoch`) until the wipe completes                                                                                                    | Flush + epoch flag (the workers' pause/resume signal)                                                                                                    |
 | Optional reseed             | Deterministic content: faker seed `42`                                                                                                                                                                                             | Same reseed flag drives the seed step                                                                                                                    |
 
@@ -64,7 +67,7 @@ flowchart TD
   S(["Reset job starts"]) --> FL["Flush Valkey\n(clears stale epoch state)"]
   FL --> EP["Set reset epoch (Valkey INCR)"]
   EP --> P["Wait for every worker to pause itself\n(heartbeat matches the epoch, bounded)"]
-  P --> C["Recreate Keycloak realm xitter-demo\n(demo1..demo10)"]
+  P --> C["Recreate Keycloak demo realm\n(demo1..demo10)"]
   C --> T["Truncate service DBs + CMS content tables\n(per-service /internal/reseed)"]
   T --> M["Wipe RustFS xitter-media bucket"]
   M --> O["Delete OpenSearch posts index"]
