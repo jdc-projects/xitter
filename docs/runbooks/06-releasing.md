@@ -31,9 +31,9 @@ Full policy: [../specs/operations/04-release-pipeline.md](../specs/operations/04
 
 4. **Watch the Release run** (Actions → Release):
    - `version` — derived from conventional commits since the last `v*` tag (e.g. a history with `feat` entries since `v0.1.0` yields `v0.2.0`). Sanity-check the derivation artifact (`release-derivation`) if it looks wrong.
-   - `release-images` — 11 images tagged `vX.Y.Z` + `sha-<short>` on `ghcr.io/jdc-projects`.
+   - `release-images` — 12 images tagged `vX.Y.Z` + `sha-<short>` on `ghcr.io/jdc-projects` (11 workload images + `xitter-reset` for the ensure-demo-users Job).
    - `github-release` — tag + notes at https://github.com/jdc-projects/xitter/releases.
-   - `tofu-apply` — prod environment converges. First apply creates everything (CNPG `wait` blocks until Postgres is healthy; jobs run to completion). Later applies are small rolls (image tags, `SENTRY_RELEASE`).
+   - `tofu-apply` — prod environment converges. First apply creates everything (CNPG `wait` blocks until Postgres is healthy; jobs run to completion — including `ensure-demo-users`, which guarantees `demo1..demo10` exist before the apply returns). Later applies are small rolls (image tags, `SENTRY_RELEASE`).
    - `reconcile` — when prod holds commits dev lacks, a `prod` → `dev` PR is opened. **Merge it as admin** (bot-authored PRs don't trigger gates), or if a reconcile PR already exists, handle it manually.
 
 5. **Manual repair paths**
@@ -55,6 +55,7 @@ Full policy: [../specs/operations/04-release-pipeline.md](../specs/operations/04
 
 ## Notes
 
-- Prod currently has **no reset CronJob / `svc-reset` client / reset alerts** — that wiring lands with the data-lifecycle follow-up (#13) and is tracked there. Until then prod data persists until manually cleared; demo users for prod logins are created by that job.
+- Prod's realm is its own (`xitter-demo-prod`) — realm-per-environment against the shared Keycloak ([ADR 0012](../decisions/0012-realm-per-environment.md)). A prod plan must never show changes to `xitter-demo` objects: that realm is dev's state's property, and overlap means the collision the ADR removed.
+- Prod currently has **no reset CronJob / `svc-reset` client / reset alerts** — that wiring lands with the data-lifecycle follow-up (#13) and is tracked there. Until then prod data persists until manually cleared. Demo _users_ do not share that gap: the `ensure-demo-users` Job (prod/reset.tf) re-runs on every release with the same image pin, upserting `demo1..demo10` idempotently — the apply fails loudly if it cannot. For a manual re-run outside a release: `kubectl -n xitter-prod create job --from=job/ensure-demo-users ensure-demo-users-manual` (the kubernetes provider replaces the Job on the next apply regardless).
 - Release images are immutable (`vX.Y.Z` tags are never re-pushed; a bad release gets a new patch version, not an overwrite). The mutable `prod`-style tag does not exist — only `dev` is mutable.
 - If the `version` job fails with `vX.Y.Z is not greater than the latest tag`, the derived/explicit version regressed — usually an `--explicit` typo or a tag moved; check `git tag --list 'v*'` first.
