@@ -187,7 +187,12 @@ export function AppShellFrame({ username, children }: AppShellFrameProps) {
                   @{username}
                 </Text>
                 <form action="/api/auth/logout" method="post">
-                  <Button size="sm" variant="subtle" type="submit" data-testid="drawer-logout-button">
+                  <Button
+                    size="sm"
+                    variant="subtle"
+                    type="submit"
+                    data-testid="drawer-logout-button"
+                  >
                     Log out
                   </Button>
                 </form>

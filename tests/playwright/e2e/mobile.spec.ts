@@ -32,7 +32,9 @@ test('the feed does not scroll horizontally', async ({ page }) => {
 test('bookmarks does not scroll horizontally', async ({ page }) => {
   await login(page, 'demo2');
   await page.goto('/bookmarks');
-  await expect(page.getByTestId('bookmarks-list').or(page.getByTestId('bookmarks-empty'))).toBeVisible();
+  await expect(
+    page.getByTestId('bookmarks-list').or(page.getByTestId('bookmarks-empty')),
+  ).toBeVisible();
   await expectNoHorizontalOverflow(page);
 });
 
@@ -76,7 +78,9 @@ test('the search page renders a fluid search box', async ({ page }) => {
   await page.getByTestId('search-input').fill('feed');
   await page.getByTestId('search-input').press('Enter');
   await page.waitForURL(/\/search\?q=feed$/);
-  await expect(page.getByTestId('search-results').or(page.getByTestId('search-empty'))).toBeVisible();
+  await expect(
+    page.getByTestId('search-results').or(page.getByTestId('search-empty')),
+  ).toBeVisible();
   await expectNoHorizontalOverflow(page);
 });
 

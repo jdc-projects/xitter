@@ -60,11 +60,12 @@ export default defineConfig({
     {
       // The axe set re-scanned at an iPhone-class viewport (#151) - where
       // WCAG 2.5.8 target-size actually bites. The admin panel (desktop-first
-      // antd tables) is covered by the desktop a11y project only, hence the
-      // anchored match that excludes admin-a11y.spec.ts.
+      // antd tables) is covered by the desktop a11y project only - the
+      // path-boundary anchor excludes admin-a11y.spec.ts (a plain substring
+      // would match it too).
       name: 'a11y-mobile',
       use: { ...chromiumDevice(devices['iPhone 13']) },
-      testMatch: /^a11y\.spec\.ts$/,
+      testMatch: /(^|\/)a11y\.spec\.ts$/,
     },
   ],
   webServer: {
