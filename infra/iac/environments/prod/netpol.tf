@@ -531,7 +531,7 @@ resource "kubernetes_network_policy" "allow_valkey_egress" {
       match_expressions {
         key      = "app.kubernetes.io/name"
         operator = "In"
-        values   = concat(["feed", "posts", "social", "media", "web", "xitter-reset"], local.workers)
+        values   = concat(["feed", "posts", "social", "media", "web", "xitter-reset", "deploy-seed"], local.workers)
       }
       match_labels = {
         "app.kubernetes.io/instance" = var.environment
@@ -563,8 +563,12 @@ resource "kubernetes_network_policy" "allow_opensearch_egress" {
 
     policy_types = ["Egress"]
     pod_selector {
+      match_expressions {
+        key      = "app.kubernetes.io/name"
+        operator = "In"
+        values   = ["search", "xitter-reset", "deploy-seed"]
+      }
       match_labels = {
-        "app.kubernetes.io/name"     = "search"
         "app.kubernetes.io/instance" = var.environment
       }
     }
@@ -587,7 +591,7 @@ resource "kubernetes_network_policy" "allow_opensearch_egress" {
 # media service + media-process worker write to RustFS; the provision job
 # bootstraps the bucket.
 resource "kubernetes_network_policy" "allow_rustfs_egress" {
-  for_each = toset(["media", "media-process", "rustfs-provision"])
+  for_each = toset(["media", "media-process", "rustfs-provision", "xitter-reset", "deploy-seed"])
 
   metadata {
     name      = "xitter-allow-rustfs-egress-${each.key}"
@@ -761,7 +765,7 @@ resource "kubernetes_network_policy" "valkey_ingress" {
           match_expressions {
             key      = "app.kubernetes.io/name"
             operator = "In"
-            values   = concat(["feed", "posts", "social", "media", "web", "xitter-reset"], local.workers)
+            values   = concat(["feed", "posts", "social", "media", "web", "xitter-reset", "deploy-seed"], local.workers)
           }
           match_labels = {
             "app.kubernetes.io/instance" = var.environment
@@ -819,6 +823,19 @@ resource "kubernetes_network_policy" "opensearch_ingress" {
       }
 
       from {
+        pod_selector {
+          match_expressions {
+            key      = "app.kubernetes.io/name"
+            operator = "In"
+            values   = ["xitter-reset", "deploy-seed"]
+          }
+          match_labels = {
+            "app.kubernetes.io/instance" = var.environment
+          }
+        }
+      }
+
+      from {
         namespace_selector {
           match_labels = { "kubernetes.io/metadata.name" = "opensearch-operator" }
         }
@@ -867,7 +884,7 @@ resource "kubernetes_network_policy" "rustfs_ingress" {
           match_expressions {
             key      = "app.kubernetes.io/name"
             operator = "In"
-            values   = ["media", "media-process", "rustfs-provision"]
+            values   = ["media", "media-process", "rustfs-provision", "xitter-reset", "deploy-seed"]
           }
           match_labels = {
             "app.kubernetes.io/instance" = var.environment

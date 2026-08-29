@@ -15,6 +15,26 @@ Prod runs the same nightly wipe as dev (owner decision 2026-08-29, #160:
 wipe-on-schedule — the privacy guarantee holds everywhere); the `ensure-demo-users`
 deploy Job additionally guarantees logins right after each apply.
 
+### Deploy-path seeding
+
+Since 2026-08-29 every deploy also wipes + reseeds: a one-shot `deploy-seed`
+Job (reset.tf, both envs) runs the full reset flow with `--seed` — the exact
+nightly invocation — after the services and workers converge, sequenced behind
+`ensure-demo-users` (both run `initDemoRealm`; concurrent realm inits would
+race). `wait_for_completion` blocks the apply, so a green deploy means the
+corpus is verifiably in: the first deploy of a fresh environment ends with a
+populated feed, not just live pods. Chosen semantics (owner decision):
+demo data is disposable, so every deploy resetting to the deterministic
+corpus is acceptable — and self-heals half-seeded environments.
+
+| Aspect  | Behaviour                                                                                                      |
+| ------- | -------------------------------------------------------------------------------------------------------------- |
+| Re-runs | Every deploy (CI pins `image_tag` per deploy; the pod template is ForceNew — house `db-init` pattern)          |
+| Failure | Fails the deploy itself (apply blocks on completion); k8s backoff (4) retries while rollouts settle            |
+| Safety  | The flow's worker-pause gate aborts before any store is wiped when the stack is not ready (ADR 0010)           |
+| Alerts  | Named outside the `xitter-reset.*` regex — deploy failures surface as failed applies, not nightly-reset alerts |
+| Nightly | Unchanged — the CronJob keeps its 00:30 schedule and remains the wipe owner for days without deploys           |
+
 ## User provisioning ownership
 
 Wipe+reseed has exactly one owner: the nightly reset. But user _existence_ must

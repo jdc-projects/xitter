@@ -428,3 +428,235 @@ resource "kubernetes_job" "ensure_demo_users" {
     ]
   }
 }
+
+# Deploy-path corpus seed: the SAME full reset flow the nightly CronJob
+# runs (`--seed`), executed as part of every deploy. Until now a fresh
+# formation was loginable (ensure-demo-users) but EMPTY - zero posts,
+# follows or media until the first nightly. Every deploy now converges
+# the deterministic corpus (chosen semantics: demo data is disposable by
+# design, ADR 0010; a deterministic post-deploy state also self-heals
+# any half-seeded environment).
+#
+# Re-run semantics: house ForceNew pattern - CI pins image_tag per
+# deploy, so each deploy replaces and thereby re-runs the Job (wipe +
+# reseed). Unlike ensure-demo-users this is not a cheap upsert, but the
+# flow is idempotent (step replay, packages/scripts reset-flow) and its
+# worker-pause gate aborts BEFORE any store is wiped when the stack is
+# not ready; the k8s backoff then retries once the rollouts settle
+# (backoff_limit 4 vs the nightly's 2 - a deploy-path run races
+# freshly-rolled pods by construction, the midnight schedule's whole
+# reason for existing at 00:30).
+#
+# Named outside the xitter-reset.* alert regex on purpose: its failure
+# fails the deploy itself (wait_for_completion), not the nightly alerts.
+resource "kubernetes_job" "deploy_seed" {
+  metadata {
+    name      = "deploy-seed"
+    namespace = local.ns
+    labels    = merge(module.namespace.labels, { "app.kubernetes.io/name" = "deploy-seed" })
+  }
+
+  spec {
+    template {
+      metadata {
+        labels = merge(module.namespace.labels, {
+          "app.kubernetes.io/name" = "deploy-seed"
+        })
+      }
+
+      spec {
+        # Same no-Kubernetes-API contract as the nightly (ADR 0010:
+        # workers pause themselves on the Valkey epoch).
+        automount_service_account_token = false
+        restart_policy                  = "Never"
+
+        container {
+          name              = "deploy-seed"
+          image             = "${var.image_registry}/xitter-reset:${var.image_tag}"
+          image_pull_policy = "Always"
+
+          # Explicit command for the same reason as the CronJob: k8s
+          # `args` REPLACES the image CMD (args-only ran `node --seed`).
+          command = ["node", "dist/reset-job.js"]
+          args    = ["--seed"]
+
+          env {
+            name  = "XITTER_ENV"
+            value = var.environment
+          }
+          # Run-record name (admin reset tile): deploy runs must read
+          # distinctly from the nightly's xitter-reset-<env> default.
+          env {
+            name  = "XITTER_RESET_JOB_NAME"
+            value = "deploy-seed"
+          }
+          env {
+            name  = "XITTER_RESET_NAMESPACE"
+            value = local.ns
+          }
+
+          # Store/service coordinates (in-cluster, never via the edge) -
+          # the exact contract the nightly CronJob carries.
+          env {
+            name  = "KAFKA_BROKERS"
+            value = local.kafka_bootstrap
+          }
+          env {
+            name  = "VALKEY_URL"
+            value = local.valkey_url
+          }
+          env {
+            name  = "XITTER_OPENSEARCH_URL"
+            value = "http://opensearch.${local.ns}.svc:9200"
+          }
+          env {
+            name  = "XITTER_MEDIA_S3_ENDPOINT"
+            value = "http://${local.rustfs_svc}:9000"
+          }
+          env {
+            name  = "XITTER_MEDIA_S3_BUCKET"
+            value = local.rustfs_bucket
+          }
+
+          # Per-service API bases (svc-reset hits /api/{service}/internal/...).
+          dynamic "env" {
+            for_each = ["social", "posts", "media", "feed", "search"]
+            content {
+              name  = "XITTER_${upper(env.value)}_URL"
+              value = local.svc_base[env.value]
+            }
+          }
+
+          # CMS content reset step: without this the target falls back
+          # to the local-stack default (localhost) and the step cannot
+          # reach the cms service in-cluster.
+          env {
+            name  = "XITTER_CMS_URL"
+            value = "http://cms.${local.ns}.svc:3000"
+          }
+
+          # Realm contract (keycloak.ts must recreate exactly this).
+          env {
+            name  = "XITTER_SEED_KEYCLOAK_URL"
+            value = local.keycloak_incluster_url
+          }
+          # Edge origin: the web client's redirect URIs/origins must
+          # converge on tofu's (keycloak.tf), never the local default -
+          # the realm upsert overwrites them on every run.
+          env {
+            name  = "XITTER_EDGE_URL"
+            value = "https://${var.domain}"
+          }
+          env {
+            name  = "XITTER_DEMO_REALM"
+            value = local.demo_realm
+          }
+          env {
+            name  = "XITTER_DEMO_USER_PREFIX"
+            value = "demo"
+          }
+          env {
+            name  = "XITTER_DEMO_USER_COUNT"
+            value = "10"
+          }
+          env {
+            name  = "XITTER_DEMO_USER_PASSWORD"
+            value = "DemoPass123!"
+          }
+
+          # CMS content reset is skipped in dev until the admin-realm CMS
+          # client wiring lands (T9 follow-up tracks the dev credential);
+          # the step reports an explicit visible skip, never a silent one.
+          env {
+            name  = "XITTER_RESET_SKIP_CMS"
+            value = "1"
+          }
+
+          # svc-reset client credentials (same random_password the realm
+          # clients and workload Secrets share).
+          env {
+            name = "XITTER_RESET_CLIENT_SECRET"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.keycloak_client["svc-reset"].metadata[0].name
+                key  = "KEYCLOAK_CLIENT_SECRET"
+              }
+            }
+          }
+
+          env_from {
+            secret_ref {
+              name = kubernetes_secret.reset_config.metadata[0].name
+            }
+          }
+          env_from {
+            secret_ref {
+              name = kubernetes_secret.media_s3.metadata[0].name
+            }
+          }
+
+          resources {
+            requests = {
+              cpu    = "100m"
+              memory = "256Mi"
+            }
+            limits = {
+              cpu    = "1"
+              memory = "512Mi"
+            }
+          }
+
+          security_context {
+            allow_privilege_escalation = false
+            privileged                 = false
+            read_only_root_filesystem  = true
+            run_as_non_root            = true
+            run_as_user                = 1000
+            run_as_group               = 1000
+            capabilities {
+              drop = ["ALL"]
+            }
+            seccomp_profile {
+              type = "RuntimeDefault"
+            }
+          }
+
+          volume_mount {
+            name       = "tmp"
+            mount_path = "/tmp"
+          }
+        }
+
+        volume {
+          name = "tmp"
+          empty_dir {}
+        }
+      }
+    }
+
+    # Idempotent flow: a backoff retry replays safely from any failed
+    # step; 4 (vs the nightly's 2) tolerates pods still rolling out.
+    backoff_limit              = 4
+    ttl_seconds_after_finished = 86400
+  }
+
+  # A green deploy means the corpus is verifiably in - the first deploy
+  # of a fresh environment ends with a populated feed, not just pods.
+  wait_for_completion = true
+
+  timeouts {
+    # The worker-pause gate alone can legitimately wait 5 minutes
+    # (XITTER_RESET_PAUSE_TIMEOUT_MS default) while rollouts settle.
+    create = "20m"
+    update = "20m"
+  }
+
+  depends_on = [
+    module.api_service,
+    module.worker,
+    # Sequential realm work: the reset recreates the realm through the
+    # same initDemoRealm ensure-demo-users runs - two concurrent realm
+    # inits would race delete/create on the admin API.
+    kubernetes_job.ensure_demo_users,
+  ]
+}
