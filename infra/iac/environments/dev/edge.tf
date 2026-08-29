@@ -88,7 +88,11 @@ module "ingress_cms" {
   target_port = 3000
   selector    = { "app.kubernetes.io/name" = "cms" }
 
-  auth_mode           = "oidc-interactive"
+  auth_mode = "oidc-interactive"
+  # Route-local callback: the plugin default (/oidc/callback) lands on the
+  # web catch-all and the handshake 404s; this path stays inside this
+  # router's prefix, and the two panels never share a callback path.
+  callback_path       = "/cms/oidc/callback"
   keycloak_auth_realm = "primary"
 
   do_enable_geoblock = false
@@ -108,7 +112,11 @@ module "ingress_admin" {
   target_port = 8080
   selector    = { "app.kubernetes.io/name" = "admin" }
 
-  auth_mode           = "oidc-interactive"
+  auth_mode = "oidc-interactive"
+  # Route-local callback: the plugin default (/oidc/callback) lands on the
+  # web catch-all and the handshake 404s; this path stays inside this
+  # router's prefix, and the two panels never share a callback path.
+  callback_path       = "/admin/oidc/callback"
   keycloak_auth_realm = "primary"
 
   do_enable_geoblock = false
