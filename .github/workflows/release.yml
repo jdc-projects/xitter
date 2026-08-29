@@ -52,7 +52,7 @@ jobs:
           if [ -n "${{ inputs.version }}" ]; then
             args="$args --explicit ${{ inputs.version }}"
           fi
-          tsx packages/scripts/src/release-version.ts $args
+          npx tsx packages/scripts/src/release-version.ts $args
           echo "version=$(jq -r .version .release/version.json)" >> "$GITHUB_OUTPUT"
       - name: Record dry-run flag
         id: flags
@@ -148,7 +148,7 @@ jobs:
           if [ -n "${{ inputs.version }}" ]; then
             args="$args --explicit ${{ inputs.version }}"
           fi
-          tsx packages/scripts/src/release-version.ts $args
+          npx tsx packages/scripts/src/release-version.ts $args
       - name: Tag and create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
