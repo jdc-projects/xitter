@@ -4,8 +4,14 @@ import {
   HttpException,
   NotFoundException,
 } from '@nestjs/common';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ErrorEnvelopeFilter } from './error.filter.js';
+
+// vi.mock hoists above imports - the mock fn must come from vi.hoisted.
+const { pinoMock } = vi.hoisted(() => ({ pinoMock: vi.fn() }));
+vi.mock('@xitter/observability', () => ({
+  createLogger: () => ({ error: pinoMock }),
+}));
 
 function run(exception: unknown): { status: number; body: unknown } {
   const sent: { status: number; body: unknown } = { status: 0, body: undefined };
@@ -47,9 +53,21 @@ describe('ErrorEnvelopeFilter', () => {
   });
 
   it('collapses unknown errors to a 500 INTERNAL envelope without leaking details', () => {
+    pinoMock.mockClear();
     expect(run(new Error('password=hunter2 at /etc/shadow'))).toEqual({
       status: 500,
       body: { error: { code: 'INTERNAL', message: 'Internal server error' } },
     });
+  });
+
+  it('LOGS the exception before sending the INTERNAL envelope (#182)', () => {
+    pinoMock.mockClear();
+    const boom = new Error('pipe got a schema');
+    run(boom);
+    expect(pinoMock).toHaveBeenCalledTimes(1);
+    // The err object rides the pino context; the message names the collapse.
+    const [context, message] = pinoMock.mock.calls[0]!;
+    expect((context as { err?: unknown }).err).toBe(boom);
+    expect(String(message)).toContain('INTERNAL');
   });
 });

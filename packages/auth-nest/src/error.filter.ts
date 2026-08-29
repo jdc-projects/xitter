@@ -1,4 +1,7 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from '@nestjs/common';
+import { createLogger } from '@xitter/observability';
+
+const pino = createLogger({ service: 'error-filter' });
 
 interface ReplyLike {
   status(code: number): { send(body: unknown): void };
@@ -52,6 +55,11 @@ export class ErrorEnvelopeFilter implements ExceptionFilter {
       return;
     }
 
+    // A non-HttpException is a server bug - invisible if only the generic
+    // envelope ships (#182: an every-call 500 had zero log lines, and the
+    // bisect took a probe session one log line would have ended). Never log
+    // the response body - the exception only.
+    pino.error({ err: exception }, 'unhandled exception -> INTERNAL envelope');
     response.status(HttpStatus.INTERNAL_SERVER_ERROR).send({
       error: { code: 'INTERNAL', message: 'Internal server error' },
     });
