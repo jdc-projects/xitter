@@ -376,6 +376,28 @@ resource "kubernetes_manifest" "opensearch" {
             "ingest",
           ]
 
+          # Readiness means JOINED, not merely HTTP-up. The operator
+          # deletes its bootstrap node (the initial cluster-manager) as
+          # soon as every manager pod is k8s-Ready (AllMastersReady),
+          # and its default probe (`curl /`) passes on a node that never
+          # joined anything - / answers 200 with no cluster. On a dev
+          # formation that deleted the bootstrap after ONE join: the
+          # voting config froze at {bootstrap, nodes-0} and the cluster
+          # bricked (cluster-state APIs hang forever, search wedges at
+          # boot). wait_for_nodes=<replicas> makes Ready provable
+          # membership, so the bootstrap outlives every join and its
+          # departure always leaves the survivors a quorum. Kept in sync
+          # with `replicas`.
+          probes = {
+            readiness = {
+              command = [
+                "/bin/bash",
+                "-c",
+                "curl -u \"$(cat /mnt/admin-credentials/username):$(cat /mnt/admin-credentials/password)\" --silent --fail 'http://localhost:9200/_cluster/health?wait_for_nodes=2&wait_for_status=yellow&timeout=25s'",
+              ]
+            }
+          }
+
           env = [
             { name = "DISABLE_INSTALL_DEMO_CONFIG", value = "true" },
           ]
