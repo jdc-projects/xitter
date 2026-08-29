@@ -88,6 +88,7 @@ function composeArgs(): string[] {
 
 export async function up(detach = true): Promise<void> {
   loadRepoEnv();
+  await sweepStaleSiblingStacks();
   await run('docker', [...composeArgs(), 'up', '--wait', ...(detach ? ['--detach'] : [])]);
 }
 
@@ -95,6 +96,35 @@ export async function down(volumes = false): Promise<void> {
   loadRepoEnv();
   await run('docker', [...composeArgs(), 'down', ...(volumes ? ['--volumes'] : [])]);
   await sweepOrphanedTestContainers();
+}
+
+/**
+ * #175: parallel worker stacks crashed the host once already - a killed
+ * session's compose project keeps its containers (no teardown ran) and the
+ * next boot adds a full stack on top. deps:up self-heals: any OTHER
+ * xitter-* project whose containers run but whose edge port is dead is
+ * abandoned, and is removed (volumes included) before this one boots.
+ * Best-effort - a sweep failure never blocks the boot.
+ */
+async function sweepStaleSiblingStacks(): Promise<void> {
+  const { partitionStacks, downProject } = await import('./stack-sweep.js');
+  try {
+    const { stale } = await partitionStacks(composeProject());
+    for (const project of stale) {
+      console.log(
+        `deps:up: removing stale stack ${project.name} (containers running past the grace window, edge serves only Bad Gateway - a killed session left it behind)`,
+      );
+      await downProject(project.name, COMPOSE_FILE).catch((err: unknown) =>
+        console.warn(
+          `deps:up: could not remove ${project.name} (${err instanceof Error ? err.message : err})`,
+        ),
+      );
+    }
+  } catch (err) {
+    console.warn(
+      `deps:up: stale-stack sweep skipped (${err instanceof Error ? err.message : err})`,
+    );
+  }
 }
 
 /**

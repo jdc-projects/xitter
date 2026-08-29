@@ -8,10 +8,8 @@
     "completeness": "complete"
   },
   "unused_files": [
-    "apps/services/media/vitest.mutation.config.ts",
-    "apps/services/posts/vitest.mutation.config.ts",
-    "apps/services/social/vitest.mutation.config.ts",
     "bruno/xitter/scripts/login.js",
+    "live-check.ts",
     "packages/scripts/src/rustfs.ts"
   ],
   "unused_exports": [
@@ -32,21 +30,18 @@
     "apps/services/media/package.json:fastify",
     "apps/services/posts/package.json:@fastify/helmet",
     "apps/services/posts/package.json:@nestjs/terminus",
-    "apps/services/posts/package.json:ioredis",
     "apps/services/posts/package.json:fastify",
+    "apps/services/posts/package.json:ioredis",
     "apps/services/search/package.json:@fastify/helmet",
     "apps/services/search/package.json:@nestjs/terminus",
     "apps/services/search/package.json:@xitter/events",
     "apps/services/search/package.json:fastify",
-    "apps/services/search/package.json:pg",
     "apps/services/social/package.json:@fastify/helmet",
     "apps/services/social/package.json:@nestjs/terminus",
     "apps/services/social/package.json:fastify",
     "apps/web/package.json:dayjs",
     "apps/workers/fanout/package.json:prom-client",
     "apps/workers/media-process/package.json:kafkajs",
-    "apps/workers/search-index/package.json:@xitter/api-contracts",
-    "apps/workers/search-index/package.json:kafkajs",
     "packages/observability/package.json:@opentelemetry/instrumentation",
     "packages/observability/package.json:pino-pretty",
     "packages/scripts/package.json:@xitter/api-contracts",
@@ -104,7 +99,10 @@
     "packages/api-client/src/services.ts:MediaClient.internalGetAsset",
     "packages/api-client/src/services.ts:MediaClient.internalRecordVariants",
     "packages/api-client/src/services.ts:MediaClient.internalReportFailure",
-    "packages/api-client/src/services.ts:MediaClient.internalLookup"
+    "packages/api-client/src/services.ts:MediaClient.internalLookup",
+    "packages/service-kit/src/service-content.ts:ServiceContentSource.posts",
+    "packages/service-kit/src/service-content.ts:ServiceContentSource.profiles",
+    "packages/service-kit/src/service-content.ts:ServiceContentSource.blockedAuthorIds"
   ],
   "unused_store_members": [],
   "unprovided_injects": [],
@@ -116,10 +114,11 @@
   "unused_svelte_events": [],
   "unused_server_actions": [],
   "unused_load_data_keys": [],
-  "unresolved_imports": [],
+  "unresolved_imports": [
+    "live-check.ts:./src/lib/stack-sweep.js"
+  ],
   "unlisted_dependencies": [
-    "dotenv",
-    "ioredis"
+    "dotenv"
   ],
   "duplicate_exports": [],
   "type_only_dependencies": [],
