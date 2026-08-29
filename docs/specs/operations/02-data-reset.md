@@ -11,8 +11,9 @@ Demo data is disposable by design: every environment can be wiped to a known sta
 | Manual trigger  | `kubectl -n xitter-<env> create job --from=cronjob/xitter-reset xitter-reset-manual`                                       |
 | Idempotency     | Every step is safe to re-run; a repeated reset converges to the same state                                                 |
 
-Prod runs no nightly reset yet (the CronJob and its `svc-reset` client land with #13) — until then prod
-data persists until manually cleared, while the `ensure-demo-users` deploy Job keeps logins working.
+Prod runs the same nightly wipe as dev (owner decision 2026-08-29, #160:
+wipe-on-schedule — the privacy guarantee holds everywhere); the `ensure-demo-users`
+deploy Job additionally guarantees logins right after each apply.
 
 ## User provisioning ownership
 
@@ -24,7 +25,7 @@ The split:
 | Concern                    | Owner                  | Mechanism                                                                                                                                                                                                                                          |
 | -------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Users EXIST                | The deploy path (Tofu) | One-shot `ensure-demo-users` Job (reset.tf, both envs), same `xitter-reset` image, `node dist/reset-job.js --ensure-users` — runs only the flow's realm-init step (`initDemoRealm`), an idempotent upsert that never wipes data or touches workers |
-| Users are CLEAN + reseeded | The nightly reset      | Full flow: `resetDemoRealm` (users deleted) + `initDemoRealm` + store wipes + optional seed (dev today; prod's CronJob lands with #13)                                                                                                             |
+| Users are CLEAN + reseeded | The nightly reset      | Full flow: `resetDemoRealm` (users deleted) + `initDemoRealm` + store wipes + optional seed (dev and prod alike)                                                                                                                                   |
 
 The Job re-runs whenever its pod spec changes (CI pins `image_tag=sha-<short>`
 per deploy, and the pod template is ForceNew in the kubernetes provider — the

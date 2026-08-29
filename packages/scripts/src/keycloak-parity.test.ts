@@ -41,11 +41,13 @@ const EXPECTED_AUDIENCES: Record<string, string[]> = {
   'svc-admin': [...SERVICE_CLIENTS],
 };
 
-/** Tofu manages every machine client except svc-admin (script/tooling-only). */
+/**
+ * Tofu manages every machine client except svc-admin (script/tooling-only).
+ * Prod's svc-reset landed with the nightly wipe (#160 decision: on-schedule).
+ */
 const TOFU_ONLY_EXCLUSIONS: Record<string, string[]> = {
   dev: ['svc-admin'],
-  // Prod additionally has no reset client yet (keycloak.tf: lands with #13).
-  prod: ['svc-admin', 'svc-reset'],
+  prod: ['svc-admin'],
 };
 
 /**

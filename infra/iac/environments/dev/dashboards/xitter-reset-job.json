@@ -62,7 +62,7 @@
           "datasource": {
             "type": "prometheus"
           },
-          "expr": "max(kube_job_status_completion_time{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"}) * 1000",
+          "expr": "max(kube_job_status_completion_time{namespace=\"${namespace}\", job_name=~\"xitter-reset.*\"}) * 1000",
           "legendFormat": "last completed run",
           "refId": "A"
         }
@@ -116,7 +116,7 @@
           "datasource": {
             "type": "prometheus"
           },
-          "expr": "max(kube_job_status_completion_time - kube_job_status_start_time{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"})",
+          "expr": "max(kube_job_status_completion_time - kube_job_status_start_time{namespace=\"${namespace}\", job_name=~\"xitter-reset.*\"})",
           "legendFormat": "run duration",
           "refId": "A"
         }
@@ -170,7 +170,7 @@
           "datasource": {
             "type": "prometheus"
           },
-          "expr": "(time() - kube_job_status_start_time{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"} < 86400) and on (job_name, namespace) (kube_job_status_failed{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"} > 0)",
+          "expr": "(time() - kube_job_status_start_time{namespace=\"${namespace}\", job_name=~\"xitter-reset.*\"} < 86400) and on (job_name, namespace) (kube_job_status_failed{namespace=\"${namespace}\", job_name=~\"xitter-reset.*\"} > 0)",
           "legendFormat": "failed runs (24h)",
           "refId": "A"
         }
@@ -216,7 +216,7 @@
           "datasource": {
             "type": "prometheus"
           },
-          "expr": "sum(kube_job_status_succeeded{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"})",
+          "expr": "sum(kube_job_status_succeeded{namespace=\"${namespace}\", job_name=~\"xitter-reset.*\"})",
           "legendFormat": "succeeded",
           "refId": "A"
         },
@@ -224,7 +224,7 @@
           "datasource": {
             "type": "prometheus"
           },
-          "expr": "sum(kube_job_status_failed{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"})",
+          "expr": "sum(kube_job_status_failed{namespace=\"${namespace}\", job_name=~\"xitter-reset.*\"})",
           "legendFormat": "failed",
           "refId": "B"
         }

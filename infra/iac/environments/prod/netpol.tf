@@ -516,8 +516,8 @@ resource "kubernetes_network_policy" "allow_kafka_egress" {
 # media). Cap.js (login captcha) and the ws-token broker also live in web
 # and store through Valkey, so web needs egress too - login 500s without it.
 # The three workers read the reset epoch from it to pause/resume themselves
-# around a wipe (ADR 0010; prod runs no nightly reset yet - #13 - but the
-# workers carry VALKEY_URL and must reach the store either way).
+# around a wipe (ADR 0010; the reset
+# job also flushes it and holds the epoch (#160: wipe-on-schedule).
 resource "kubernetes_network_policy" "allow_valkey_egress" {
   metadata {
     name      = "xitter-allow-valkey-egress"
@@ -531,7 +531,7 @@ resource "kubernetes_network_policy" "allow_valkey_egress" {
       match_expressions {
         key      = "app.kubernetes.io/name"
         operator = "In"
-        values   = concat(["feed", "posts", "social", "media", "web"], local.workers)
+        values   = concat(["feed", "posts", "social", "media", "web", "xitter-reset"], local.workers)
       }
       match_labels = {
         "app.kubernetes.io/instance" = var.environment
@@ -761,7 +761,7 @@ resource "kubernetes_network_policy" "valkey_ingress" {
           match_expressions {
             key      = "app.kubernetes.io/name"
             operator = "In"
-            values   = concat(["feed", "posts", "social", "media", "web"], local.workers)
+            values   = concat(["feed", "posts", "social", "media", "web", "xitter-reset"], local.workers)
           }
           match_labels = {
             "app.kubernetes.io/instance" = var.environment

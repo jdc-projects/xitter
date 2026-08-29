@@ -33,6 +33,8 @@ locals {
   # (its nightly reset job); prod's reset CronJob and its client land with
   # the data-lifecycle follow-up (#13) - not here, deliberately, so this
   # environment never ships reset credentials unused.
+  # svc-reset calls every service's internal reseed (dev parity): it gets
+  # the full audience set so the nightly wipe can reach them all.
   machine_clients = {
     "svc-social"               = ["svc-social"],
     "svc-posts"                = ["svc-posts", "svc-social", "svc-media"],
@@ -42,6 +44,13 @@ locals {
     "svc-worker-fanout"        = ["svc-social", "svc-posts", "svc-feed"],
     "svc-worker-media-process" = ["svc-media"],
     "svc-worker-search-index"  = ["svc-search", "svc-social"],
+    "svc-reset" = [
+      "svc-social",
+      "svc-posts",
+      "svc-media",
+      "svc-feed",
+      "svc-search",
+    ],
   }
 
   # client_id => audience pairs for one mapper per (client, audience).

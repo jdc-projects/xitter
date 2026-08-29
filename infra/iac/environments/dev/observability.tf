@@ -258,7 +258,7 @@ resource "kubernetes_manifest" "prometheus_rule" {
               # stale alert's RHS goes empty. Absent() keeps the stale
               # condition armed in that case too.
               alert  = "XitterResetJobStale"
-              expr   = "(hour() >= 2) and on () ((time() - max(kube_job_status_completion_time{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"}) > 86400) or absent(kube_job_status_completion_time{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"}))"
+              expr   = "(hour() >= 2) and on () ((time() - max(kube_job_status_completion_time{namespace=\"${local.ns}\", job_name=~\"xitter-reset.*\"}) > 86400) or absent(kube_job_status_completion_time{namespace=\"${local.ns}\", job_name=~\"xitter-reset.*\"}))"
               for    = "15m"
               labels = { severity = "warning" }
               annotations = {
@@ -270,7 +270,7 @@ resource "kubernetes_manifest" "prometheus_rule" {
               # A failed job has start_time but no completion_time: detect
               # recent runs (started < 24h ago) that never succeeded.
               alert  = "XitterResetJobFailed"
-              expr   = "(time() - kube_job_status_start_time{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"} < 86400) and on (job_name, namespace) (kube_job_status_succeeded{namespace=\"xitter-dev\", job_name=~\"xitter-reset.*\"} == 0)"
+              expr   = "(time() - kube_job_status_start_time{namespace=\"${local.ns}\", job_name=~\"xitter-reset.*\"} < 86400) and on (job_name, namespace) (kube_job_status_succeeded{namespace=\"${local.ns}\", job_name=~\"xitter-reset.*\"} == 0)"
               for    = "5m"
               labels = { severity = "warning" }
               annotations = {
@@ -322,9 +322,12 @@ resource "kubernetes_manifest" "prometheus_rule" {
 # SDK, so that view lives in Sentry's Web Vitals pages (spec 06 amended in
 # the T11 PR). The reset-job dashboard renders empty until #13 ships the job.
 locals {
+  # ${namespace} in dashboard JSONs is substituted at render: the reset-job
+  # dashboard hardcodes nothing, so prod renders the same file (its own
+  # namespace) instead of forking a copy.
   dashboard_jsons = {
     for file in fileset("${path.module}/dashboards", "*.json") :
-    trimsuffix(file, ".json") => file("${path.module}/dashboards/${file}")
+    trimsuffix(file, ".json") => replace(file("${path.module}/dashboards/${file}"), "$${namespace}", "xitter-${var.environment}")
   }
 }
 
