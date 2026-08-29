@@ -5,15 +5,15 @@ import base from './vitest.config.js';
  * Mutation-testing-only vitest config (#177): the dot reporter replaces the
  * default one so killed mutants stop printing full failure dumps (1000+ per
  * full-mutation run buried real signal). Normal `vitest run` is unchanged.
- * This package's tests are pure unit tests over fakes - no integration
- * excludes needed, so related-mode test selection stays enabled.
+ * Integration suites (docker-dependent: the stack-sweep probe) are excluded
+ * - they must not run inside Stryker sandboxes (#125 guard).
  */
 export default mergeConfig(
   base,
   defineConfig({
     test: {
-      // No integration excludes needed - pure unit suite. Dot reporter per #177.
       reporters: ['dot'],
+      exclude: ['**/*.integration.test.ts', '**/node_modules/**', '**/dist/**'],
     },
   }),
 );

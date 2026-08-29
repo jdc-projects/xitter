@@ -24,6 +24,9 @@ import type { StrykerOptions } from '@stryker-mutator/core';
 import { createStrykerConfig } from '@xitter/testing';
 
 export default createStrykerConfig('scripts', {
+  // The stack-sweep integration test shells out to the docker daemon -
+  // excluded from Stryker sandboxes like every container-dependent suite.
+  excludeIntegrationTests: true,
   // Floor from the measured baseline on this PR (2026-08-26, Stryker 10,
   // 2463 mutants): 31.87 total. ~2 points of headroom absorb mutant-set
   // drift without masking real regressions - a ratchet floor, not a
