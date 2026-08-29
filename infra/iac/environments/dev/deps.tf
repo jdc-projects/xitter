@@ -346,6 +346,16 @@ resource "kubernetes_manifest" "opensearch" {
         }
       }
 
+      # Cold-formation fix (found on prod's first apply): the operator's
+      # bootstrap job creates its PVC with NO storage class unless this is
+      # set - and the cluster has no default StorageClass, so a fresh
+      # formation hangs Pending forever (no prior env ever cold-formed:
+      # dev pre-T14 workaround, posthog formations are hibernate-restores).
+      bootstrap = {
+        storageClass = local.bulk_storage_class
+        diskSize     = "2Gi"
+      }
+
       nodePools = [
         {
           component = "nodes"
