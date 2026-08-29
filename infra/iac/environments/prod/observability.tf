@@ -217,6 +217,32 @@ resource "kubernetes_manifest" "prometheus_rule" {
           ]
         },
         {
+          # Nightly wipe alerts (#160: on-schedule, same contract as dev).
+          name = "xitter-reset"
+          rules = [
+            {
+              alert  = "XitterResetJobStale"
+              expr   = "(hour() >= 2) and on () ((time() - max(kube_job_status_completion_time{namespace=\"${local.ns}\", job_name=~\"xitter-reset.*\"}) > 86400) or absent(kube_job_status_completion_time{namespace=\"${local.ns}\", job_name=~\"xitter-reset.*\"}))"
+              for    = "15m"
+              labels = { severity = "warning" }
+              annotations = {
+                summary     = "Nightly reset job has not completed"
+                description = "It is past 02:00 UTC and no xitter reset job has completed successfully in the last 24h."
+              }
+            },
+            {
+              alert  = "XitterResetJobFailed"
+              expr   = "(time() - kube_job_status_start_time{namespace=\"${local.ns}\", job_name=~\"xitter-reset.*\"} < 86400) and on (job_name, namespace) (kube_job_status_succeeded{namespace=\"${local.ns}\", job_name=~\"xitter-reset.*\"} == 0)"
+              for    = "5m"
+              labels = { severity = "warning" }
+              annotations = {
+                summary     = "Nightly reset job failed ({{ $labels.job_name }})"
+                description = "A reset job started in the last 24h never completed successfully."
+              }
+            },
+          ]
+        },
+        {
           # Edge/cert signals. Both come from the homelab edge's own metrics:
           # 5xx rate on xitter routes, and minimum remaining validity across
           # certs the edge serves (the wildcard covers every xitter host).
@@ -257,10 +283,12 @@ resource "kubernetes_manifest" "prometheus_rule" {
 # source of truth instead of forks. The reset-job dashboard hardcodes
 # xitter-dev and lands here with prod's reset wiring (#13).
 locals {
+  # Same files as dev (labels filter on xitter_* metrics); the reset-job
+  # dashboard's ${namespace} placeholder renders with THIS environment's
+  # namespace now that prod runs the nightly wipe (#160).
   dashboard_jsons = {
     for file in fileset("${path.module}/../dev/dashboards", "*.json") :
-    trimsuffix(file, ".json") => file("${path.module}/../dev/dashboards/${file}")
-    if file != "xitter-reset-job.json"
+    trimsuffix(file, ".json") => replace(file("${path.module}/../dev/dashboards/${file}"), "$${namespace}", "xitter-${var.environment}")
   }
 }
 
