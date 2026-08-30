@@ -57,6 +57,11 @@ turbo lint/typecheck/**Vitest test**/build) matches the CI `gates` job; `npm run
 
 ## Conventions and rules
 
+- **Cluster mutations**: Tofu only. `kubectl` is read-only for agents
+  (get/describe/logs); every change to cluster state goes through the
+  relevant tofu (`infra/iac` for xitter envs, the homelab's own tofu for
+  shared cluster infrastructure). One-off kubectl mutations need the
+  owner's explicit approval first.
 - **Versioning**: APIs, events, and interfaces are versioned (`/v1`, topic `.v1`).
 - **Package versions**: pin to major (`^16`), or minor for sub-1.0 (`^0.35`).
 - **Ports/endpoints**: always env-driven via `@xitter/config` (`XITTER_*_PORT`,
