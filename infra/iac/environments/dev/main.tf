@@ -47,13 +47,16 @@ provider "helm" {
 
 provider "random" {}
 
-# Sentry (T11): per-app projects + DSNs, self-hosted at sentry.jd-chapman.dev.
-# The org-scoped token comes from the homelab's sentry remote state - the same
-# source iac/grafana uses for its own project. In-cluster override: the deploy
-# runs tofu on the LAN self-hosted runner; pointed at the public URL its
-# requests present the home IP at Cloudflare and die whenever CrowdSec has it
-# banned. TF_VAR_provider_sentry_base_url (deploy workflow) routes the
-# provider at the in-cluster service instead - no edge in the path.
+# Sentry: self-hosted at sentry.jd-chapman.dev. The org-scoped token comes
+# from the homelab's sentry remote state - the same source iac/grafana uses
+# for its own project. The team/project themselves live in the shared root
+# (#197); this provider is retained while the `removed` blocks in
+# observability.tf drain those two resources from this state and is unused
+# once they are forgotten. In-cluster override: the deploy runs tofu on the
+# LAN self-hosted runner; pointed at the public URL its requests present the
+# home IP at Cloudflare and die whenever CrowdSec has it banned.
+# TF_VAR_provider_sentry_base_url (deploy workflow) routes the provider at
+# the in-cluster service instead - no edge in the path.
 provider "sentry" {
   token    = data.terraform_remote_state.sentry.outputs.sentry_auth_token
   base_url = coalesce(var.provider_sentry_base_url, "https://${data.terraform_remote_state.sentry.outputs.sentry_domain}/api/")
@@ -94,14 +97,25 @@ data "terraform_remote_state" "keycloak" {
   }
 }
 
-# Sentry org-scoped auth token + web domain (homelab iac/sentry outputs).
-# Consumed by the jianyuan/sentry provider: dev's state owns the single
-# xitter project (T11), prod reads it via data sources.
+# Sentry org-scoped auth token + web domain (homelab iac/sentry outputs) -
+# consumed by the sentry provider above.
 data "terraform_remote_state" "sentry" {
   backend = "kubernetes"
 
   config = {
     secret_suffix = "sentry"
+    config_path   = "../../../cluster.yml"
+    namespace     = "tf-state"
+  }
+}
+
+# The shared xitter root (#197) owns the single Sentry team + project; dev
+# and prod read its DSN output into their own xitter-sentry secrets.
+data "terraform_remote_state" "xitter_shared" {
+  backend = "kubernetes"
+
+  config = {
+    secret_suffix = "xitter-shared"
     config_path   = "../../../cluster.yml"
     namespace     = "tf-state"
   }

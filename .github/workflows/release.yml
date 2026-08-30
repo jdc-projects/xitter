@@ -182,6 +182,29 @@ jobs:
           fi
           mkdir -p infra
           printf '%s' "${{ secrets.CLUSTER_KUBECONFIG }}" > infra/cluster.yml
+      - name: tofu apply (shared)
+        # The shared root (Sentry team/project, #197) converges BEFORE prod:
+        # prod's xitter-sentry secret reads its sentry_dsn_public output, so
+        # the release never depends on dev's apply timing. Skipped in dry
+        # runs, which plan instead of applying (its state already exists -
+        # the PR-branch migration imported the live objects into it).
+        if: needs.version.outputs.dry_run != 'true'
+        working-directory: infra/iac/environments/shared
+        env:
+          # Sentry provider routes in-cluster (ADR 0011) - same override as
+          # the prod apply below.
+          TF_VAR_provider_sentry_base_url: http://sentry-web.sentry:9000/api/
+        run: |
+          tofu init
+          tofu apply -auto-approve -input=false
+      - name: tofu plan (shared, dry run)
+        if: needs.version.outputs.dry_run == 'true'
+        working-directory: infra/iac/environments/shared
+        env:
+          TF_VAR_provider_sentry_base_url: http://sentry-web.sentry:9000/api/
+        run: |
+          tofu init
+          tofu plan -input=false
       - name: tofu plan (prod, dry run)
         if: needs.version.outputs.dry_run == 'true'
         working-directory: infra/iac/environments/prod
