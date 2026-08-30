@@ -307,102 +307,201 @@ resource "helm_release" "valkey" {
 }
 
 # ---------------------------------------------------------------------------
-# OpenSearch (operator CR, security disabled - dev pattern)
+# OpenSearch (raw StatefulSet, 2-node, security disabled)
 # ---------------------------------------------------------------------------
-# Prod runs 3 nodes where dev runs 2. Dev's 2-node pool (quorum of 2, zero
-# failure tolerance) was forced by the operator's restart guard refusing to
-# roll a single cluster_manager (2026-08-17 incident, see dev/deps.tf). Three
-# gives a real majority quorum: the operator can roll one node at a time AND
-# the cluster tolerates one node down without pausing writes - the posture
-# dev/deps.tf notes prod should have.
-resource "kubernetes_manifest" "opensearch" {
-  manifest = {
-    apiVersion = "opensearch.org/v1"
-    kind       = "OpenSearchCluster"
+# No operator. The opensearch-k8s-operator 3.0.0-alpha's bootstrap flow is
+# structurally un-winnable for cold formation: it deletes its bootstrap pod
+# - the node it stamps into cluster.initial_master_nodes - off a readiness
+# signal that repeatedly fired before the second data node's join committed
+# into the voting config (four bricked formations, observed live: the
+# survivors then fail "an election requires a node with id [bootstrap]"
+# forever, every cluster-state API hangs, search wedges at boot). Its env
+# cannot be overridden either (nodePool.env duplicate is appended after the
+# operator's - the operator's value won, observed live), so the operator
+# path was abandoned rather than raced.
+#
+# This StatefulSet self-bootstraps: node.name defaults to each pod's
+# hostname (opensearch-nodes-{0,1} - the STS guarantees those identities
+# and their PVCs), discovery.seed_hosts is the headless service, and
+# cluster.initial_master_nodes pins the voting config to exactly the two
+# data nodes from the first commit - no transient third member can ever
+# freeze a quorum. The setting is inert after first formation; restarts
+# and reschedules rejoin from persisted cluster state on the same PVCs.
+#
+# podManagementPolicy is Parallel on purpose: the election needs BOTH
+# nodes, and OrderedReady would deadlock it with the join-gated readiness
+# probe below (nodes-1 is only created after nodes-0 is Ready, but the
+# election - and therefore readiness - needs nodes-1 up).
+#
+# Two replicas, not one: quorum of 2 with zero failure tolerance - losing
+# one node pauses writes until it returns. Acceptable for dev (disposable
+# data, nightly reset). Prod sizes identically for now.
+locals {
+  opensearch_nodes = ["opensearch-nodes-0", "opensearch-nodes-1"]
+}
 
-    metadata = {
-      name      = "opensearch"
-      namespace = local.ns
+resource "kubernetes_config_map" "opensearch_config" {
+  metadata {
+    name      = "opensearch-config"
+    namespace = local.ns
+    labels    = { "opensearch.org/opensearch-cluster" = "opensearch" }
+  }
+
+  data = {
+    "opensearch.yml" = <<-YAML
+      cluster.name: opensearch
+      network.host: 0.0.0.0
+      http.port: 9200
+      transport.port: 9300
+      plugins.security.disabled: true
+      discovery.seed_hosts: [opensearch-discovery]
+      cluster.initial_master_nodes: [${join(", ", local.opensearch_nodes)}]
+    YAML
+  }
+}
+
+# Headless discovery service: resolves to every node pod's address, which
+# is all discovery.seed_hosts needs (the operator used the same name, so
+# nothing downstream changes).
+resource "kubernetes_service" "opensearch_discovery" {
+  metadata {
+    name      = "opensearch-discovery"
+    namespace = local.ns
+    labels    = { "opensearch.org/opensearch-cluster" = "opensearch" }
+  }
+
+  spec {
+    cluster_ip = "None"
+    selector = {
+      "opensearch.org/opensearch-cluster" = "opensearch"
     }
 
-    spec = {
-      general = {
-        version     = local.opensearch_version
-        httpPort    = 9200
-        serviceName = "opensearch"
+    port {
+      name        = "transport"
+      port        = 9300
+      protocol    = "TCP"
+      target_port = 9300
+    }
+  }
+}
 
-        additionalConfig = {
-          "plugins.security.disabled" = "true"
-          # node.name is deliberately NOT pinned here. The operator renders
-          # additionalConfig into every pod's opensearch.yml, so the
-          # single-node workaround inherited from the homelab reference
-          # envs ("opensearch-bootstrap-0", matching the
-          # cluster.initial_master_nodes env) would give both replicas the
-          # SAME node identity. Unset, each pod defaults to its hostname
-          # (opensearch-nodes-{0,1}); the existing node keeps its persisted
-          # node id (data dir) through the rename, and fresh clusters use
-          # the operator's own bootstrap pod flow.
+# Client service: same name the workloads and reset flow already target.
+resource "kubernetes_service" "opensearch" {
+  metadata {
+    name      = "opensearch"
+    namespace = local.ns
+    labels    = { "opensearch.org/opensearch-cluster" = "opensearch" }
+  }
+
+  spec {
+    selector = {
+      "opensearch.org/opensearch-cluster" = "opensearch"
+    }
+
+    port {
+      name        = "http"
+      port        = 9200
+      protocol    = "TCP"
+      target_port = 9200
+    }
+
+    port {
+      name        = "transport"
+      port        = 9300
+      protocol    = "TCP"
+      target_port = 9300
+    }
+  }
+}
+
+resource "kubernetes_stateful_set" "opensearch_nodes" {
+  metadata {
+    name      = "opensearch-nodes"
+    namespace = local.ns
+    labels    = { "opensearch.org/opensearch-cluster" = "opensearch" }
+  }
+
+  spec {
+    service_name          = "opensearch-discovery"
+    replicas              = 2
+    pod_management_policy = "Parallel"
+
+    selector {
+      match_labels = {
+        "opensearch.org/opensearch-cluster" = "opensearch"
+      }
+    }
+
+    template {
+      metadata {
+        labels = {
+          "opensearch.org/opensearch-cluster" = "opensearch"
         }
       }
 
-      # Cold-formation fix (found on prod's first apply): the operator's
-      # bootstrap job creates its PVC with NO storage class unless this is
-      # set - and the cluster has no default StorageClass, so a fresh
-      # formation hangs Pending forever (no prior env ever cold-formed:
-      # dev pre-T14 workaround, posthog formations are hibernate-restores).
-      bootstrap = {
-        storageClass = local.bulk_storage_class
-        diskSize     = "2Gi"
-      }
+      spec {
+        termination_grace_period_seconds = 120
 
-      nodePools = [
-        {
-          component = "nodes"
-          replicas  = 3
-          diskSize  = "10Gi"
+        init_container {
+          name  = "init-sysctl"
+          image = "busybox:1.36"
 
-          persistence = {
-            pvc = {
-              storageClass = local.bulk_storage_class
-              accessModes  = ["ReadWriteOnce"]
-            }
+          command = ["sh", "-c", "sysctl -w vm.max_map_count=262144"]
+
+          security_context {
+            privileged = true
+          }
+        }
+
+        container {
+          name  = "opensearch"
+          image = "opensearchproject/opensearch:${local.opensearch_version}"
+
+          port {
+            name           = "http"
+            container_port = 9200
           }
 
-          jvm = "-Xms512m -Xmx512m"
-
-          roles = [
-            "cluster_manager",
-            "data",
-            "ingest",
-          ]
-
-          # Readiness means JOINED, not merely HTTP-up. The operator
-          # deletes its bootstrap node (the initial cluster-manager) as
-          # soon as every manager pod is k8s-Ready (AllMastersReady),
-          # and its default probe (`curl /`) passes on a node that never
-          # joined anything - / answers 200 with no cluster. On a dev
-          # formation that deleted the bootstrap after ONE join: the
-          # voting config froze at {bootstrap, nodes-0} and the cluster
-          # bricked (cluster-state APIs hang forever, search wedges at
-          # boot). wait_for_nodes=<replicas> makes Ready provable
-          # membership, so the bootstrap outlives every join and its
-          # departure always leaves the survivors a quorum. Kept in sync
-          # with `replicas`.
-          probes = {
-            readiness = {
-              command = [
-                "/bin/bash",
-                "-c",
-                "curl -u \"$(cat /mnt/admin-credentials/username):$(cat /mnt/admin-credentials/password)\" --silent --fail 'http://localhost:9200/_cluster/health?wait_for_nodes=2&wait_for_status=yellow&timeout=25s'",
-              ]
-            }
+          port {
+            name           = "transport"
+            container_port = 9300
           }
 
           env = [
             { name = "DISABLE_INSTALL_DEMO_CONFIG", value = "true" },
+            { name = "OPENSEARCH_JAVA_OPTS", value = "-Xms512m -Xmx512m" },
           ]
 
-          resources = {
+          # Readiness = joined (the health endpoint only answers 200 once
+          # this node participates in an elected cluster with both nodes).
+          # Parallel pod creation means this can never deadlock formation.
+          readiness_probe {
+            exec {
+              command = [
+                "/bin/bash",
+                "-c",
+                "curl --silent --fail 'http://localhost:9200/_cluster/health?wait_for_nodes=2&wait_for_status=yellow&timeout=25s'",
+              ]
+            }
+
+            initial_delay_seconds = 60
+            period_seconds        = 15
+            timeout_seconds       = 30
+            failure_threshold     = 5
+          }
+
+          liveness_probe {
+            tcp_socket {
+              port = 9200
+            }
+
+            initial_delay_seconds = 120
+            period_seconds        = 20
+            timeout_seconds       = 5
+            failure_threshold     = 10
+          }
+
+          resources {
             requests = {
               cpu    = "250m"
               memory = "1Gi"
@@ -412,19 +511,49 @@ resource "kubernetes_manifest" "opensearch" {
               memory = "1Gi"
             }
           }
-        },
-      ]
+
+          volume_mount {
+            name       = "config"
+            mount_path = "/usr/share/opensearch/config/opensearch.yml"
+            sub_path   = "opensearch.yml"
+          }
+
+          volume_mount {
+            name       = "data"
+            mount_path = "/usr/share/opensearch/data"
+          }
+        }
+
+        volume {
+          name = "config"
+
+          config_map {
+            name = kubernetes_config_map.opensearch_config.metadata[0].name
+          }
+        }
+      }
+    }
+
+    # Same PVC names the operator created (data-opensearch-nodes-{0,1}) -
+    # nothing downstream (netpols, reset flow, dashboards) changes.
+    volume_claim_templates {
+      metadata {
+        name   = "data"
+        labels = { "opensearch.org/opensearch-cluster" = "opensearch" }
+      }
+
+      spec {
+        access_modes       = ["ReadWriteOnce"]
+        storage_class_name = local.bulk_storage_class
+
+        resources {
+          requests = {
+            storage = "10Gi"
+          }
+        }
+      }
     }
   }
-
-  field_manager {
-    force_conflicts = true
-  }
-
-  computed_fields = [
-    "metadata.labels",
-    "metadata.annotations",
-  ]
 }
 
 # ---------------------------------------------------------------------------
