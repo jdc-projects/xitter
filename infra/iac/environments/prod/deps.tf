@@ -460,6 +460,15 @@ resource "kubernetes_manifest" "opensearch_nodes" {
         }
 
         spec = {
+          # fsGroup 1000: kubelet chowns the PVC to the opensearch image's
+          # gid so uid 1000 can write /usr/share/opensearch/data (found the
+          # hard way: performance_analyzer writes there at boot and an
+          # unwritable data dir aborts it). No pod-level runAsUser - it
+          # would break the root-needing sysctl init below.
+          securityContext = {
+            fsGroup = 1000
+          }
+
           terminationGracePeriodSeconds = 120
 
           initContainers = [
@@ -471,6 +480,7 @@ resource "kubernetes_manifest" "opensearch_nodes" {
 
               securityContext = {
                 privileged = true
+                runAsUser   = 0
               }
             },
           ]
