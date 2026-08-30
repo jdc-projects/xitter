@@ -340,220 +340,259 @@ locals {
   opensearch_nodes = ["opensearch-nodes-0", "opensearch-nodes-1"]
 }
 
-resource "kubernetes_config_map" "opensearch_config" {
-  metadata {
-    name      = "opensearch-config"
-    namespace = local.ns
-    labels    = { "opensearch.org/opensearch-cluster" = "opensearch" }
-  }
+resource "kubernetes_manifest" "opensearch_config" {
+  manifest = {
+    apiVersion = "v1"
+    kind       = "ConfigMap"
 
-  data = {
-    "opensearch.yml" = <<-YAML
-      cluster.name: opensearch
-      network.host: 0.0.0.0
-      http.port: 9200
-      transport.port: 9300
-      plugins.security.disabled: true
-      discovery.seed_hosts: [opensearch-discovery]
-      cluster.initial_master_nodes: [${join(", ", local.opensearch_nodes)}]
-    YAML
+    metadata = {
+      name      = "opensearch-config"
+      namespace = local.ns
+      labels    = { "opensearch.org/opensearch-cluster" = "opensearch" }
+    }
+
+    data = {
+      "opensearch.yml" = <<-YAML
+        cluster.name: opensearch
+        network.host: 0.0.0.0
+        http.port: 9200
+        transport.port: 9300
+        plugins.security.disabled: true
+        discovery.seed_hosts: [opensearch-discovery]
+        cluster.initial_master_nodes: [${join(", ", local.opensearch_nodes)}]
+      YAML
+    }
   }
 }
 
 # Headless discovery service: resolves to every node pod's address, which
 # is all discovery.seed_hosts needs (the operator used the same name, so
 # nothing downstream changes).
-resource "kubernetes_service" "opensearch_discovery" {
-  metadata {
-    name      = "opensearch-discovery"
-    namespace = local.ns
-    labels    = { "opensearch.org/opensearch-cluster" = "opensearch" }
-  }
+resource "kubernetes_manifest" "opensearch_discovery" {
+  manifest = {
+    apiVersion = "v1"
+    kind       = "Service"
 
-  spec {
-    cluster_ip = "None"
-    selector = {
-      "opensearch.org/opensearch-cluster" = "opensearch"
+    metadata = {
+      name      = "opensearch-discovery"
+      namespace = local.ns
+      labels    = { "opensearch.org/opensearch-cluster" = "opensearch" }
     }
 
-    port {
-      name        = "transport"
-      port        = 9300
-      protocol    = "TCP"
-      target_port = 9300
+    spec = {
+      clusterIP = "None"
+      selector = {
+        "opensearch.org/opensearch-cluster" = "opensearch"
+      }
+      ports = [
+        {
+          name       = "transport"
+          port       = 9300
+          protocol   = "TCP"
+          targetPort = 9300
+        },
+      ]
     }
   }
 }
 
 # Client service: same name the workloads and reset flow already target.
-resource "kubernetes_service" "opensearch" {
-  metadata {
-    name      = "opensearch"
-    namespace = local.ns
-    labels    = { "opensearch.org/opensearch-cluster" = "opensearch" }
-  }
+resource "kubernetes_manifest" "opensearch_service" {
+  manifest = {
+    apiVersion = "v1"
+    kind       = "Service"
 
-  spec {
-    selector = {
-      "opensearch.org/opensearch-cluster" = "opensearch"
+    metadata = {
+      name      = "opensearch"
+      namespace = local.ns
+      labels    = { "opensearch.org/opensearch-cluster" = "opensearch" }
     }
 
-    port {
-      name        = "http"
-      port        = 9200
-      protocol    = "TCP"
-      target_port = 9200
-    }
-
-    port {
-      name        = "transport"
-      port        = 9300
-      protocol    = "TCP"
-      target_port = 9300
+    spec = {
+      selector = {
+        "opensearch.org/opensearch-cluster" = "opensearch"
+      }
+      ports = [
+        {
+          name       = "http"
+          port       = 9200
+          protocol   = "TCP"
+          targetPort = 9200
+        },
+        {
+          name       = "transport"
+          port       = 9300
+          protocol   = "TCP"
+          targetPort = 9300
+        },
+      ]
     }
   }
 }
 
-resource "kubernetes_stateful_set" "opensearch_nodes" {
-  metadata {
-    name      = "opensearch-nodes"
-    namespace = local.ns
-    labels    = { "opensearch.org/opensearch-cluster" = "opensearch" }
-  }
+resource "kubernetes_manifest" "opensearch_nodes" {
+  manifest = {
+    apiVersion = "apps/v1"
+    kind       = "StatefulSet"
 
-  spec {
-    service_name          = "opensearch-discovery"
-    replicas              = 2
-    pod_management_policy = "Parallel"
-
-    selector {
-      match_labels = {
-        "opensearch.org/opensearch-cluster" = "opensearch"
-      }
+    metadata = {
+      name      = "opensearch-nodes"
+      namespace = local.ns
+      labels    = { "opensearch.org/opensearch-cluster" = "opensearch" }
     }
 
-    template {
-      metadata {
-        labels = {
+    spec = {
+      serviceName         = "opensearch-discovery"
+      replicas             = 2
+      podManagementPolicy = "Parallel"
+
+      selector = {
+        matchLabels = {
           "opensearch.org/opensearch-cluster" = "opensearch"
         }
       }
 
-      spec {
-        termination_grace_period_seconds = 120
-
-        init_container {
-          name  = "init-sysctl"
-          image = "busybox:1.36"
-
-          command = ["sh", "-c", "sysctl -w vm.max_map_count=262144"]
-
-          security_context {
-            privileged = true
+      template = {
+        metadata = {
+          labels = {
+            "opensearch.org/opensearch-cluster" = "opensearch"
           }
         }
 
-        container {
-          name  = "opensearch"
-          image = "opensearchproject/opensearch:${local.opensearch_version}"
+        spec = {
+          terminationGracePeriodSeconds = 120
 
-          port {
-            name           = "http"
-            container_port = 9200
-          }
+          initContainers = [
+            {
+              name  = "init-sysctl"
+              image = "busybox:1.36"
 
-          port {
-            name           = "transport"
-            container_port = 9300
-          }
+              command = ["sh", "-c", "sysctl -w vm.max_map_count=262144"]
 
-          env = [
-            { name = "DISABLE_INSTALL_DEMO_CONFIG", value = "true" },
-            { name = "OPENSEARCH_JAVA_OPTS", value = "-Xms512m -Xmx512m" },
+              securityContext = {
+                privileged = true
+              }
+            },
           ]
 
-          # Readiness = joined (the health endpoint only answers 200 once
-          # this node participates in an elected cluster with both nodes).
-          # Parallel pod creation means this can never deadlock formation.
-          readiness_probe {
-            exec {
-              command = [
-                "/bin/bash",
-                "-c",
-                "curl --silent --fail 'http://localhost:9200/_cluster/health?wait_for_nodes=2&wait_for_status=yellow&timeout=25s'",
+          containers = [
+            {
+              name  = "opensearch"
+              image = "opensearchproject/opensearch:${local.opensearch_version}"
+
+              ports = [
+                {
+                  name          = "http"
+                  containerPort = 9200
+                },
+                {
+                  name          = "transport"
+                  containerPort = 9300
+                },
               ]
-            }
 
-            initial_delay_seconds = 60
-            period_seconds        = 15
-            timeout_seconds       = 30
-            failure_threshold     = 5
-          }
+              env = [
+                {
+                  name  = "DISABLE_INSTALL_DEMO_CONFIG"
+                  value = "true"
+                },
+                {
+                  name  = "OPENSEARCH_JAVA_OPTS"
+                  value = "-Xms512m -Xmx512m"
+                },
+              ]
 
-          liveness_probe {
-            tcp_socket {
-              port = 9200
-            }
+              # Readiness = joined (the health endpoint only answers 200 once
+              # this node participates in an elected cluster with both nodes).
+              # Parallel pod creation means this can never deadlock formation.
+              readinessProbe = {
+                exec = {
+                  command = [
+                    "/bin/bash",
+                    "-c",
+                    "curl --silent --fail 'http://localhost:9200/_cluster/health?wait_for_nodes=2&wait_for_status=yellow&timeout=25s'",
+                  ]
+                }
+                initialDelaySeconds = 60
+                periodSeconds        = 15
+                timeoutSeconds       = 30
+                failureThreshold     = 5
+              }
 
-            initial_delay_seconds = 120
-            period_seconds        = 20
-            timeout_seconds       = 5
-            failure_threshold     = 10
-          }
+              livenessProbe = {
+                tcpSocket = {
+                  port = 9200
+                }
+                initialDelaySeconds = 120
+                periodSeconds        = 20
+                timeoutSeconds       = 5
+                failureThreshold     = 10
+              }
 
-          resources {
-            requests = {
-              cpu    = "250m"
-              memory = "1Gi"
-            }
-            limits = {
-              cpu    = "500m"
-              memory = "1Gi"
-            }
-          }
+              resources = {
+                requests = {
+                  cpu    = "250m"
+                  memory = "1Gi"
+                }
+                limits = {
+                  cpu    = "500m"
+                  memory = "1Gi"
+                }
+              }
 
-          volume_mount {
-            name       = "config"
-            mount_path = "/usr/share/opensearch/config/opensearch.yml"
-            sub_path   = "opensearch.yml"
-          }
+              volumeMounts = [
+                {
+                  name      = "config"
+                  mountPath = "/usr/share/opensearch/config/opensearch.yml"
+                  subPath   = "opensearch.yml"
+                },
+                {
+                  name      = "data"
+                  mountPath = "/usr/share/opensearch/data"
+                },
+              ]
+            },
+          ]
 
-          volume_mount {
-            name       = "data"
-            mount_path = "/usr/share/opensearch/data"
-          }
-        }
-
-        volume {
-          name = "config"
-
-          config_map {
-            name = kubernetes_config_map.opensearch_config.metadata[0].name
-          }
+          volumes = [
+            {
+              name = "config"
+              configMap = {
+                name = "opensearch-config"
+              }
+            },
+          ]
         }
       }
-    }
 
-    # Same PVC names the operator created (data-opensearch-nodes-{0,1}) -
-    # nothing downstream (netpols, reset flow, dashboards) changes.
-    volume_claim_templates {
-      metadata {
-        name   = "data"
-        labels = { "opensearch.org/opensearch-cluster" = "opensearch" }
-      }
-
-      spec {
-        access_modes       = ["ReadWriteOnce"]
-        storage_class_name = local.bulk_storage_class
-
-        resources {
-          requests = {
-            storage = "10Gi"
+      # Same PVC names the operator created (data-opensearch-nodes-{0,1}) -
+      # nothing downstream (netpols, reset flow, dashboards) changes.
+      volumeClaimTemplates = [
+        {
+          metadata = {
+            name   = "data"
+            labels = {
+              "opensearch.org/opensearch-cluster" = "opensearch"
+            }
           }
-        }
-      }
+          spec = {
+            accessModes      = ["ReadWriteOnce"]
+            storageClassName = local.bulk_storage_class
+            resources = {
+              requests = {
+                storage = "10Gi"
+              }
+            }
+          }
+        },
+      ]
     }
   }
+
+  computed_fields = [
+    "metadata.labels",
+    "metadata.annotations",
+  ]
 }
 
 # ---------------------------------------------------------------------------
