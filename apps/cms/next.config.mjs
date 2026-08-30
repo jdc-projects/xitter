@@ -7,6 +7,11 @@ const config = {
   // Minimal self-contained server output for the container image
   // (apps/cms/Dockerfile); no `next start` runtime needed.
   output: 'standalone',
+  async redirects() {
+    // The route table makes /cms the entry point, but the Payload admin UI
+    // at /admin is the whole surface - and basePath prefixes both paths (#196).
+    return [{ source: '/', destination: '/admin', permanent: false }];
+  },
 };
 
 export default withPayload(config);

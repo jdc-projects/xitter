@@ -123,6 +123,15 @@ test('first-register is permanently closed (no anonymous bootstrap takeover)', a
   expect(res.status()).not.toBe(200);
 });
 
+test('the /cms entry point redirects to the Payload admin UI (#196)', async () => {
+  // The route table's CMS entry is /cms itself, but the app router has no
+  // root route - next.config redirects it to the admin UI under basePath.
+  const cmsUrl = envString('XITTER_CMS_URL', localUrl('cms'));
+  const res = await fetch(`${cmsUrl}/cms`, { redirect: 'manual' });
+  expect(res.status).toBe(307);
+  expect(res.headers.get('location')).toBe('/cms/admin');
+});
+
 test('CMS admin login requires the app-admin role', async ({ page }) => {
   await page.goto('/cms/admin');
   // Middleware redirects unauthenticated visits to the admin realm.
