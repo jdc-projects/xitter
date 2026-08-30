@@ -128,9 +128,7 @@ export class TokenBucketRateLimiter {
     dead?.quit().catch(() => undefined);
   }
 
-  // Nest invokes this via OnApplicationShutdown at shutdown - no direct
-  // references by design.
-  // fallow-ignore-next-line unused-class-member
+  // fallow-ignore-next-line unused-class-member -- Nest lifecycle hook: the framework calls it at shutdown, so the import graph sees no direct references
   async onApplicationShutdown(): Promise<void> {
     await this.connection?.quit().catch(() => undefined);
   }

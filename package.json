@@ -40,6 +40,7 @@
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
     "lint:repo": "npm run docs:diagrams && fallow audit --base ${FALLOW_BASE:-origin/dev} --dead-code-baseline .fallow/dead-code.json --health-baseline .fallow/health.json --dupes-baseline .fallow/dupes.json && react-doctor -y --no-supply-chain",
+    "//": "react-doctor --no-supply-chain: deliberate scope cut - the npm audit gate (npm run audit) already fails CI on high/critical supply-chain advisories",
     "test": "turbo run test",
     "test:watch": "turbo run test:watch",
     "test:unit": "turbo run test",
