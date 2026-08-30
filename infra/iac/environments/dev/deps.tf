@@ -377,38 +377,29 @@ resource "kubernetes_manifest" "opensearch" {
             "ingest",
           ]
 
-          # Self-bootstrap: the data nodes form the cluster THEMSELVES.
-          # This operator build (3.0.0-alpha) deletes its bootstrap pod -
-          # the node it stamps into its own cluster.initial_master_nodes
-          # env - as soon as the FIRST data node is k8s-Ready (observed
-          # live: Initialized flipped with nodes-1 at 0/1, twice), so with
-          # the operator's flow the voting config is always frozen at
-          # {bootstrap, nodes-0} when the bootstrap is killed and the
-          # cluster bricks (cluster-state APIs hang forever, search
-          # wedges at boot). Overriding initial_master_nodes to the pool
-          # pods - nodePool.env is appended AFTER the operator's env
-          # (builders NewSTSForNodePool), and duplicate env entries are
-          # last-wins - makes nodes-0/1 bootstrap each other: the
-          # election needs both up, the voting config is {nodes-0,
-          # nodes-1} from the first commit, and the operator's bootstrap
-          # pod is a hermit (a bootstrapped node never joins another
-          # bootstrapped cluster) whose deletion is harmless.
-          #
-          # node.name stays unset on purpose: each pod defaults to its
-          # hostname (opensearch-nodes-{0,1}), matching this list. Do NOT
-          # set node.name here - one value for both pods would give both
-          # replicas the same node identity.
-          #
-          # Readiness stays the operator default (HTTP-up): with a
-          # self-bootstrap election needing BOTH nodes, a join-gated
-          # probe deadlocks OrderedReady (nodes-1 is only created after
-          # nodes-0 is Ready, but nodes-0 is only Ready once nodes-1 has
-          # joined). Post-boot the setting is inert - it applies the very
-          # first time a cluster forms; restarts rejoin from persisted
-          # cluster state.
+          # Readiness means JOINED, not merely HTTP-up. The operator
+          # deletes its bootstrap node (the initial cluster-manager) as
+          # soon as every manager pod is k8s-Ready (AllMastersReady),
+          # and its default probe (`curl /`) passes on a node that never
+          # joined anything - / answers 200 with no cluster. On formation
+          # #2 that deleted the bootstrap after ONE join: the voting
+          # config froze at {bootstrap, nodes-0} and the cluster bricked
+          # (cluster-state APIs hang forever, search wedges at boot).
+          # wait_for_nodes=<replicas> makes Ready provable membership, so
+          # the bootstrap outlives every join and its departure always
+          # leaves the survivors a quorum. Kept in sync with `replicas`.
+          probes = {
+            readiness = {
+              command = [
+                "/bin/bash",
+                "-c",
+                "curl -u \"$(cat /mnt/admin-credentials/username):$(cat /mnt/admin-credentials/password)\" --silent --fail 'http://localhost:9200/_cluster/health?wait_for_nodes=2&wait_for_status=yellow&timeout=25s'",
+              ]
+            }
+          }
+
           env = [
             { name = "DISABLE_INSTALL_DEMO_CONFIG", value = "true" },
-            { name = "cluster.initial_master_nodes", value = "opensearch-nodes-0,opensearch-nodes-1" },
           ]
 
           resources = {
