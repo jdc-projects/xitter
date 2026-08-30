@@ -63,4 +63,16 @@ describe('PublicHeader (#38 session-aware CTA)', () => {
     expect(screen.getByTestId('public-brand').getAttribute('aria-current')).toBe('page');
     expect(screen.getByTestId('public-about-link').getAttribute('aria-current')).toBeNull();
   });
+
+  it('renders the brand with an explicit colour (#200)', () => {
+    // Text sets no colour, so a Text-as-anchor brand falls through to the
+    // browser's default blue/purple link palette - the first thing every
+    // visitor sees must carry the themed text colour itself.
+    mockPathname = '/';
+    renderHeader({ username: null });
+
+    const brand = screen.getByTestId('public-brand');
+    expect(brand.getAttribute('href')).toBe('/');
+    expect(brand.style.color).toBe('var(--mantine-color-text)');
+  });
 });

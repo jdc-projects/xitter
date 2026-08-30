@@ -1,14 +1,4 @@
-import {
-  Anchor,
-  Badge,
-  Button,
-  Container,
-  Divider,
-  Group,
-  Stack,
-  Text,
-  Title,
-} from '@mantine/core';
+import { Badge, Button, Container, Divider, Group, Stack, Text, Title } from '@mantine/core';
 import { UserAvatar } from '@xitter/ui';
 import type { Metadata } from 'next';
 import { requireSession } from '@/lib/auth/session';
@@ -17,6 +7,7 @@ import { DormantProfile } from './dormant-profile';
 import { EditProfileForm } from './edit-profile-form';
 import { ProfileActions } from './profile-actions';
 import { ProfileTabLists } from './profile-tab-lists';
+import { ProfileTabs } from './profile-tabs';
 import { loadProfileView, type ProfileTab } from './load-profile';
 
 export const metadata: Metadata = { title: 'Profile' };
@@ -27,52 +18,6 @@ const BADGE_COLOR: Record<string, string> = {
   'badge-follows-you': 'gray',
   'badge-blocked': 'red',
 };
-
-function ProfileTabs({
-  active,
-  profile,
-  counts,
-}: {
-  active: string;
-  profile: { username: string };
-  counts: { following: number; followers: number };
-}) {
-  const tabs = [
-    { value: 'posts', label: 'Posts', href: `/profile/${profile.username}` },
-    {
-      value: 'following',
-      label: `Following ${counts.following}`,
-      href: `/profile/${profile.username}?tab=following`,
-    },
-    {
-      value: 'followers',
-      label: `Followers ${counts.followers}`,
-      href: `/profile/${profile.username}?tab=followers`,
-    },
-  ];
-  return (
-    <Group gap={0} mb="md" data-testid="profile-tabs">
-      {tabs.map((t) => (
-        <Anchor
-          key={t.value}
-          href={t.href}
-          unstyled
-          px="sm"
-          py="xs"
-          data-testid={`tab-${t.value}`}
-          style={{
-            fontWeight: t.value === active ? 600 : 400,
-            textDecoration: t.value === active ? 'underline' : 'none',
-            textUnderlineOffset: 6,
-          }}
-          aria-current={t.value === active ? 'page' : undefined}
-        >
-          {t.label}
-        </Anchor>
-      ))}
-    </Group>
-  );
-}
 
 /**
  * Posts-tab empty state (#43): your own postless profile points at the
