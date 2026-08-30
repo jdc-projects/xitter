@@ -615,8 +615,12 @@ resource "kubernetes_job" "deploy_seed" {
     }
 
     # Idempotent flow: a backoff retry replays safely from any failed
-    # step; 4 (vs the nightly's 2) tolerates pods still rolling out.
-    backoff_limit              = 4
+    # step. 10 (vs the nightly's 2) spans the whole cold-formation window:
+    # the k8s backoff schedule (10s..6m) covers ~30 minutes, while a
+    # fresh 3-replica opensearch formation alone runs ~13 minutes before
+    # service APIs answer (observed on prod's first v0.2.0 apply: all
+    # four attempts raced the formation and failed on fetch).
+    backoff_limit              = 10
     ttl_seconds_after_finished = 86400
   }
 
