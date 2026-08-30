@@ -77,6 +77,27 @@ describe('buildSearchBody', () => {
   });
 });
 
+describe('PostsIndex.onModuleInit (boot-time ensure)', () => {
+  it('degrades to a warning when the index create rejects - a dead cluster must not wedge boot (#195)', async () => {
+    // The timeout on the client is what turns a stalled cluster-state
+    // call into this rejection; boot must settle (server listens, reads
+    // degrade to empty) instead of hanging into a liveness kill.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const create = vi.fn(() => Promise.reject(new Error('Request timed out')));
+      const posts = new PostsIndex({ indices: { create } } as unknown as Client);
+
+      await expect(posts.onModuleInit()).resolves.toBeUndefined();
+      expect(warn).toHaveBeenCalledWith(
+        '[search] index ensure at boot failed:',
+        'Request timed out',
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
 describe('PostsIndex after a reset deletes the index', () => {
   const index = (client: {
     updateByQuery: unknown;
