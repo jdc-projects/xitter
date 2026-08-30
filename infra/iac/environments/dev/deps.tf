@@ -303,19 +303,14 @@ resource "helm_release" "valkey" {
   ]
 }
 
-# ---------------------------------------------------------------------------
 # OpenSearch (operator CR, 2-node, security disabled - dev pattern)
 # ---------------------------------------------------------------------------
-# Two replicas, not one, on purpose: the operator (3.0.0-alpha) rolls nodes
-# one at a time and its restart guard refuses to delete a cluster_manager
-# when readyMasters <= (totalMasters + 1) / 2 - with a single node that is
-# always true, so ANY config-hash drift (e.g. after an operator restart)
-# deadlocks the cluster on a stuck sts revision (2026-08-17 incident: 7h
-# alert, recovered via tofu taint + apply). With 2, the guard passes and the
-# operator can roll one node at a time. Tradeoff: 2 cluster_managers means
-# quorum of 2 with zero failure tolerance - losing one node pauses writes
-# until it returns. Acceptable for dev (disposable data, nightly reset) and
-# still rollable; prod should size its manager pool for real quorum.
+# One replica (owner decision 2026-08-30): the homelab reference (posthog)
+# runs this operator single-node in green for weeks. An ODD manager count
+# is what makes the operator's bootstrap retirement survivable - with 2,
+# the frozen voting config's majority can exclude both survivors and the
+# cluster bricks on formation (observed 4x); with 1 there is no retirement
+# quorum to lose at all. Prod runs 3 for real quorum.
 resource "kubernetes_manifest" "opensearch" {
   manifest = {
     apiVersion = "opensearch.org/v1"
@@ -334,22 +329,24 @@ resource "kubernetes_manifest" "opensearch" {
 
         additionalConfig = {
           "plugins.security.disabled" = "true"
-          # node.name is deliberately NOT pinned here. The operator renders
-          # additionalConfig into every pod's opensearch.yml, so the
-          # single-node workaround inherited from the homelab reference
-          # envs ("opensearch-bootstrap-0", matching the
-          # cluster.initial_master_nodes env) would give both replicas the
-          # SAME node identity. Unset, each pod defaults to its hostname
-          # (opensearch-nodes-{0,1}); the existing node keeps its persisted
-          # node id (data dir) through the rename, and fresh clusters use
-          # the operator's own bootstrap pod flow.
+
+          # posthog's recipe (owner-directed 2026-08-30; proven the same
+          # day by a scratch-cluster experiment - green in ~3 minutes, no
+          # operator bootstrap pod ever created): pinning node.name to the
+          # operator's own cluster.initial_master_nodes value makes the
+          # single node bootstrap ITSELF. The operator's transient
+          # bootstrap pod and its PVC never exist, so their binding and
+          # retirement timing are irrelevant to formation. Valid ONLY
+          # because this pool has exactly one replica - with more, every
+          # replica would claim the same node identity.
+          "node.name" = "opensearch-bootstrap-0"
         }
       }
 
       nodePools = [
         {
           component = "nodes"
-          replicas  = 2
+          replicas  = 1
           diskSize  = "10Gi"
 
           persistence = {

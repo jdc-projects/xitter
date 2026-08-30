@@ -306,7 +306,6 @@ resource "helm_release" "valkey" {
   ]
 }
 
-# ---------------------------------------------------------------------------
 # OpenSearch (operator CR, security disabled - dev pattern)
 # ---------------------------------------------------------------------------
 # Prod runs 3 nodes where dev runs 2. Dev's 2-node pool (quorum of 2, zero
