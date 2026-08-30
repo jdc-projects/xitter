@@ -11,6 +11,8 @@
 #   - `/cms` + `/admin` use auth_mode=oidc-interactive against the homelab
 #     primary realm (the module provisions the clients xitter-prod-cms /
 #     xitter-prod-admin); role gating (app-admin / system-admin) per spec.
+#     The admin SPA's public PKCE client in that realm is provisioned
+#     below (#198).
 #   - `/` and `/media` are unauthenticated.
 #
 # Geo posture (mirrors dev/T14 deliberately): the demo is globally reachable,
@@ -121,6 +123,42 @@ module "ingress_admin" {
   do_enable_geoblock = false
 
   kubeconfig_path = local.kubeconfig
+}
+
+# The admin SPA's own OIDC client (#198), separate from the confidential edge
+# client above: the panel is a public PKCE SPA (no server runtime to hold a
+# secret), so it signs in browser-side under the client_id baked into the
+# image at build time (release workflow build-args). Env-distinct id per ADR
+# 0012 (shared primary realm, one state per Keycloak object); the gate roles
+# it needs are declared by DEV's edge.tf only - do not redeclare them here.
+resource "keycloak_openid_client" "admin_spa" {
+  realm_id  = data.terraform_remote_state.keycloak.outputs.primary_realm_id
+  client_id = "xitter-${var.environment}-admin-spa"
+
+  name    = "xitter ${var.environment} admin SPA"
+  enabled = true
+
+  access_type = "PUBLIC"
+
+  # Public client with no secret: enforce the code challenge server-side -
+  # oidc-client-ts always sends S256 with the code flow, so nothing legit is
+  # lost and plain/no-challenge exchanges are rejected.
+  pkce_code_challenge_method = "S256"
+
+  standard_flow_enabled        = true
+  direct_access_grants_enabled = false
+
+  # scope openid+profile (session.ts); full scope keeps realm roles in the
+  # access token for the panel's login gate (callback.tsx + @xitter/auth).
+  full_scope_allowed = true
+
+  # `/admin` exact (no trailing slash) covers post_logout_redirect_uri;
+  # `/admin/*` covers the SPA's `${origin}/admin/callback` redirect_uri.
+  valid_redirect_uris = [
+    "https://${var.domain}/admin",
+    "https://${var.domain}/admin/*",
+  ]
+  web_origins = ["https://${var.domain}"]
 }
 
 # `/media/<key>` → RustFS bucket root: rewrite /media/<key> to

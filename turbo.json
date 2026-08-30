@@ -14,7 +14,8 @@
         "next-env.d.ts",
         "public/build/**",
         "*.tsbuildinfo"
-      ]
+      ],
+      "env": ["XITTER_KEYCLOAK_URL", "XITTER_ADMIN_REALM", "XITTER_ADMIN_CLIENT_ID"]
     },
     "generate": {
       "dependsOn": ["^build"],
