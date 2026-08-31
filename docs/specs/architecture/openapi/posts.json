@@ -101,6 +101,498 @@
         "required": ["text"],
         "additionalProperties": false
       },
+      "ThreadResponse": {
+        "type": "object",
+        "properties": {
+          "ancestors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                },
+                "authorId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                },
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "media": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "format": "uuid"
+                      },
+                      "ownerId": {
+                        "type": "string",
+                        "format": "uuid",
+                        "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": ["pending", "ready", "failed"]
+                      },
+                      "variants": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": ["original", "thumb"]
+                            },
+                            "objectKey": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "mimeType": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "bytes": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "exclusiveMinimum": true
+                            },
+                            "width": {
+                              "type": "integer",
+                              "nullable": true,
+                              "minimum": 0,
+                              "exclusiveMinimum": true
+                            },
+                            "height": {
+                              "type": "integer",
+                              "nullable": true,
+                              "minimum": 0,
+                              "exclusiveMinimum": true
+                            },
+                            "url": {
+                              "type": "string",
+                              "minLength": 1
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "objectKey",
+                            "mimeType",
+                            "bytes",
+                            "width",
+                            "height",
+                            "url"
+                          ]
+                        }
+                      },
+                      "altText": {
+                        "type": "string",
+                        "nullable": true,
+                        "maxLength": 200
+                      },
+                      "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    },
+                    "required": ["id", "ownerId", "status", "variants", "createdAt"]
+                  }
+                },
+                "replyToId": {
+                  "type": "string",
+                  "nullable": true,
+                  "format": "uuid",
+                  "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                },
+                "repostOfId": {
+                  "type": "string",
+                  "nullable": true,
+                  "format": "uuid",
+                  "example": "b1c2d3e4-0000-4000-8000-000000000002"
+                },
+                "counts": {
+                  "type": "object",
+                  "properties": {
+                    "replies": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "likes": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "reposts": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "required": ["replies", "likes", "reposts"]
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "deletedAt": {
+                  "type": "string",
+                  "nullable": true,
+                  "format": "date-time"
+                }
+              },
+              "required": [
+                "id",
+                "authorId",
+                "text",
+                "media",
+                "replyToId",
+                "repostOfId",
+                "counts",
+                "createdAt",
+                "deletedAt"
+              ]
+            }
+          },
+          "ancestorsTruncated": {
+            "type": "boolean"
+          },
+          "focus": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "example": "b1c2d3e4-0000-4000-8000-000000000002"
+              },
+              "authorId": {
+                "type": "string",
+                "format": "uuid",
+                "example": "b1c2d3e4-0000-4000-8000-000000000001"
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "media": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "ownerId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": ["pending", "ready", "failed"]
+                    },
+                    "variants": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": ["original", "thumb"]
+                          },
+                          "objectKey": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "mimeType": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "bytes": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "exclusiveMinimum": true
+                          },
+                          "width": {
+                            "type": "integer",
+                            "nullable": true,
+                            "minimum": 0,
+                            "exclusiveMinimum": true
+                          },
+                          "height": {
+                            "type": "integer",
+                            "nullable": true,
+                            "minimum": 0,
+                            "exclusiveMinimum": true
+                          },
+                          "url": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "objectKey",
+                          "mimeType",
+                          "bytes",
+                          "width",
+                          "height",
+                          "url"
+                        ]
+                      }
+                    },
+                    "altText": {
+                      "type": "string",
+                      "nullable": true,
+                      "maxLength": 200
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": ["id", "ownerId", "status", "variants", "createdAt"]
+                }
+              },
+              "replyToId": {
+                "type": "string",
+                "nullable": true,
+                "format": "uuid",
+                "example": "b1c2d3e4-0000-4000-8000-000000000002"
+              },
+              "repostOfId": {
+                "type": "string",
+                "nullable": true,
+                "format": "uuid",
+                "example": "b1c2d3e4-0000-4000-8000-000000000002"
+              },
+              "counts": {
+                "type": "object",
+                "properties": {
+                  "replies": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "likes": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "reposts": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": ["replies", "likes", "reposts"]
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "deletedAt": {
+                "type": "string",
+                "nullable": true,
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "id",
+              "authorId",
+              "text",
+              "media",
+              "replyToId",
+              "repostOfId",
+              "counts",
+              "createdAt",
+              "deletedAt"
+            ]
+          },
+          "replies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadNode"
+            }
+          },
+          "repliesCursor": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": ["ancestors", "ancestorsTruncated", "focus", "replies", "repliesCursor"],
+        "additionalProperties": false
+      },
+      "ThreadNode": {
+        "type": "object",
+        "properties": {
+          "post": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "example": "b1c2d3e4-0000-4000-8000-000000000002"
+              },
+              "authorId": {
+                "type": "string",
+                "format": "uuid",
+                "example": "b1c2d3e4-0000-4000-8000-000000000001"
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "media": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "ownerId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "example": "b1c2d3e4-0000-4000-8000-000000000001"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": ["pending", "ready", "failed"]
+                    },
+                    "variants": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": ["original", "thumb"]
+                          },
+                          "objectKey": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "mimeType": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "bytes": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "exclusiveMinimum": true
+                          },
+                          "width": {
+                            "type": "integer",
+                            "nullable": true,
+                            "minimum": 0,
+                            "exclusiveMinimum": true
+                          },
+                          "height": {
+                            "type": "integer",
+                            "nullable": true,
+                            "minimum": 0,
+                            "exclusiveMinimum": true
+                          },
+                          "url": {
+                            "type": "string",
+                            "minLength": 1
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "objectKey",
+                          "mimeType",
+                          "bytes",
+                          "width",
+                          "height",
+                          "url"
+                        ]
+                      }
+                    },
+                    "altText": {
+                      "type": "string",
+                      "nullable": true,
+                      "maxLength": 200
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "required": ["id", "ownerId", "status", "variants", "createdAt"]
+                }
+              },
+              "replyToId": {
+                "type": "string",
+                "nullable": true,
+                "format": "uuid",
+                "example": "b1c2d3e4-0000-4000-8000-000000000002"
+              },
+              "repostOfId": {
+                "type": "string",
+                "nullable": true,
+                "format": "uuid",
+                "example": "b1c2d3e4-0000-4000-8000-000000000002"
+              },
+              "counts": {
+                "type": "object",
+                "properties": {
+                  "replies": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "likes": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "reposts": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": ["replies", "likes", "reposts"]
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "deletedAt": {
+                "type": "string",
+                "nullable": true,
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "id",
+              "authorId",
+              "text",
+              "media",
+              "replyToId",
+              "repostOfId",
+              "counts",
+              "createdAt",
+              "deletedAt"
+            ]
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ThreadNode"
+            }
+          },
+          "childrenTruncated": {
+            "type": "boolean"
+          }
+        },
+        "required": ["post", "children", "childrenTruncated"],
+        "additionalProperties": false
+      },
       "CreateInteractionRequest": {
         "type": "object",
         "properties": {
@@ -1299,6 +1791,71 @@
           },
           "404": {
             "description": "Parent not found (or deleted)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/posts/{postId}/thread": {
+      "get": {
+        "tags": ["posts"],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "description": "The composed thread read (#152): ancestor chain (root → direct parent, capped at 25 with `ancestorsTruncated` flagging a longer visible chain; a soft-deleted ancestor ends the chain), the focus post, and direct replies (oldest first, top-level page limit respected) each embedding a bounded preview subtree - 2 oldest children per node, nesting at most 3 deep, `childrenTruncated` following the direct-reply counts. `repliesCursor` pages more top-level replies (same keyset as /replies). Bare posts only: callers hydrate authors and viewer state as for every other posts read.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "b1c2d3e4-0000-4000-8000-000000000002"
+            },
+            "required": true,
+            "name": "postId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": false,
+            "name": "cursor",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50,
+              "default": 20
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Thread (ancestors, focus, nested replies)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThreadResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Focus not found (or deleted)",
             "content": {
               "application/json": {
                 "schema": {

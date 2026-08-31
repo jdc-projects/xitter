@@ -6,7 +6,7 @@ The authoritative procedure is [../specs/operations/02-data-reset.md](../specs/o
 
 Nothing to do: the `xitter-reset` CronJob (00:30 UTC daily, reseed on) runs the shared flow. Check health:
 
-- Admin panel → System health → Data lifecycle (reads `GET /api/feed/internal/reset-status`).
+- Admin panel → System health → Data lifecycle (reads `GET /api/feed/internal/admin/reset-status`; null means no reset has run).
 - `kubectl -n xitter-dev get jobs -l app.kubernetes.io/name=xitter-reset` — last run Succeeded?
 - Grafana → xitter · Reset job (job outcomes, phase durations, reseed fingerprint).
 

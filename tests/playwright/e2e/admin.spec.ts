@@ -33,15 +33,28 @@ test('admin can log in and sees the health dashboard', async ({ page }) => {
   await expect(table).toContainText('search');
   await expect(page.getByText('All services healthy')).toBeVisible();
 
-  // Workers surface as metrics pointers - cluster-local scrape ports, so the
-  // section names them (plus Grafana for deployed viewing) and never renders
-  // links, which would be dead through the edge (#132). Reset tile stays
-  // pending until #13.
+  // Workers surface as metrics pointers. Local dev (this suite serves from
+  // localhost) renders the cluster-local scrape ports as copy - never links,
+  // which would be dead through the edge (#132); deployed hosts link the
+  // Grafana dashboards instead (both branches unit-covered).
   const workers = page.getByTestId('health-workers');
   await expect(workers).toContainText('fanout');
   await expect(workers).toContainText('Grafana');
   await expect(workers.locator('a')).toHaveCount(0);
-  await expect(page.getByTestId('reset-status-pending')).toBeVisible();
+
+  // Data lifecycle tile: the real reset-status record when a reset has run
+  // on this stack, the clean empty state otherwise (the e2e wrapper seeds
+  // the corpus directly, without a reset run). Both are honest outcomes;
+  // the stale "pending" placeholder is gone either way.
+  const tile = page.getByTestId('health-reset-status');
+  await expect(tile).not.toContainText('pending');
+  const record = page.getByTestId('reset-status-record');
+  const empty = page.getByTestId('reset-status-empty');
+  await expect(record.or(empty)).toBeVisible({ timeout: 20_000 });
+  if (await record.isVisible()) {
+    await expect(record.getByTestId('reset-status-outcome')).toHaveText(/success|failed/);
+    await expect(record.getByTestId('reset-status-time')).toContainText('UTC');
+  }
 });
 
 test('admin soft-delete removes a post for users; audit log records it', async ({

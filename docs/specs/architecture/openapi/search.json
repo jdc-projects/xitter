@@ -212,7 +212,8 @@
                       "format": "date-time"
                     }
                   },
-                  "required": ["id", "username", "displayName", "bio", "createdAt"]
+                  "required": ["id", "username", "displayName", "bio", "createdAt"],
+                  "description": "The post's author (the ORIGINAL author for repost entries; the reposter rides `repostedBy` for attribution)."
                 },
                 "reason": {
                   "type": "string",
@@ -281,6 +282,21 @@
                     }
                   },
                   "required": ["id", "username", "displayName", "bio", "createdAt"]
+                },
+                "viewer": {
+                  "type": "object",
+                  "properties": {
+                    "liked": {
+                      "type": "boolean"
+                    },
+                    "reposted": {
+                      "type": "boolean"
+                    },
+                    "bookmarked": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["liked", "reposted", "bookmarked"]
                 }
               },
               "required": ["post", "author", "reason", "repostedBy", "replyToAuthor"]
