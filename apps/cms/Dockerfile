@@ -32,6 +32,15 @@ COPY --from=build --chown=node:node /app/apps/cms/.next/standalone ./
 COPY --from=build --chown=node:node /app/apps/cms/.next/static ./apps/cms/.next/static
 # Admin-panel brand mark (#143) - standalone output does not copy public/.
 COPY --from=build --chown=node:node /app/apps/cms/public ./apps/cms/public
+# Schema migrations for deployed environments: one self-contained runner
+# (config + migrations + payload runtime compiled to plain JS by
+# scripts/bundle-migrations.mjs). `npx payload migrate` cannot run here -
+# production Next builds bundle payload into the server chunks, leaving no
+# CLI, no tsx and no resolvable node_modules - and dev-mode schema push is
+# deliberately off in deployed envs (payload.config.ts). The k8s migrate
+# init container executes this before every start (migrate_command in
+# infra/iac/environments/{dev,prod}/workloads.tf); see scripts/migrate.ts.
+COPY --from=build --chown=node:node /app/apps/cms/.next/migrate ./apps/cms/.next/migrate
 USER node
 EXPOSE 3457
 CMD ["node", "apps/cms/server.js"]
