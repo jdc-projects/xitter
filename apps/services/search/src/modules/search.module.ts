@@ -1,5 +1,4 @@
 import { Inject, Injectable, Module, OnApplicationShutdown, type Provider } from '@nestjs/common';
-import { Client } from '@opensearch-project/opensearch';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { realmUrls } from '@xitter/auth';
 import { env } from '../env.js';
@@ -10,6 +9,7 @@ import {
   type SearchPrismaClient,
 } from './checkpoint.repository.js';
 import { InternalSearchController } from './internal-search.controller.js';
+import { createOpenSearchClient } from './opensearch-client.js';
 import { OPENSEARCH, PostsIndex } from './posts-index.js';
 import { SEARCH_CONTENT, ServiceSearchContent } from './search-content.js';
 import { SearchController } from './search.controller.js';
@@ -25,13 +25,7 @@ const prismaProvider: Provider = {
 
 const opensearchProvider: Provider = {
   provide: OPENSEARCH,
-  useFactory: () =>
-    new Client({
-      node: env.XITTER_OPENSEARCH_URL,
-      // Local + dev-cluster OpenSearch run with the security plugin
-      // disabled (infra/docker/compose.yaml, infra/iac deps.tf).
-      ssl: { rejectUnauthorized: false },
-    }),
+  useFactory: () => createOpenSearchClient(env.XITTER_OPENSEARCH_URL),
 };
 
 // Hydration calls posts/social internal endpoints with search's

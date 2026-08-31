@@ -1,13 +1,12 @@
 # Observability for prod (T11 pattern, see dev/observability.tf): everything
 # provisioned, nothing hand-clicked.
 #
-#   - Sentry: the single org-wide `xitter` project is OWNED by the dev
-#     environment's state (prod only reads it below) - one tofu resource
-#     cannot live in two states, and dev applies on every merge to dev,
-#     so the project always exists before a prod apply cuts from it. Prod
-#     events separate from dev's via SENTRY_ENVIRONMENT=prod; per-workload
-#     filtering rides the `service` tag. SENTRY_RELEASE = the semver image
-#     tag makes each event traceable to a release.
+#   - Sentry: the single org-wide `xitter` project is owned by the shared
+#     root (infra/iac/environments/shared, #197) - prod reads its DSN from
+#     that state's output, so a release never depends on dev's apply timing.
+#     Prod events separate from dev's via SENTRY_ENVIRONMENT=prod;
+#     per-workload filtering rides the `service` tag. SENTRY_RELEASE = the
+#     semver image tag makes each event traceable to a release.
 #   - Scrape config: ServiceMonitor for the API services (/metrics on the app
 #     port), PodMonitors for the Knative workers (their dedicated metrics
 #     ports - workers expose no k8s Service, so a ServiceMonitor cannot
@@ -31,20 +30,8 @@ locals {
 }
 
 # ---------------------------------------------------------------------------
-# Sentry: single shared project (owned by dev's state), DSN key, K8s secret
+# Sentry: single shared project (owned by the shared root, #197), K8s secret
 # ---------------------------------------------------------------------------
-# Read-only lookups of the project dev's state creates - see the header
-# comment for why prod must not declare it as a resource.
-data "sentry_project" "xitter" {
-  organization = "sentry"
-  slug         = "xitter"
-}
-
-data "sentry_key" "xitter" {
-  organization = "sentry"
-  project      = data.sentry_project.xitter.slug
-  first        = true
-}
 
 # Cap.js bot protection keys (spec 02 §3.2) - same resource/contract as
 # dev's observability.tf.
@@ -64,7 +51,9 @@ resource "kubernetes_secret" "cap" {
 # One shared DSN secret (same value as dev's - same project), keyed exactly
 # as the env var the SDK reads (SENTRY_DSN). Deployments inject it per-key
 # via secret_env; Knative workers envFrom whole secrets, so the key naming
-# is the contract either way.
+# is the contract either way. The value comes from the shared root's state
+# output (#197) - the same Default key dev's state used to read live, so
+# the DSN is byte-identical.
 resource "kubernetes_secret" "sentry_dsn" {
   metadata {
     name      = "xitter-sentry"
@@ -73,7 +62,7 @@ resource "kubernetes_secret" "sentry_dsn" {
   }
 
   data = {
-    SENTRY_DSN = data.sentry_key.xitter.dsn["public"]
+    SENTRY_DSN = data.terraform_remote_state.xitter_shared.outputs.sentry_dsn_public
   }
 }
 

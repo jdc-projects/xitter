@@ -40,6 +40,15 @@ jobs:
             dockerfile: apps/cms/Dockerfile
           - image: xitter-admin
             dockerfile: apps/admin/Dockerfile
+            # The SPA bakes its IdP coordinates at build time (no runtime
+            # config); redirect_uri is derived from window.location.origin at
+            # run time, so one recipe serves dev and prod. Realm is the
+            # literal Keycloak realm name (verified live: /realms/primary/
+            # 404s) and the client id is env-distinct (ADR 0012).
+            build-args: |
+              XITTER_KEYCLOAK_URL=https://idp.jd-chapman.dev
+              XITTER_ADMIN_REALM=jd-chapman.dev
+              XITTER_ADMIN_CLIENT_ID=xitter-dev-admin-spa
           - image: xitter-social
             dockerfile: apps/services/social/Dockerfile
           - image: xitter-posts
@@ -87,6 +96,9 @@ jobs:
             ghcr.io/jdc-projects/${{ matrix.image }}:dev
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,scope=${{ matrix.image }},mode=max
+          # Empty for every image but xitter-admin (matrix-driven; see the
+          # admin matrix entry for why it carries build-args).
+          build-args: ${{ matrix.build-args }}
 
   tofu-apply:
     # Applies infra/iac/environments/dev after images exist. Self-hosted
@@ -104,6 +116,18 @@ jobs:
           fi
           mkdir -p infra
           printf '%s' "${{ secrets.CLUSTER_KUBECONFIG }}" > infra/cluster.yml
+      - name: tofu apply (shared)
+        # The shared root (Sentry team/project, #197) must converge BEFORE the
+        # env apply: dev's xitter-sentry secret reads its sentry_dsn_public
+        # output, so dev never depends on anything dev itself owns there.
+        working-directory: infra/iac/environments/shared
+        env:
+          # Sentry provider routes in-cluster (ADR 0011) - same override as
+          # the env applies below.
+          TF_VAR_provider_sentry_base_url: http://sentry-web.sentry:9000/api/
+        run: |
+          tofu init
+          tofu apply -auto-approve -input=false
       - name: tofu apply (dev)
         working-directory: infra/iac/environments/dev
         # Pin the apply to this run's immutable sha tag: the mutable `dev`

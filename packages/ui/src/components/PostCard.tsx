@@ -204,10 +204,14 @@ function CountsRow({
 function AncestorCard({ author, post, href }: Pick<PostCardProps, 'author' | 'post' | 'href'>) {
   return (
     <Card withBorder padding="xs" radius="md" data-testid={`post-ancestor-${post.id}`}>
-      <Anchor
+      {/* Full-card link region (#200): UnstyledButton's stylesheet pins
+          color:inherit + text-decoration:none, so the ancestor text can
+          never pick up the browser's default link colours the way the old
+          `Anchor unstyled` wrapper (no colour rule at all) allowed. */}
+      <UnstyledButton
+        component="a"
         href={href}
-        unstyled
-        style={{ textDecoration: 'none', display: 'block' }}
+        style={{ display: 'block' }}
         aria-label={`${author.displayName}: ${post.text}`}
       >
         <Group wrap="nowrap" gap="sm" align="flex-start">
@@ -229,7 +233,7 @@ function AncestorCard({ author, post, href }: Pick<PostCardProps, 'author' | 'po
             </Text>
           </Stack>
         </Group>
-      </Anchor>
+      </UnstyledButton>
     </Card>
   );
 }

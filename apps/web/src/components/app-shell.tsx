@@ -94,7 +94,16 @@ export function AppShellFrame({ username, children }: AppShellFrameProps) {
                 aria-label="Toggle navigation"
                 data-testid="nav-burger"
               />
-              <Text component="a" href="/feed" fw={700} inherit data-testid="app-brand">
+              {/* Brand: explicit colour - Text sets none, so an anchor
+                  component would fall to the UA link palette (#200). */}
+              <Text
+                component="a"
+                href="/feed"
+                fw={700}
+                inherit
+                c="var(--mantine-color-text)"
+                data-testid="app-brand"
+              >
                 xitter
               </Text>
               <Group gap={0} wrap="nowrap" visibleFrom="sm">
@@ -148,7 +157,14 @@ export function AppShellFrame({ username, children }: AppShellFrameProps) {
         opened={navOpened}
         onClose={closeNav}
         title={
-          <Text component="a" href="/feed" fw={700} inherit>
+          <Text
+            component="a"
+            href="/feed"
+            fw={700}
+            inherit
+            c="var(--mantine-color-text)"
+            data-testid="drawer-brand"
+          >
             xitter
           </Text>
         }

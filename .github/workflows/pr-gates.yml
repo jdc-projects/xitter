@@ -177,16 +177,21 @@ jobs:
       - run: npm run mutate:affected
 
   tofu:
-    # Syntax + validate for both environments. Self-hosted runner: the
-    # cluster API is on a private LAN address - GitHub-hosted runners
-    # cannot reach it (validate itself needs no backend, but this keeps
-    # all tofu jobs on one runner class).
+    # Syntax + validate for all three roots (dev, prod, shared). Self-hosted
+    # runner: the cluster API is on a private LAN address - GitHub-hosted
+    # runners cannot reach it (validate itself needs no backend, but this
+    # keeps all tofu jobs on one runner class).
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v7
       - uses: opentofu/setup-opentofu@v2
       - name: fmt
         run: tofu -chdir=infra/iac fmt -check -recursive
+      - name: validate (shared)
+        working-directory: infra/iac/environments/shared
+        run: |
+          tofu init -backend=false
+          tofu validate
       - name: validate (dev)
         working-directory: infra/iac/environments/dev
         run: |
@@ -215,6 +220,16 @@ jobs:
           fi
           mkdir -p infra
           printf '%s' "${{ secrets.CLUSTER_KUBECONFIG }}" > infra/cluster.yml
+      - name: tofu plan (shared)
+        # The shared root (Sentry team/project, #197) plans before dev: dev's
+        # secret reads its sentry_dsn_public output, mirroring the apply
+        # order in deploy-dev/release.
+        working-directory: infra/iac/environments/shared
+        env:
+          TF_VAR_provider_sentry_base_url: http://sentry-web.sentry:9000/api/
+        run: |
+          tofu init
+          tofu plan -input=false
       - name: tofu plan (dev)
         working-directory: infra/iac/environments/dev
         # Providers route in-cluster, same as the deploy/release applies
@@ -235,4 +250,4 @@ jobs:
         # failure is legible without scrolling (ADR 0011).
         if: failure()
         run: |
-          echo "::error title=tofu plan (dev) failed::If the log shows provider init/login 403s, check which URL failed: https://*.jd-chapman.dev means the in-cluster override did not apply (CrowdSec ban exposure - issue #100); http://keycloak-keycloakx-http.keycloak:80 or http://sentry-web.sentry:9000/api/ are the intended routes and failing there means the service itself, not the edge. See docs/decisions/0011-ci-tofu-provider-routing.md."
+          echo "::error title=tofu plan (shared/dev) failed::If the log shows provider init/login 403s, check which URL failed: https://*.jd-chapman.dev means the in-cluster override did not apply (CrowdSec ban exposure - issue #100); http://keycloak-keycloakx-http.keycloak:80 or http://sentry-web.sentry:9000/api/ are the intended routes and failing there means the service itself, not the edge. See docs/decisions/0011-ci-tofu-provider-routing.md."

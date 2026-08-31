@@ -43,14 +43,14 @@ provider "helm" {
 
 provider "random" {}
 
-# Sentry (T11 pattern, single shared project - see observability.tf): the
-# dev-owned `xitter` project + shared DSN, self-hosted at
-# sentry.jd-chapman.dev. Prod separates its events via SENTRY_ENVIRONMENT.
-# In-cluster override: the deploy runs tofu on the LAN self-hosted runner;
-# pointed at the public URL its requests present the home IP at Cloudflare
-# and die whenever CrowdSec has it banned. TF_VAR_provider_sentry_base_url
-# (release workflow) routes the provider at the in-cluster service instead -
-# no edge in the path.
+# Sentry (single shared project - see observability.tf): the `xitter`
+# project is owned by the shared root (#197); prod reads its DSN from that
+# state's output, self-hosted at sentry.jd-chapman.dev. Prod separates its
+# events via SENTRY_ENVIRONMENT. In-cluster override: the deploy runs tofu
+# on the LAN self-hosted runner; pointed at the public URL its requests
+# present the home IP at Cloudflare and die whenever CrowdSec has it banned.
+# TF_VAR_provider_sentry_base_url (release workflow) routes the provider at
+# the in-cluster service instead - no edge in the path.
 provider "sentry" {
   token    = data.terraform_remote_state.sentry.outputs.sentry_auth_token
   base_url = coalesce(var.provider_sentry_base_url, "https://${data.terraform_remote_state.sentry.outputs.sentry_domain}/api/")
@@ -88,12 +88,25 @@ data "terraform_remote_state" "keycloak" {
   }
 }
 
-# Sentry org-scoped auth token + web domain (homelab iac/sentry outputs).
+# Sentry org-scoped auth token + web domain (homelab iac/sentry outputs) -
+# consumed by the sentry provider above.
 data "terraform_remote_state" "sentry" {
   backend = "kubernetes"
 
   config = {
     secret_suffix = "sentry"
+    config_path   = "../../../cluster.yml"
+    namespace     = "tf-state"
+  }
+}
+
+# The shared xitter root (#197) owns the single Sentry team + project; dev
+# and prod read its DSN output into their own xitter-sentry secrets.
+data "terraform_remote_state" "xitter_shared" {
+  backend = "kubernetes"
+
+  config = {
+    secret_suffix = "xitter-shared"
     config_path   = "../../../cluster.yml"
     namespace     = "tf-state"
   }

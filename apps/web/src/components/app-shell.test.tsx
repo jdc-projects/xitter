@@ -102,4 +102,19 @@ describe('AppShellFrame (#39 navigation polish)', () => {
     expect(screen.queryByTestId('drawer-username')).toBeNull();
     expect(screen.queryByTestId('drawer-logout-button')).toBeNull();
   });
+
+  it('renders both brands with an explicit colour (#200)', async () => {
+    // Text sets no colour, so a Text-as-anchor brand falls through to the
+    // browser's default blue/purple link palette - the brand must carry the
+    // themed text colour itself.
+    renderShell({ username: null });
+    const brand = screen.getByTestId('app-brand');
+    expect(brand.getAttribute('href')).toBe('/feed');
+    expect(brand.style.color).toBe('var(--mantine-color-text)');
+
+    fireEvent.click(screen.getByTestId('nav-burger'));
+    const drawerBrand = await screen.findByTestId('drawer-brand');
+    expect(drawerBrand.getAttribute('href')).toBe('/feed');
+    expect(drawerBrand.style.color).toBe('var(--mantine-color-text)');
+  });
 });

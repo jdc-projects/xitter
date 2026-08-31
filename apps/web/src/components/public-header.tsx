@@ -28,11 +28,14 @@ export function PublicHeader({ username }: PublicHeaderProps) {
     <Box component="header" mb="lg" data-testid="public-header">
       <Container size="sm">
         <Group justify="space-between" py="sm" wrap="nowrap">
+          {/* Brand: explicit colour - Text sets none, so an anchor
+              component would fall to the UA link palette (#200). */}
           <Text
             component="a"
             href="/"
             fw={700}
             inherit
+            c="var(--mantine-color-text)"
             aria-current={isNavCurrent(pathname, '/') ? 'page' : undefined}
             data-testid="public-brand"
           >

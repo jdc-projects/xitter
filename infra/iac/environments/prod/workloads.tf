@@ -336,6 +336,9 @@ resource "kubernetes_secret" "cms" {
 
   data = {
     PAYLOAD_SECRET = random_password.payload_secret.result
+    # The app's own OIDC client secret (#208) - the env.ts guard refuses the
+    # local default in deployed environments, which is what 500'd /cms.
+    CMS_CLIENT_SECRET = keycloak_openid_client.cms_app.client_secret
   }
 }
 
@@ -357,6 +360,21 @@ module "cms" {
   env = concat(local.common_env, [
     { name = "PORT", value = "3000" },
     { name = "WEB_URL", value = "https://${var.domain}" },
+    # The app's OIDC login (#208): the issuer must be the PUBLIC keycloak URL
+    # (it matches the issuer baked into tokens; the in-cluster service URL
+    # would fail that check), and the realm is the shared primary.
+    {
+      name  = "KEYCLOAK_BASE_URL",
+      value = data.terraform_remote_state.keycloak.outputs.keycloak_url
+    },
+    {
+      name  = "ADMIN_REALM",
+      value = data.terraform_remote_state.keycloak.outputs.primary_realm_id
+    },
+    {
+      name  = "CMS_CLIENT_ID",
+      value = keycloak_openid_client.cms_app.client_id
+    },
   ])
 
   secret_env = [
@@ -369,6 +387,11 @@ module "cms" {
       name        = "PAYLOAD_SECRET"
       secret_name = kubernetes_secret.cms.metadata[0].name
       secret_key  = "PAYLOAD_SECRET"
+    },
+    {
+      name        = "CMS_CLIENT_SECRET"
+      secret_name = kubernetes_secret.cms.metadata[0].name
+      secret_key  = "CMS_CLIENT_SECRET"
     },
     # Sentry DSN (T11) - cms reports server-side errors (spec 06).
     {

@@ -4,11 +4,14 @@
  */
 declare const __XITTER_KEYCLOAK_URL__: string;
 declare const __XITTER_ADMIN_REALM__: string;
+declare const __XITTER_ADMIN_CLIENT_ID__: string;
 
 export const adminOidcConfig = {
   keycloakUrl: __XITTER_KEYCLOAK_URL__,
   realm: __XITTER_ADMIN_REALM__,
-  clientId: 'admin-panel',
+  // Default `admin-panel` = the local bootstrap's client; deploys bake
+  // `xitter-<env>-admin-spa` (env-distinct ids in the shared primary realm).
+  clientId: __XITTER_ADMIN_CLIENT_ID__,
 } as const;
 
 /**

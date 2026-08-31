@@ -33,7 +33,7 @@ Full policy: [../specs/operations/04-release-pipeline.md](../specs/operations/04
    - `version` — derived from conventional commits since the last `v*` tag (e.g. a history with `feat` entries since `v0.1.0` yields `v0.2.0`). Sanity-check the derivation artifact (`release-derivation`) if it looks wrong.
    - `release-images` — 12 images tagged `vX.Y.Z` + `sha-<short>` on `ghcr.io/jdc-projects` (11 workload images + `xitter-reset` for the ensure-demo-users Job).
    - `github-release` — tag + notes at https://github.com/jdc-projects/xitter/releases.
-   - `tofu-apply` — prod environment converges. First apply creates everything (CNPG `wait` blocks until Postgres is healthy; jobs run to completion — including `ensure-demo-users`, which guarantees `demo1..demo10` exist before the apply returns). Later applies are small rolls (image tags, `SENTRY_RELEASE`).
+   - `tofu-apply` — the shared root (Sentry) then the prod environment converge. First apply creates everything (CNPG `wait` blocks until Postgres is healthy; jobs run to completion — including `ensure-demo-users`, which guarantees `demo1..demo10` exist before the apply returns). Later applies are small rolls (image tags, `SENTRY_RELEASE`).
    - `reconcile` — when prod holds commits dev lacks, a `prod` → `dev` PR is opened. **Merge it as admin** (bot-authored PRs don't trigger gates), or if a reconcile PR already exists, handle it manually.
 
 5. **Manual repair paths**
@@ -48,9 +48,7 @@ Full policy: [../specs/operations/04-release-pipeline.md](../specs/operations/04
 3. `curl -sI https://xitter.jd-chapman.dev/` → 2xx/3xx from the edge.
 4. Through the edge: `POST /api/...` unauthenticated → 401 from the oidc-api middleware (proves routing + realm wiring). Full smoke: run the Bruno collection against prod — Actions → **Scheduled suites** → Run workflow → `environment=prod` — or locally `npm run test:api -- --env dev` (dev) / `--env prod` once a prod environment file exists.
 5. Reconciliation: `git rev-list --count origin/prod ^origin/dev` → `0` after merging the reconcile PR.
-6. Sentry: the single `xitter` project exists; prod events report `environment=prod` and `release=vX.Y.Z` (`SENTRY_RELEASE` = image tag).
-   - **Precheck before cutting a release:** the project lives in the _dev_ environment's state — a release run before dev's first post-merge apply fails its `tofu plan` (data source cannot find the project) _after_ the tag/GitHub release has published. Confirm the last `Deploy dev` run is green first.
-   - **Destroying dev takes prod's Sentry down:** the project and its DSN keys are dev-owned; a `tofu destroy` of dev orphans prod's already-materialised `xitter-sentry` secret and prod events are silently dropped until dev is reapplied.
+6. Sentry: the single `xitter` project exists; prod events report `environment=prod` and `release=vX.Y.Z` (`SENTRY_RELEASE` = image tag). The project is owned by the shared tofu root ([ADR 0013](../decisions/0013-shared-sentry-root.md)) — no dependency on dev's apply timing, and destroying an env can't orphan the other's DSN.
 7. Scheduled suites: next nightly run (02:30 UTC) green against dev; artifacts `bruno-report-dev` + `artillery-report-dev` present.
 
 ## Notes

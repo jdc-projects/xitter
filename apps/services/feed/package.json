@@ -35,6 +35,7 @@
     "@xitter/health": "*",
     "@xitter/observability": "*",
     "@xitter/service-kit": "*",
+    "dotenv": "^16",
     "fastify": "^5",
     "ioredis": "^6",
     "pg": "^8",
