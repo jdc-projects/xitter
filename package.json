@@ -109,6 +109,7 @@
     "esbuild@0.28.2": true,
     "@playwright/browser-chromium@1.62.1": true,
     "@prisma/engines@7.9.1": true,
+    "@sentry/cli@2.58.6": true,
     "cpu-features@0.0.10": true,
     "prisma@7.9.1": true,
     "protobufjs@7.6.5": true,
