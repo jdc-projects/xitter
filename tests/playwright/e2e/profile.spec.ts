@@ -38,11 +38,26 @@ test('viewing a profile shows its identity and lists', async ({ page, browser })
     page.getByTestId('follow-button').or(page.getByTestId('unfollow-button')),
   ).toBeVisible();
 
+  // #200: the tabs must render in themed colours - never the browser's
+  // default blue/purple link palette. The active tab carries the default
+  // text colour (theme black in the light scheme).
+  for (const tab of ['tab-posts', 'tab-following', 'tab-followers']) {
+    await expect(page.getByTestId(tab)).not.toHaveCSS('color', 'rgb(0, 0, 238)');
+    await expect(page.getByTestId(tab)).not.toHaveCSS('color', 'rgb(85, 26, 139)');
+  }
+  await expect(page.getByTestId('tab-posts')).toHaveCSS('color', 'rgb(0, 0, 0)');
+
   // Lists render for any viewer (spec 7.4). The corpus gives demo2 a
   // follower (demo4) and a followee (demo3) - no spec removes those edges,
   // so both tabs can assert real content rather than the empty state.
   await page.getByTestId('tab-followers').click();
-  await expect(page.getByTestId('profile-list-item').filter({ hasText: '@demo4' })).toBeVisible();
+  const followerEntry = page.getByTestId('profile-list-item').filter({ hasText: '@demo4' });
+  await expect(followerEntry).toBeVisible();
+  // #200: people-list entries read as neutral text, not raw hyperlinks.
+  await expect(followerEntry).not.toHaveCSS('color', 'rgb(0, 0, 238)');
+  await expect(followerEntry).not.toHaveCSS('color', 'rgb(85, 26, 139)');
+  await expect(followerEntry).toHaveCSS('color', 'rgb(0, 0, 0)');
+
   await page.getByTestId('tab-following').click();
   await expect(page.getByTestId('profile-list-item').filter({ hasText: '@demo3' })).toBeVisible();
 });

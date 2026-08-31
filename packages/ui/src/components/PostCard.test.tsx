@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { MantineProvider, createTheme } from '@mantine/core';
+import { Anchor, MantineProvider, createTheme, UnstyledButton } from '@mantine/core';
 import { describe, expect, it, vi } from 'vitest';
 import { PostCard } from './PostCard';
 
@@ -128,6 +128,19 @@ describe('PostCard variant="ancestor" (#152)', () => {
     // Compact context card: no interaction/count affordances.
     expect(screen.queryByTestId('count-replies')).toBeNull();
     expect(screen.queryByTestId('count-likes')).toBeNull();
+  });
+
+  it('wraps the card in an inherit-coloured link region, not a colourless anchor (#200)', () => {
+    renderCard({ variant: 'ancestor' });
+    const link = screen.getByRole('link', { name: /alice: hello overlay pattern/i });
+    // Unlike the standard card's stretched overlay, the ancestor card's
+    // text DOES live inside the link - so the wrapper must guarantee a
+    // colour. UnstyledButton's stylesheet pins color:inherit + no
+    // underline; the old `Anchor unstyled` carried no colour rule at all,
+    // letting the browser's default blue/purple bleed onto the card text.
+    expect(link.className).toContain(UnstyledButton.classes.root);
+    expect(link.className).not.toContain(Anchor.classes.root);
+    expect(link.style.display).toBe('block');
   });
 
   it('renders the standard card for the default and thumb/original variants', () => {

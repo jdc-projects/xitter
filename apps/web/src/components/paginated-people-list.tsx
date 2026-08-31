@@ -1,6 +1,6 @@
 'use client';
 
-import { Anchor, Group, Stack } from '@mantine/core';
+import { Anchor, Group, Stack, Text } from '@mantine/core';
 import { UserAvatar } from '@xitter/ui';
 import { LoadMoreControl } from './load-more-control';
 import { useCursorPages, type CursorPage } from './use-cursor-pages';
@@ -40,8 +40,20 @@ export function PaginatedPeopleList({
         {items.map((person) => (
           <Group key={person.id} gap="sm">
             <UserAvatar username={person.username} displayName={person.displayName} size="sm" />
-            <Anchor href={`/profile/${person.username}`} size="sm" data-testid="profile-list-item">
-              <strong>{person.displayName}</strong> @{person.username}
+            {/* Entry reads as neutral text, not a raw hyperlink (#200):
+                themed text colour + underline="never", handle dimmed - the
+                public-header profile-link idiom. */}
+            <Anchor
+              href={`/profile/${person.username}`}
+              size="sm"
+              underline="never"
+              c="var(--mantine-color-text)"
+              data-testid="profile-list-item"
+            >
+              <strong>{person.displayName}</strong>{' '}
+              <Text component="span" size="sm" c="dimmed" inherit>
+                @{person.username}
+              </Text>
             </Anchor>
           </Group>
         ))}
