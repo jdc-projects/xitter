@@ -162,31 +162,30 @@ resource "keycloak_openid_client" "admin_spa" {
   web_origins = ["https://${var.domain}"]
 }
 
-# Audience mappers for the SPA (the same trick the demo realm uses for the
-# `web` browser client): the panel calls the services' internal admin routes
-# through the edge, whose oidc-api check requires the receiving service's
-# client id in `aud`. `aud` is just a claim - no secret leaves the public
-# client. Without these, every dashboard tile 401s at the edge (#210).
+# Self-audience mapper for the SPA: the internal-admin edge routes below
+# check `aud` against the SPA's own client id (the audience must name a real
+# client in the route's realm - svc-* only exist in the demo realm, the
+# module's validation rejects them). `aud` is just a claim - no secret leaves
+# the public client. Service-side, the human admin path checks azp + role,
+# not aud, so one self-audience is the whole requirement (#210).
 resource "keycloak_openid_audience_protocol_mapper" "admin_spa" {
-  for_each = toset(["social", "posts", "media", "feed", "search"])
-
   realm_id  = data.terraform_remote_state.keycloak.outputs.primary_realm_id
   client_id = keycloak_openid_client.admin_spa.id
 
-  name = "audience-svc-${each.key}"
+  name = "audience-self"
 
-  included_client_audience = "svc-${each.key}"
+  included_client_audience = "xitter-${var.environment}-admin-spa"
   add_to_access_token      = true
   add_to_id_token          = false
 }
 
 # The services' internal admin routes get their own edge routes on the
-# PRIMARY realm (#210): the panel's SPA token (primary realm, aud svc-*,
+# PRIMARY realm (#210): the panel's SPA token (primary realm, self-audience,
 # system-admin role) is the admin principal spec 03 defines. Higher priority
 # than the demo-realm api/{service} routes (100) so these paths match first;
 # pass_access_token forwards the verified token for the service-side
 # verifyAdminToken re-check (issuer via ADMIN_ISSUER, azp via ADMIN_CLIENTS -
-# workloads.tf). Tokens minted before the mappers apply lack the audience:
+# workloads.tf). Tokens minted before the mapper applies lack the audience:
 # existing sessions re-login once.
 module "ingress_admin_internal" {
   for_each = toset(["social", "posts", "media", "feed", "search"])
@@ -203,7 +202,7 @@ module "ingress_admin_internal" {
 
   auth_mode                       = "oidc-api"
   keycloak_auth_realm             = "primary"
-  auth_oidc_api_audience          = "svc-${each.key}"
+  auth_oidc_api_audience          = "xitter-${var.environment}-admin-spa"
   auth_oidc_api_pass_access_token = true
 
   do_enable_geoblock = false
