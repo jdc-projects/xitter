@@ -104,6 +104,18 @@ jobs:
           fi
           mkdir -p infra
           printf '%s' "${{ secrets.CLUSTER_KUBECONFIG }}" > infra/cluster.yml
+      - name: tofu apply (shared)
+        # The shared root (Sentry team/project, #197) must converge BEFORE the
+        # env apply: dev's xitter-sentry secret reads its sentry_dsn_public
+        # output, so dev never depends on anything dev itself owns there.
+        working-directory: infra/iac/environments/shared
+        env:
+          # Sentry provider routes in-cluster (ADR 0011) - same override as
+          # the env applies below.
+          TF_VAR_provider_sentry_base_url: http://sentry-web.sentry:9000/api/
+        run: |
+          tofu init
+          tofu apply -auto-approve -input=false
       - name: tofu apply (dev)
         working-directory: infra/iac/environments/dev
         # Pin the apply to this run's immutable sha tag: the mutable `dev`

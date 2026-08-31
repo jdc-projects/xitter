@@ -1,7 +1,8 @@
 # T11 observability (spec 06): everything provisioned, nothing hand-clicked.
 #
-#   - Sentry project + DSN secret (jianyuan/sentry provider, self-hosted
-#     Sentry at sentry.jd-chapman.dev).
+#   - Sentry DSN secret (the project itself is owned by the shared root,
+#     infra/iac/environments/shared - #197; self-hosted Sentry at
+#     sentry.jd-chapman.dev).
 #   - Scrape config: ServiceMonitor for the API services (/metrics on the app
 #     port), PodMonitors for the Knative workers (their dedicated metrics
 #     ports - workers expose no k8s Service, so a ServiceMonitor cannot
@@ -21,9 +22,10 @@ locals {
   # issue correlation are the point of Sentry, and they only work when all
   # events land in one stream. dev/prod separation is the environment tag
   # (SENTRY_ENVIRONMENT), per-workload filtering is the `service` tag every
-  # SDK init stamps (initSentry / instrumentation-client). This dev state
-  # OWNS the project; prod reads it via data sources (see prod's
-  # observability.tf) - tofu resources cannot be shared across states.
+  # SDK init stamps (initSentry / instrumentation-client). The project is
+  # owned by the shared root (infra/iac/environments/shared - #197); dev and
+  # prod both materialise its DSN output into identical xitter-sentry
+  # secrets.
   #
   # admin ships a static bundle served by its image - wiring needs build-time
   # injection plumbing in the image pipeline, so it stays unwired until then
@@ -32,31 +34,26 @@ locals {
 }
 
 # ---------------------------------------------------------------------------
-# Sentry: team, single project, DSN key, shared K8s secret
+# Sentry: team + project moved to the shared root (#197)
 # ---------------------------------------------------------------------------
-resource "sentry_team" "xitter" {
-  organization = "sentry"
-  name         = "xitter"
-  slug         = "xitter"
+# The shared root's state adopted the live objects via `tofu import`
+# (2026-08-31); these `removed` blocks make this state simply FORGET both on
+# the next apply - destroy = false, so nothing is ever deleted here, and no
+# dev destroy can orphan prod's DSN again.
+removed {
+  from = sentry_team.xitter
+
+  lifecycle {
+    destroy = false
+  }
 }
 
-# The single project all xitter workloads (dev AND prod) report into.
-# Platform only picks Sentry's UI defaults (stack rendering, release health),
-# not where events go, so "node" is fine for a mixed
-# Next.js/browser/NestJS/Node population - per-runtime fidelity comes from
-# each SDK, not this field.
-resource "sentry_project" "xitter" {
-  organization = sentry_team.xitter.organization
-  teams        = [sentry_team.xitter.slug]
-  name         = "xitter"
-  slug         = "xitter"
-  platform     = "node"
-}
+removed {
+  from = sentry_project.xitter
 
-data "sentry_key" "xitter" {
-  organization = sentry_project.xitter.organization
-  project      = sentry_project.xitter.slug
-  first        = true
+  lifecycle {
+    destroy = false
+  }
 }
 
 # Cap.js bot protection (spec 02 §3.2): site + secret keys from repo
@@ -81,7 +78,9 @@ resource "kubernetes_secret" "cap" {
 # One shared DSN secret for every wired workload, keyed exactly as the env
 # var the SDK reads (SENTRY_DSN). Deployments inject it per-key via
 # secret_env; Knative workers envFrom whole secrets, so the key naming is
-# the contract either way - both point at this same secret now.
+# the contract either way - both point at this same secret now. The value
+# comes from the shared root's state output (#197) - the same Default key
+# this state used to read live, so the DSN is byte-identical.
 resource "kubernetes_secret" "sentry_dsn" {
   metadata {
     name      = "xitter-sentry"
@@ -90,7 +89,7 @@ resource "kubernetes_secret" "sentry_dsn" {
   }
 
   data = {
-    SENTRY_DSN = data.sentry_key.xitter.dsn["public"]
+    SENTRY_DSN = data.terraform_remote_state.xitter_shared.outputs.sentry_dsn_public
   }
 }
 
