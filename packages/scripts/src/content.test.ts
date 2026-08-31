@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
+import { isReservedWebSlug } from '@xitter/config';
 import { applyCmsContent, exportCmsContent, readContentFiles, CONTENT_DIR } from './content.js';
 
 interface Call {
@@ -21,6 +22,8 @@ interface FakeDoc {
   answer?: string;
   intro?: string;
   order?: number;
+  description?: string;
+  sections?: Array<{ heading?: string; body?: string }>;
   /** Draft-only docs (never published) - the export filter must drop them. */
   _status?: string;
 }
@@ -31,7 +34,7 @@ interface FakeDoc {
  * the retry contracts (#85) can be pinned against the real apply path.
  */
 function fakeCms(
-  docs: Record<'about-content' | 'faq', FakeDoc[]>,
+  docs: Record<'about-content' | 'faq' | 'pages', FakeDoc[]>,
   inject: (method: string, url: string) => number | undefined = () => undefined,
 ) {
   const calls: Call[] = [];
@@ -50,7 +53,7 @@ function fakeCms(
       if (target.includes('/protocol/openid-connect/token')) {
         return new Response(JSON.stringify({ access_token: 'seed-tok', expires_in: 300 }));
       }
-      const collection = target.match(/\/cms\/api\/(about-content|faq)(\/\d+)?(\?|$)/);
+      const collection = target.match(/\/cms\/api\/(about-content|faq|pages)(\/\d+)?(\?|$)/);
       if (collection && collection[1]) {
         const injected = inject(method, target);
         if (typeof injected === 'number') {
@@ -86,14 +89,25 @@ describe('content promotion', () => {
       expect(item.slug).toMatch(/^[a-z0-9-]+$/);
       expect(item.order).toEqual(expect.any(Number));
     }
+
+    // Pages (#215): slugs are kebab-case URL segments and never a fixed
+    // web route - the seeded page must stay servable at /<slug>.
+    expect(files.pages.length).toBeGreaterThan(0);
+    for (const page of files.pages) {
+      expect(page.slug).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+      expect(isReservedWebSlug(page.slug)).toBe(false);
+      expect(page.title).toEqual(expect.any(String));
+      expect(page.sections.length).toBeGreaterThan(0);
+      expect(page.sections.every((section) => section.body.length > 0)).toBe(true);
+    }
   });
 
   it('apply creates missing content as published, authenticated upserts', async () => {
-    const { fetchImpl, calls } = fakeCms({ 'about-content': [], faq: [] });
+    const { fetchImpl, calls } = fakeCms({ 'about-content': [], faq: [], pages: [] });
     const result = await applyCmsContent({ fetchImpl });
 
     const files = await readContentFiles();
-    expect(result.created).toBe(files.aboutContent.length + files.faq.length);
+    expect(result.created).toBe(files.aboutContent.length + files.faq.length + files.pages.length);
     expect(result.updated).toBe(0);
 
     const posts = calls.filter((c) => c.method === 'POST' && c.url.includes('/cms/api/'));
@@ -113,17 +127,20 @@ describe('content promotion', () => {
     const existing = {
       'about-content': files.aboutContent.map((entry, i) => ({ id: i + 1, slug: entry.slug })),
       faq: files.faq.map((entry, i) => ({ id: i + 100, slug: entry.slug })),
+      pages: files.pages.map((entry, i) => ({ id: i + 200, slug: entry.slug })),
     };
     const { fetchImpl, calls } = fakeCms(existing);
     const result = await applyCmsContent({ fetchImpl });
 
     expect(result.created).toBe(0);
-    expect(result.updated).toBe(files.aboutContent.length + files.faq.length);
+    expect(result.updated).toBe(
+      files.aboutContent.length + files.faq.length + files.pages.length,
+    );
     expect(calls.filter((c) => c.method === 'POST' && c.url.includes('/cms/api/'))).toHaveLength(0);
     const patches = calls.filter((c) => c.method === 'PATCH');
     expect(patches).toHaveLength(result.updated);
     for (const patch of patches) {
-      expect(patch.url).toMatch(/\/cms\/api\/(about-content|faq)\/\d+\?draft=false/);
+      expect(patch.url).toMatch(/\/cms\/api\/(about-content|faq|pages)\/\d+\?draft=false/);
     }
   });
 
@@ -136,6 +153,15 @@ describe('content promotion', () => {
           { id: 1, slug: 'a', title: 'A', intro: 'i', order: 0 },
         ],
         faq: [{ id: 9, slug: 'q', question: 'Q?', answer: 'a', order: 0 }],
+        pages: [
+          {
+            id: 7,
+            slug: 'z-page',
+            title: 'Z',
+            description: 'meta description',
+            sections: [{ heading: 'H', body: 'b1' }, { body: 'b2' }],
+          },
+        ],
       });
       await exportCmsContent({ fetchImpl, targetDir: dir });
 
@@ -145,11 +171,20 @@ describe('content promotion', () => {
       expect(about.map((e) => e.slug)).toEqual(['a', 'b']);
       const faq = JSON.parse(readFileSync(join(dir, 'faq.json'), 'utf8'));
       expect(faq).toEqual([{ slug: 'q', question: 'Q?', answer: 'a', order: 0 }]);
+      const pages = JSON.parse(readFileSync(join(dir, 'pages.json'), 'utf8'));
+      expect(pages).toEqual([
+        {
+          slug: 'z-page',
+          title: 'Z',
+          description: 'meta description',
+          sections: [{ heading: 'H', body: 'b1' }, { body: 'b2' }],
+        },
+      ]);
 
       // Re-running the export over unchanged content is byte-identical.
-      const first = readFileSync(join(dir, 'faq.json'), 'utf8');
+      const first = readFileSync(join(dir, 'pages.json'), 'utf8');
       await exportCmsContent({ fetchImpl, targetDir: dir });
-      expect(readFileSync(join(dir, 'faq.json'), 'utf8')).toBe(first);
+      expect(readFileSync(join(dir, 'pages.json'), 'utf8')).toBe(first);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -165,6 +200,10 @@ describe('content promotion', () => {
           { id: 2, slug: 'b', title: 'B draft', intro: 'i', order: 1, _status: 'draft' },
         ],
         faq: [],
+        pages: [
+          { id: 5, slug: 'live', title: 'Live', sections: [{ body: 'b' }] },
+          { id: 6, slug: 'wip', title: 'WIP', sections: [{ body: 'b' }], _status: 'draft' },
+        ],
       });
       await exportCmsContent({ fetchImpl, targetDir: dir });
 
@@ -172,6 +211,10 @@ describe('content promotion', () => {
         slug: string;
       }>;
       expect(about.map((e) => e.slug)).toEqual(['a']);
+      const pages = JSON.parse(readFileSync(join(dir, 'pages.json'), 'utf8')) as Array<{
+        slug: string;
+      }>;
+      expect(pages.map((e) => e.slug)).toEqual(['live']);
       const listUrls = calls.filter((c) => c.url.includes('/cms/api/')).map((c) => c.url);
       expect(listUrls.length).toBeGreaterThan(0);
       expect(
@@ -210,7 +253,7 @@ describe('content apply retries (#85)', () => {
   it('retries a 503 on the listing - reads are idempotent', async () => {
     const files = await readContentFiles();
     let lists = 0;
-    const { fetchImpl } = fakeCms({ 'about-content': [], faq: [] }, (method, url) => {
+    const { fetchImpl } = fakeCms({ 'about-content': [], faq: [], pages: [] }, (method, url) => {
       if (method === 'GET' && url.includes('/cms/api/about-content')) {
         lists += 1;
         return lists === 1 ? 503 : undefined;
@@ -220,7 +263,7 @@ describe('content apply retries (#85)', () => {
 
     const result = await applyCmsContent({ fetchImpl });
 
-    expect(result.created).toBe(files.aboutContent.length + files.faq.length);
+    expect(result.created).toBe(files.aboutContent.length + files.faq.length + files.pages.length);
     expect(lists).toBe(2); // one retry, then through
   });
 
@@ -230,6 +273,7 @@ describe('content apply retries (#85)', () => {
     const existing = {
       'about-content': files.aboutContent.map((entry, i) => ({ id: i + 1, slug: entry.slug })),
       faq: files.faq.map((entry, i) => ({ id: i + 100, slug: entry.slug })),
+      pages: files.pages.map((entry, i) => ({ id: i + 200, slug: entry.slug })),
     };
     const { fetchImpl } = fakeCms(existing, (method, _url) => {
       if (method === 'PATCH') {
@@ -241,14 +285,18 @@ describe('content apply retries (#85)', () => {
 
     const result = await applyCmsContent({ fetchImpl });
 
-    expect(result.updated).toBe(files.aboutContent.length + files.faq.length);
+    expect(result.updated).toBe(files.aboutContent.length + files.faq.length + files.pages.length);
     expect(result.created).toBe(0);
     expect(patches).toBe(result.updated + 1); // exactly one retried patch
   });
 
   it('reconciles an ambiguous create failure when the doc landed anyway', async () => {
     const files = await readContentFiles();
-    const docs: Record<'about-content' | 'faq', FakeDoc[]> = { 'about-content': [], faq: [] };
+    const docs: Record<'about-content' | 'faq' | 'pages', FakeDoc[]> = {
+      'about-content': [],
+      faq: [],
+      pages: [],
+    };
     let creates = 0;
     const { fetchImpl, calls } = fakeCms(docs, (method, url) => {
       if (method === 'POST' && url.includes('/cms/api/about-content')) {
@@ -267,34 +315,42 @@ describe('content apply retries (#85)', () => {
     // The committed doc was adopted via the slug re-list, never re-POSTed
     // (attempted once, like every other file entry - no extra create).
     expect(postsTo(calls, 'about-content')).toBe(files.aboutContent.length);
-    expect(result.created).toBe(files.aboutContent.length + files.faq.length - 1);
+    expect(result.created).toBe(
+      files.aboutContent.length + files.faq.length + files.pages.length - 1,
+    );
     expect(result.updated).toBe(1);
   });
 
   it('creates once more when an ambiguous create provably never landed', async () => {
     const files = await readContentFiles();
     let creates = 0;
-    const { fetchImpl, calls } = fakeCms({ 'about-content': [], faq: [] }, (method, url) => {
-      if (method === 'POST' && url.includes('/cms/api/about-content')) {
-        creates += 1;
-        return creates === 1 ? 504 : undefined; // no commit this time
-      }
-      return undefined;
-    });
+    const { fetchImpl, calls } = fakeCms(
+      { 'about-content': [], faq: [], pages: [] },
+      (method, url) => {
+        if (method === 'POST' && url.includes('/cms/api/about-content')) {
+          creates += 1;
+          return creates === 1 ? 504 : undefined; // no commit this time
+        }
+        return undefined;
+      },
+    );
 
     const result = await applyCmsContent({ fetchImpl });
 
     // One deliberate re-create after the probe found nothing - and no more.
     expect(postsTo(calls, 'about-content')).toBe(files.aboutContent.length + 1);
-    expect(result.created).toBe(files.aboutContent.length + files.faq.length);
+    expect(result.created).toBe(files.aboutContent.length + files.faq.length + files.pages.length);
     expect(result.updated).toBe(0);
   });
 
   it('never retries a 4xx on the create path - it is a real answer', async () => {
-    const { fetchImpl, calls } = fakeCms({ 'about-content': [], faq: [] }, (method, url) => {
-      if (method === 'POST' && url.includes('/cms/api/about-content')) return 422;
-      return undefined;
-    });
+    const { fetchImpl, calls } = fakeCms(
+      { 'about-content': [], faq: [], pages: [] },
+      (method, url) => {
+        if (method === 'POST' && url.includes('/cms/api/about-content')) return 422;
+        return undefined;
+      },
+    );
 
     await expect(applyCmsContent({ fetchImpl })).rejects.toThrow(/422/);
     expect(postsTo(calls, 'about-content')).toBe(1);

@@ -116,6 +116,10 @@ Acceptance-style catalogue of every user-facing feature area. "Must" = required 
 | 10.1 | About intro sections and FAQ entries are editable in the CMS (Payload) with **live preview**.                                              |
 | 10.2 | Published CMS changes appear on the public pages without a deploy.                                                                         |
 | 10.3 | Curated content can be promoted back to the repo as seed files so it survives resets (see [../data/02-seeding.md](../data/02-seeding.md)). |
+| 10.4 | Arbitrary standalone pages can be created in the CMS (`pages` collection: kebab-case slug, title, description, ordered body sections) with drafts/versioning and live preview; each published page renders at `/<slug>` exactly like the home and About pages — no code change per page (#215). |
+| 10.5 | A page slug never collides with a fixed route: the CMS rejects reserved top-level segments at save time, and the web's dynamic route treats reserved slugs as never-CMS (defence in depth). Static routes always win resolution over the dynamic `/<slug>` route. |
+| 10.6 | Only published pages render publicly. Drafts are preview-only (`/<slug>?preview=<docId>`, same accepted exposure as the About preview); unknown or unpublished slugs 404. |
+| 10.7 | A single-segment URL no fixed route claims resolves through the CMS page lookup before 404ing; deeper unmatched URLs keep hitting the catch-all (and its in-shell 404, 13.6). |
 
 ## 11. Admin
 
@@ -182,7 +186,7 @@ a reset (a fresh local stack seeds directly, without a reset run).
 | 13.3 | On small screens a burger opens a drawer with the same navigation; search stays reachable (drawer link + header icon) even where the search box hides.                                                                                        |
 | 13.4 | Every cursor-paginated list (feed, search, bookmarks, profile posts and follow lists, reply threads) uses one shared Load more that appends pages in place - no full-page cursor navigation, one `load-more` affordance everywhere.           |
 | 13.5 | One labelled search input per page: the header box hides itself on /search, where the page's own box is the single input.                                                                                                                     |
-| 13.6 | Every 404 inside the app - unmatched routes, deleted or malformed posts/profiles - renders within the authenticated shell, so nav, search and logout stay available; signed-out visitors get the same branded 404 body, not a login redirect. |
+| 13.6 | Every 404 inside the app - unmatched multi-segment routes, deleted or malformed posts/profiles - renders within the authenticated shell, so nav, search and logout stay available; signed-out visitors get the same branded 404 body, not a login redirect. Unknown single-segment URLs resolve through the CMS page lookup first (#215) and 404 on the public frame - page URLs are public content. |
 
 ## 14. Branding
 

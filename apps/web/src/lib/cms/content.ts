@@ -1,5 +1,5 @@
 import { createJwtCache, realmUrls } from '@xitter/auth';
-import { envString, localUrl } from '@xitter/config';
+import { envString, isReservedWebSlug, localUrl } from '@xitter/config';
 
 export interface AboutEntry {
   id?: number;
@@ -13,6 +13,19 @@ export interface FaqEntry {
   slug: string;
   question: string;
   answer: string;
+}
+
+export interface PageSection {
+  heading?: string;
+  body: string;
+}
+
+export interface PageEntry {
+  id?: number;
+  slug: string;
+  title: string;
+  description?: string;
+  sections: PageSection[];
 }
 
 /**
@@ -75,7 +88,7 @@ export function cmsEnv() {
 }
 
 /** Data-cache tags for published CMS content (see /api/cms/revalidate). */
-export const CMS_CACHE_TAGS = ['cms-about-content', 'cms-faq'] as const;
+export const CMS_CACHE_TAGS = ['cms-about-content', 'cms-faq', 'cms-pages'] as const;
 
 export function adminRealmIssuer(): string {
   return `${cmsEnv().keycloakBaseUrl.replace(/\/$/, '')}/realms/${cmsEnv().adminRealm}`;
@@ -95,6 +108,8 @@ interface PayloadDoc {
   question?: string;
   answer?: string;
   order?: number;
+  description?: string;
+  sections?: Array<{ heading?: string; body?: string }>;
 }
 
 let draftTokens: ReturnType<typeof createJwtCache> | undefined;
@@ -213,6 +228,78 @@ export async function loadFaq(options: CmsFetchOptions = {}): Promise<FaqEntry[]
     return mapped.length > 0 ? mapped : FALLBACK_FAQ;
   } catch {
     return FALLBACK_FAQ;
+  }
+}
+
+function mapPage(doc: PayloadDoc): PageEntry {
+  return {
+    id: doc.id,
+    slug: doc.slug ?? '',
+    title: doc.title ?? '',
+    description: doc.description,
+    sections: (doc.sections ?? []).map((section, i) => ({
+      heading: section.heading,
+      body: section.body ?? `Section ${i + 1}`,
+    })),
+  };
+}
+
+/**
+ * Fetch one doc from the `pages` collection by slug (published) or id
+ * (draft preview). Single-page lookups have no fallback copy - an absent
+ * doc is a plain miss, so the empty-result retry that protects the About
+ * fallback does not apply here.
+ */
+async function fetchPageDoc(
+  where: { slug?: string; id?: string },
+  options: CmsFetchOptions,
+): Promise<PayloadDoc | undefined> {
+  const doFetch = options.fetchImpl ?? fetch;
+  const url = new URL(`${cmsEnv().baseUrl}/cms/api/pages`);
+  url.searchParams.set('limit', '1');
+  url.searchParams.set('depth', '0');
+  if (where.slug !== undefined) url.searchParams.set('where[slug][equals]', where.slug);
+  if (where.id !== undefined) url.searchParams.set('where[id][equals]', where.id);
+
+  const headers: Record<string, string> = {};
+  if (options.draft) {
+    url.searchParams.set('draft', 'true');
+    headers.authorization = `Bearer ${await draftToken(options.fetchImpl)}`;
+  }
+
+  const res = await doFetch(url.toString(), {
+    headers,
+    signal: AbortSignal.timeout(10_000),
+    ...(options.draft ? {} : { next: { revalidate: 60, tags: ['cms-pages'] } }),
+  });
+  if (!res.ok) throw new Error(`CMS pages responded ${res.status}`);
+  const json = (await res.json()) as { docs?: PayloadDoc[] };
+  return json.docs?.[0];
+}
+
+/**
+ * A CMS-defined page (#215) for one top-level slug, or undefined when no
+ * published page takes it: the caller 404s, so unknown slugs keep landing
+ * on the not-found boundary. Reserved slugs never resolve - fixed routes
+ * always win even if a doc with that slug somehow exists (the CMS also
+ * rejects them at save time; this is the defence in depth).
+ */
+export async function loadPage(
+  slug: string,
+  options: CmsFetchOptions & { previewId?: string } = {},
+): Promise<PageEntry | undefined> {
+  if (isReservedWebSlug(slug)) return undefined;
+  const preview = options.previewId !== undefined;
+  try {
+    const doc = await fetchPageDoc(
+      preview ? { id: options.previewId } : { slug },
+      preview ? { ...options, draft: true } : options,
+    );
+    if (doc === undefined) return undefined;
+    const page = mapPage(doc);
+    return isReservedWebSlug(page.slug) ? undefined : page;
+  } catch {
+    return undefined;
   }
 }
 

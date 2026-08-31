@@ -6,6 +6,7 @@ import { env } from './env';
 import { Users } from './collections/users';
 import { AboutContent } from './collections/about-content';
 import { Faq } from './collections/faq';
+import { Pages } from './collections/pages';
 
 /**
  * CMS for site content (not user-generated content). Auth bridges to the
@@ -21,7 +22,7 @@ export default buildConfig({
     // disposable demo database); deployed environments manage migrations.
     push: !isDeployedEnv(),
   }),
-  collections: [Users, AboutContent, Faq],
+  collections: [Users, AboutContent, Faq, Pages],
   typescript: { outputFile: 'src/payload-types.ts' },
   admin: {
     user: Users.slug,
@@ -31,12 +32,18 @@ export default buildConfig({
     meta: { icons: { icon: '/cms/brand-mark.svg' } },
     livePreview: {
       // Both content collections render on the About page (#153) - the web
-      // app shows drafts there when a preview param is present.
-      url: ({ data }) => {
-        const id = (data as { id?: number | string }).id ?? '';
+      // app shows drafts there when a preview param is present. Pages
+      // (#215) each render at their own /<slug>, so their preview URL
+      // carries the doc's slug.
+      url: ({ data, collectionConfig }) => {
+        const doc = data as { id?: number | string; slug?: string };
+        const id = doc.id ?? '';
+        if (collectionConfig?.slug === Pages.slug) {
+          return `${env.WEB_URL}/${doc.slug ?? ''}?preview=${id}`;
+        }
         return `${env.WEB_URL}/about?preview=${id}`;
       },
-      collections: [AboutContent.slug, Faq.slug],
+      collections: [AboutContent.slug, Faq.slug, Pages.slug],
     },
   },
 });

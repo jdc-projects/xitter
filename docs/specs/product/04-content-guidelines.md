@@ -8,6 +8,7 @@ Site content strategy: what text lives where, in what tone, and the non-negotiab
 | ---------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | About intro sections (what/why/how)      | CMS      | Ordered, editable, live preview; slugs double as anchors (#153 — moved from the landing intro)                                                                                   |
 | FAQ entries                              | CMS      | Ordered list, editable, live preview                                                                                                                                             |
+| Standalone pages (e.g. the changelog)    | CMS      | One `pages` doc per public page rendered at `/<slug>`: kebab-case slug (fixed routes are rejected), title, meta description, ordered body sections; live preview (#215)           |
 | Landing value prop                       | Code     | One line, code-owned — the front door does not explain the app (#153)                                                                                                            |
 | Page shells, navigation, labels, buttons | Code     | Product UI is not CMS-editable                                                                                                                                                   |
 | Reset notice / PII warning _wording_     | Code     | Shown on every required surface; must not be accidentally editable away                                                                                                          |
@@ -22,6 +23,8 @@ The web app SSR-fetches the About intro sections and FAQ entries from the Payloa
 - **Hardcoded code fallbacks** whenever the CMS is unreachable, erroring, or empty — the About page must never fail because the CMS is down (demo resilience beats freshness). The landing page no longer fetches CMS content at all (#153).
 - **Caching**: published content rides the Next data cache with a short revalidate + tags; draft renders (`?preview=` param, live preview) are per-request and never cached.
 - **Draft access**: the CMS API itself gates `?draft=true` behind an authenticated CMS principal (admin session or the `cms` service client). The web's preview URL is deliberately **not** further gated (accepted exposure, demo threat model): anyone holding a `?preview=` link can read the current drafts of site copy (pre-publication marketing/FAQ text only — no user data). Never publish sensitive copy through the CMS drafts.
+
+CMS pages (`pages` collection) render at `/<slug>` through a dynamic route (#215) with the same caching and draft rules, but **no hardcoded fallback**: arbitrary pages have no code-owned copy, so an unknown, unpublished or unreachable page simply 404s. A page slug must never collide with a fixed route (`about`, `login`, `feed`, `post`, `profile`, `search`, `bookmarks`, `api`, `media`, `cms`, `admin`, `healthz`, `readyz`) — the CMS rejects reserved slugs at save time and the web route refuses them as defence in depth, so a CMS page can never shadow (or be shadowed by) a fixed route.
 
 ## Tone
 
