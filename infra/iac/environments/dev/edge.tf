@@ -10,7 +10,9 @@
 #   - `/cms` + `/admin` use auth_mode=oidc-interactive against the homelab
 #     primary realm (the module provisions the clients xitter-dev-cms /
 #     xitter-dev-admin); role gating (app-admin / system-admin) lands with
-#     #10/#11.
+#     #10/#11. The admin SPA's public PKCE client + the two gate roles in
+#     that realm are provisioned below (#198) - dev owns both for the
+#     shared-realm reasons documented there.
 #   - `/` and `/media` are unauthenticated.
 #
 # Geo posture (T14): the demo is globally reachable, so every xitter host
@@ -122,6 +124,61 @@ module "ingress_admin" {
   do_enable_geoblock = false
 
   kubeconfig_path = local.kubeconfig
+}
+
+# The admin SPA's own OIDC client (#198), separate from the confidential edge
+# client above: the panel is a public PKCE SPA (no server runtime to hold a
+# secret), so it signs in browser-side under the client_id baked into the
+# image at build time (deploy workflow build-args). Lives in the shared
+# primary realm (ADR 0006) with an env-distinct id per ADR 0012 - dev and
+# prod states never declare the same Keycloak object. The SPA derives
+# redirect_uri from window.location.origin at run time, so only this
+# client's redirect/origin list is env-specific.
+resource "keycloak_openid_client" "admin_spa" {
+  realm_id  = data.terraform_remote_state.keycloak.outputs.primary_realm_id
+  client_id = "xitter-${var.environment}-admin-spa"
+
+  name    = "xitter ${var.environment} admin SPA"
+  enabled = true
+
+  access_type = "PUBLIC"
+
+  # Public client with no secret: enforce the code challenge server-side -
+  # oidc-client-ts always sends S256 with the code flow, so nothing legit is
+  # lost and plain/no-challenge exchanges are rejected.
+  pkce_code_challenge_method = "S256"
+
+  standard_flow_enabled        = true
+  direct_access_grants_enabled = false
+
+  # scope openid+profile (session.ts); full scope keeps realm roles in the
+  # access token for the panel's login gate (callback.tsx + @xitter/auth).
+  full_scope_allowed = true
+
+  # `/admin` exact (no trailing slash) covers post_logout_redirect_uri;
+  # `/admin/*` covers the SPA's `${origin}/admin/callback` redirect_uri.
+  valid_redirect_uris = [
+    "https://${var.domain}/admin",
+    "https://${var.domain}/admin/*",
+  ]
+  web_origins = ["https://${var.domain}"]
+}
+
+# The roles the admin panel gates on (spec 07 / ADR 0006). Nothing else
+# provisions them in the primary realm - verified live (realm roles are
+# default-roles-* + ocis* only) and across homelab iac/keycloak-config - so
+# xitter owns them here. Declared in DEV ONLY: the primary realm is shared
+# by both envs and the role names are app-level constants the SPA matches
+# literally, so a second declaration in prod would fight this state for the
+# same object per ADR 0012. Assigning them to operator accounts is a
+# Keycloak-console action (see #198 PR notes).
+resource "keycloak_role" "admin_gate" {
+  for_each = toset(["system-admin", "app-admin"])
+
+  realm_id = data.terraform_remote_state.keycloak.outputs.primary_realm_id
+  name     = each.value
+
+  description = "xitter admin surface gate (${each.value}) - admin panel (system-admin) / CMS (app-admin). Owned by xitter dev tofu; see edge.tf."
 }
 
 # `/media/<key>` → RustFS bucket root: rewrite /media/<key> to

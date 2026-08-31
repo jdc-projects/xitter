@@ -14,6 +14,16 @@ RUN npx turbo@2 prune admin
 FROM node:24-alpine AS build
 WORKDIR /app
 ENV TURBO_TELEMETRY_DISABLED=1
+# IdP coordinates for the SPA, baked into the bundle by vite define at build
+# time (apps/admin/src/env.ts - a static SPA has no runtime config). Deploy
+# pipelines pass these as build-args; when absent the build keeps the local
+# localhost fallbacks, so `npm run dev` and a plain docker build are unchanged.
+ARG XITTER_KEYCLOAK_URL
+ARG XITTER_ADMIN_REALM
+ARG XITTER_ADMIN_CLIENT_ID
+ENV XITTER_KEYCLOAK_URL=$XITTER_KEYCLOAK_URL \
+    XITTER_ADMIN_REALM=$XITTER_ADMIN_REALM \
+    XITTER_ADMIN_CLIENT_ID=$XITTER_ADMIN_CLIENT_ID
 COPY --from=prune /app/out .
 RUN --mount=type=cache,target=/root/.npm npm ci
 # Builds @xitter/* dependencies, then `vite build` -> apps/admin/dist.
