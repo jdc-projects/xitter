@@ -104,6 +104,37 @@ resource "keycloak_role" "admin_gate" {
   }
 }
 
+# Group membership is the owner's identity source: OpenLDAP-federated groups
+# in the primary realm (homelab convention, underscore names - the homelab
+# reference maps its own roles the same way, iac/keycloak-config/
+# role-mapping.tf). The panel gates read realm ROLES from tokens, and groups
+# grant nothing without a mapping (#208: the owner's account sat in both
+# groups and still failed the admin gate). exhaustive = false: only these
+# two roles are managed on the groups, everything else is left alone.
+locals {
+  admin_gate_group_roles = {
+    "system-admin" = "system_admins"
+    "app-admin"    = "app_admins"
+  }
+}
+
+data "keycloak_group" "admin_gate" {
+  for_each = local.admin_gate_group_roles
+
+  realm_id = data.terraform_remote_state.keycloak.outputs.primary_realm_id
+  name     = each.value
+}
+
+resource "keycloak_group_roles" "admin_gate" {
+  for_each = keycloak_role.admin_gate
+
+  realm_id = data.terraform_remote_state.keycloak.outputs.primary_realm_id
+  group_id = data.keycloak_group.admin_gate[each.key].id
+  role_ids = [each.value.id]
+
+  exhaustive = false
+}
+
 # Moved verbatim from dev's observability.tf; the live objects were adopted
 # via `tofu import` (2026-08-31) and dev's state forgets them through
 # `removed` blocks on its next apply.
