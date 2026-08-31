@@ -21,6 +21,12 @@ const adminRealm = envOrUndefined(process.env.XITTER_ADMIN_REALM) ?? 'xitter-loc
 // id the bootstrap script creates in the local admin realm.
 const adminClientId = envOrUndefined(process.env.XITTER_ADMIN_CLIENT_ID) ?? 'admin-panel';
 
+// Homelab Grafana carries the dashboards for BOTH deployed envs; local dev
+// renders the scrape-port copy instead, so the fallback never surfaces in
+// the UI.
+const grafanaUrl =
+  envOrUndefined(process.env.XITTER_GRAFANA_URL) ?? 'https://grafana.jd-chapman.dev';
+
 export default defineConfig({
   plugins: [react()],
   // The edge does NOT strip /admin; the app serves under this base to match.
@@ -37,6 +43,7 @@ export default defineConfig({
       'media-process': localPort('mediaProcessMetrics'),
       'search-index': localPort('searchIndexMetrics'),
     }),
+    __XITTER_GRAFANA_URL__: JSON.stringify(grafanaUrl),
   },
   test: {
     environment: 'happy-dom',

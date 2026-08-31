@@ -146,8 +146,12 @@ their internal admin endpoints — the panel gate is UX, not the boundary).
   (profile, counts, followers/following). The panel mutates no user content.
 - **Health**: one dashboard over each service's Terminus detail (each
   service stays the authority on its own dependencies), worker metrics
-  links (workers expose scrapes, not APIs), and a last-reset tile —
-  reported as "pending" until the reset status feed lands (feature 12).
+  pointers (workers expose scrapes, not APIs — links to the Grafana
+  dashboards when the panel is served deployed, the cluster-local ports as
+  copy in local dev), and a last-reset tile over the feed service's
+  reset-status record — outcome, finish time, duration, reseed fingerprint,
+  or a clean "no reset recorded yet" state before the environment's first
+  reset run (feature 12).
 - **Audit log**: merged view of the posts/media audit stores, newest first.
 
 ## 12. Data lifecycle
@@ -158,6 +162,16 @@ their internal admin endpoints — the panel gate is UX, not the boundary).
 | 12.2 | Optional deterministic reseed immediately after the wipe (same corpus every time — see [../data/02-seeding.md](../data/02-seeding.md)). |
 | 12.3 | Reset and reseed status is visible (admin health + user-facing notice).                                                                 |
 | 12.4 | Curated (promoted) content survives resets.                                                                                             |
+
+As built: the reset job writes its run record (outcome, timing, reseed
+fingerprint, per-step durations) to Valkey after every attempt — success or
+failure. The feed service serves it to the admin panel at
+`GET /api/feed/internal/admin/reset-status` (admin-principal-gated; the
+machine-readable path stays at `/api/feed/internal/reset-status`), and the
+panel's health dashboard renders it as the data lifecycle tile: outcome
+badge, finish time (relative + UTC), duration, reseed state and seed
+fingerprint — or "no reset recorded yet" on an environment that has not run
+a reset (a fresh local stack seeds directly, without a reset run).
 
 ## 13. App shell (authenticated navigation)
 

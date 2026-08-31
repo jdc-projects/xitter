@@ -120,7 +120,7 @@ Service-token only (audience = receiving service client id; callers are the `svc
 | `DELETE /api/feed/internal/feed/users/:id/authors/:authorId` | fanout worker        | Unfollowed: remove the author's entries from one feed                                                                                                                                                                                                            |
 | `DELETE /api/feed/internal/feed/users/:id`                   | reset job / fanout   | Delete all feed entries for a user                                                                                                                                                                                                                               |
 | `POST /api/feed/internal/reseed`                             | reset job            | Truncate feed entries                                                                                                                                                                                                                                            |
-| `GET /api/feed/internal/reset-status`                        | admin panel          | Last reset/reseed run record (T13; null when no reset has run)                                                                                                                                                                                                   |
+| `GET /api/feed/internal/reset-status`                        | machine tooling      | Last reset/reseed run record (T13; null when no reset has run). The panel reads the admin-gated alias below — it holds an admin login, not a service token                                                                                                       |
 | `POST /api/search/internal/search/index`                     | search-index worker  | Bulk upsert of post documents (tombstones included)                                                                                                                                                                                                              |
 | `POST /api/search/internal/search/index/authors`             | search-index worker  | Refresh denormalised author names (`social.profile.updated`)                                                                                                                                                                                                     |
 | `GET /api/search/internal/search/checkpoint`                 | search-index worker  | Resume positions per topic-partition (worker boot)                                                                                                                                                                                                               |
@@ -139,20 +139,21 @@ the token must carry an `ADMIN_ROLES` realm role (`system-admin` /
 `app-admin`, ADR 0006), verified server-side by the shared auth guard. A
 valid-but-role-less token is 403.
 
-| Path                                                        | Owner    | Purpose                                                                    |
-| ----------------------------------------------------------- | -------- | -------------------------------------------------------------------------- |
-| `GET /api/posts/internal/admin/posts`                       | posts    | Moderation list: `authorId`/`text`/`deleted` filters, cursor paged         |
-| `GET /api/posts/internal/admin/posts/:postId`               | posts    | Post detail incl. tombstone state                                          |
-| `DELETE /api/posts/internal/admin/posts/:postId?hard=`      | posts    | Soft delete (default, restorable) or hard delete; audit-logged             |
-| `POST /api/posts/internal/admin/posts/:postId/restore`      | posts    | Restore a soft-deleted post; audit-logged                                  |
-| `GET /api/posts/internal/admin/audit`                       | posts    | Audit log page (who deleted what, when)                                    |
-| `GET /api/media/internal/admin/media`                       | media    | Media list: `ownerId`/`status` filters, cursor paged                       |
-| `GET /api/media/internal/admin/media/:mediaId`              | media    | Asset detail incl. variants                                                |
-| `DELETE /api/media/internal/admin/media/:mediaId`           | media    | Delete asset + RustFS objects (original and variants); audit-logged        |
-| `GET /api/media/internal/admin/audit`                       | media    | Audit log page                                                             |
-| `GET /api/social/internal/admin/users`                      | social   | User list: `username` filter, cursor paged, profile + graph counts         |
-| `GET /api/social/internal/admin/users/:userId/follow-graph` | social   | Profile + first pages of followers/following (read-only inspection)        |
-| `GET /api/{service}/internal/admin/health`                  | all svcs | Terminus detail (checks, uptime, version) for the panel's health dashboard |
+| Path                                                        | Owner    | Purpose                                                                        |
+| ----------------------------------------------------------- | -------- | ------------------------------------------------------------------------------ |
+| `GET /api/posts/internal/admin/posts`                       | posts    | Moderation list: `authorId`/`text`/`deleted` filters, cursor paged             |
+| `GET /api/posts/internal/admin/posts/:postId`               | posts    | Post detail incl. tombstone state                                              |
+| `DELETE /api/posts/internal/admin/posts/:postId?hard=`      | posts    | Soft delete (default, restorable) or hard delete; audit-logged                 |
+| `POST /api/posts/internal/admin/posts/:postId/restore`      | posts    | Restore a soft-deleted post; audit-logged                                      |
+| `GET /api/posts/internal/admin/audit`                       | posts    | Audit log page (who deleted what, when)                                        |
+| `GET /api/media/internal/admin/media`                       | media    | Media list: `ownerId`/`status` filters, cursor paged                           |
+| `GET /api/media/internal/admin/media/:mediaId`              | media    | Asset detail incl. variants                                                    |
+| `DELETE /api/media/internal/admin/media/:mediaId`           | media    | Delete asset + RustFS objects (original and variants); audit-logged            |
+| `GET /api/media/internal/admin/audit`                       | media    | Audit log page                                                                 |
+| `GET /api/social/internal/admin/users`                      | social   | User list: `username` filter, cursor paged, profile + graph counts             |
+| `GET /api/social/internal/admin/users/:userId/follow-graph` | social   | Profile + first pages of followers/following (read-only inspection)            |
+| `GET /api/{service}/internal/admin/health`                  | all svcs | Terminus detail (checks, uptime, version) for the panel's health dashboard     |
+| `GET /api/feed/internal/admin/reset-status`                 | feed     | Last reset/reseed run record for the data lifecycle tile (null = no reset yet) |
 
 The panel's data provider validates every response at the boundary with the
 same `@xitter/api-contracts` zod schemas these endpoints are typed by.
