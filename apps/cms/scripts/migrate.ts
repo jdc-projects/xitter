@@ -1,3 +1,5 @@
+// fallow-ignore-file unused-file -- bundled into the image by
+// scripts/bundle-migrations.mjs (Dockerfile), not imported
 /**
  * Headless Payload migration runner - the deployed schema mechanism.
  *
