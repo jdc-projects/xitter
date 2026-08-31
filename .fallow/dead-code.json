@@ -8,8 +8,6 @@
     "completeness": "complete"
   },
   "unused_files": [
-    "bruno/xitter/scripts/login.js",
-    "live-check.ts",
     "packages/scripts/src/rustfs.ts"
   ],
   "unused_exports": [
@@ -114,12 +112,8 @@
   "unused_svelte_events": [],
   "unused_server_actions": [],
   "unused_load_data_keys": [],
-  "unresolved_imports": [
-    "live-check.ts:./src/lib/stack-sweep.js"
-  ],
-  "unlisted_dependencies": [
-    "dotenv"
-  ],
+  "unresolved_imports": [],
+  "unlisted_dependencies": [],
   "duplicate_exports": [],
   "type_only_dependencies": [],
   "test_only_dependencies": [],
