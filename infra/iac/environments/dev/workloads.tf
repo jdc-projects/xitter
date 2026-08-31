@@ -376,6 +376,21 @@ module "cms" {
   liveness_probe_path  = "/cms/healthz"
   readiness_probe_path = "/cms/readyz"
 
+  # Payload (not prisma) owns the cms schema: migrations are generated from
+  # the Payload config (`payload migrate:create`, committed under
+  # apps/cms/src/migrations) and applied by the image's self-contained
+  # runner. `npx prisma migrate deploy` is wrong here, and `npx payload
+  # migrate` cannot run in the Next standalone image (production builds
+  # bundle payload into the server chunks - no CLI, no tsx, no resolvable
+  # node_modules); apps/cms/scripts/bundle-migrations.mjs compiles the
+  # config + migrations into one artifact precisely for this container.
+  # Until this landed NOTHING ever created the deployed cms schema: dev-mode
+  # schema push is local-only (payload.config.ts disables it in deployed
+  # envs), so the first login 500/502'd on the missing users table and the
+  # browser replay of the consumed auth code surfaced a misleading
+  # invalid_grant (#208 follow-on).
+  migrate_command = ["node", "apps/cms/.next/migrate/migrate.mjs"]
+
   env = concat(local.common_env, [
     { name = "PORT", value = "3000" },
     { name = "WEB_URL", value = "https://${var.domain}" },

@@ -4,10 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "tsx scripts/serve.ts dev",
-    "build": "payload generate:importmap && payload generate:types && next build --turbopack",
+    "build": "payload generate:importmap && payload generate:types && next build --turbopack && node scripts/bundle-migrations.mjs",
     "start": "tsx scripts/serve.ts start",
     "generate": "payload generate:importmap && payload generate:types",
     "db:push": "tsx scripts/db-push.ts",
+    "migrate": "payload migrate",
+    "migrate:create": "payload migrate:create",
+    "migrate:deploy": "node .next/migrate/migrate.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -35,6 +38,7 @@
     "@types/react-dom": "^19",
     "@xitter/eslint-config": "*",
     "@xitter/tsconfig": "*",
+    "esbuild": "^0.28",
     "tsx": "^4",
     "typescript": "^6",
     "vitest": "^4"

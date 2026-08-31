@@ -5,7 +5,6 @@ import { createTokenVerifier, type AuthContext } from '@xitter/auth';
 import { createLogger } from '@xitter/observability';
 import { CMS_ADMIN_ROLE, adminRealmIssuer, findOrCreateAdminUser } from '@/auth/keycloak-strategy';
 import { callbackUrl, cmsOidcConfig, oidc, publicOrigin } from '@/auth/oidc';
-import { env } from '@/env';
 
 export const runtime = 'nodejs';
 
@@ -60,7 +59,10 @@ async function mintSessionToken(payload: Payload, auth: AuthContext): Promise<st
   const user = await findOrCreateAdminUser(payload, auth);
   const { token } = await jwtSign({
     fieldsToSign: { id: user.id, collection: 'users', email: user.email },
-    secret: env.PAYLOAD_SECRET,
+    // Payload signs/verifies session JWTs with the DERIVED secret
+    // (sha256 of the config secret, see payload init) - the raw env value
+    // would mint a cookie the local-jwt strategy always rejects.
+    secret: payload.secret,
     tokenExpiration: SESSION_SECONDS,
   });
   return token;

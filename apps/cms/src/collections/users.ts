@@ -21,6 +21,12 @@ export const Users: CollectionConfig = {
   auth: {
     depth: 0,
     strategies: [createKeycloakStrategy()],
+    // Stateless session cookies: the OIDC callback mints the standard
+    // payload-token JWT itself (no password login exists to create a
+    // server-side session row). Payload 3.88 defaults useSessions to true,
+    // which rejects any token without a live users_sessions row - the
+    // Keycloak bridge would never authenticate the admin panel.
+    useSessions: false,
     // Payload mounts /first-register on every auth collection; with
     // overrideAccess it would let an anonymous caller create the first
     // admin whenever the users table is empty (fresh stack, or nightly
