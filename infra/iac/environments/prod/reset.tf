@@ -638,6 +638,11 @@ resource "kubernetes_job" "deploy_seed" {
   depends_on = [
     module.api_service,
     module.worker,
+    # The cms content steps authenticate as the cms-app service account
+    # (#214): its app-admin role mapping must exist before the seed's first
+    # attempt, or the job burns backoff retries racing the apply (observed:
+    # the failing job aborted the whole apply before the mapping landed).
+    keycloak_user_roles.cms_app,
     # Sequential realm work: the reset recreates the realm through the
     # same initDemoRealm ensure-demo-users runs - two concurrent realm
     # inits would race delete/create on the admin API.

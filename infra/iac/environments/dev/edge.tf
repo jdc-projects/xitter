@@ -250,11 +250,15 @@ data "keycloak_role" "app_admin" {
   name     = "app-admin"
 }
 
-resource "keycloak_openid_client_service_account_role" "cms_app" {
-  realm_id                = data.terraform_remote_state.keycloak.outputs.primary_realm_id
-  client_id               = keycloak_openid_client.cms_app.id
-  service_account_user_id = keycloak_openid_client.cms_app.service_account_user_id
-  role                    = data.keycloak_role.app_admin.name
+# The service account IS a user - realm roles land via user role mappings
+# (the _client_service_account_role resource is client-roles-only: its
+# required client_id scopes the lookup to client-level roles, 404 otherwise).
+resource "keycloak_user_roles" "cms_app" {
+  realm_id = data.terraform_remote_state.keycloak.outputs.primary_realm_id
+  user_id  = keycloak_openid_client.cms_app.service_account_user_id
+
+  role_ids   = [data.keycloak_role.app_admin.id]
+  exhaustive = false
 }
 
 # The roles the admin panel gates on (spec 07 / ADR 0006). Nothing else
