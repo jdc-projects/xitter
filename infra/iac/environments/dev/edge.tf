@@ -164,6 +164,56 @@ resource "keycloak_openid_client" "admin_spa" {
   web_origins = ["https://${var.domain}"]
 }
 
+# Audience mappers for the SPA (the same trick the demo realm uses for the
+# `web` browser client, keycloak.tf): the panel calls the services' internal
+# admin routes through the edge, whose oidc-api check requires the receiving
+# service's client id in `aud`. `aud` is just a claim - no secret leaves the
+# public client. Without these, every dashboard tile 401s at the edge
+# (#210): login shipped with #198 but the API-route credential path didn't.
+resource "keycloak_openid_audience_protocol_mapper" "admin_spa" {
+  for_each = toset(["social", "posts", "media", "feed", "search"])
+
+  realm_id  = data.terraform_remote_state.keycloak.outputs.primary_realm_id
+  client_id = keycloak_openid_client.admin_spa.id
+
+  name = "audience-svc-${each.key}"
+
+  included_client_audience = "svc-${each.key}"
+  add_to_access_token      = true
+  add_to_id_token          = false
+}
+
+# The services' internal admin routes get their own edge routes on the
+# PRIMARY realm (#210): the panel's SPA token (primary realm, aud svc-*,
+# system-admin role) is the admin principal spec 03 defines. Higher priority
+# than the demo-realm api/{service} routes (100) so these paths match first;
+# pass_access_token forwards the verified token for the service-side
+# verifyAdminToken re-check (issuer via ADMIN_ISSUER, azp via ADMIN_CLIENTS -
+# workloads.tf). Tokens minted before the mappers apply lack the audience:
+# existing sessions re-login once.
+module "ingress_admin_internal" {
+  for_each = toset(["social", "posts", "media", "feed", "search"])
+  source   = "github.com/jdc-projects/homelab//iac/modules/ingress"
+
+  name      = "xitter-${var.environment}-${each.key}-admin-internal"
+  namespace = local.ns
+  domain    = var.domain
+  path      = "api/${each.key}/internal/admin"
+  priority  = 200
+
+  target_port = 8080
+  selector    = { "app.kubernetes.io/name" = each.key }
+
+  auth_mode                       = "oidc-api"
+  keycloak_auth_realm             = "primary"
+  auth_oidc_api_audience          = "svc-${each.key}"
+  auth_oidc_api_pass_access_token = true
+
+  do_enable_geoblock = false
+
+  kubeconfig_path = local.kubeconfig
+}
+
 # The cms app's OWN confidential client (#208), separate from the edge
 # middleware's xitter-<env>-cms (which only gates the route): the app's
 # Payload-admin login does a server-side code flow against this client

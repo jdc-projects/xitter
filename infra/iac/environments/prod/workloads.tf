@@ -133,6 +133,21 @@ module "api_service" {
     # the scheme exactly or every token fails iss validation.
     { name = "KEYCLOAK_ISSUER", value = "${replace(local.keycloak_url, "https://", "http://")}/realms/${local.demo_realm}" },
     { name = "DEMO_REALM", value = local.demo_realm },
+    # Admin path (#210): the primary realm's canonical issuer is https (unlike
+    # the demo realm above); JWKS still rides the in-cluster base URL. The SPA
+    # client for this environment is the admitted human azp.
+    {
+      name  = "ADMIN_REALM",
+      value = data.terraform_remote_state.keycloak.outputs.primary_realm_id
+    },
+    {
+      name  = "ADMIN_ISSUER",
+      value = "${local.keycloak_url}/realms/${data.terraform_remote_state.keycloak.outputs.primary_realm_id}"
+    },
+    {
+      name  = "ADMIN_CLIENTS",
+      value = "xitter-${var.environment}-admin-spa"
+    },
     { name = "KAFKA_BROKERS", value = local.kafka_bootstrap },
     { name = "KEYCLOAK_CLIENT_ID", value = "svc-${each.key}" },
     # Rate limiting (posts/social/media) + feed's ws pub/sub fan-out (T6):
