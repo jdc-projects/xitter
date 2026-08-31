@@ -167,18 +167,20 @@ resource "keycloak_openid_client" "admin_spa" {
 # The roles the admin panel gates on (spec 07 / ADR 0006). Nothing else
 # provisions them in the primary realm - verified live (realm roles are
 # default-roles-* + ocis* only) and across homelab iac/keycloak-config - so
-# xitter owns them here. Declared in DEV ONLY: the primary realm is shared
-# by both envs and the role names are app-level constants the SPA matches
-# literally, so a second declaration in prod would fight this state for the
-# same object per ADR 0012. Assigning them to operator accounts is a
-# Keycloak-console action (see #198 PR notes).
-resource "keycloak_role" "admin_gate" {
-  for_each = toset(["system-admin", "app-admin"])
+# xitter owns them.
+#
+# The admin gate roles moved to the shared root (#197 pattern, #198): both
+# envs depend on them and the names are app-level constants the SPA matches
+# literally, so neither env's state may own them (a dev destroy would break
+# prod's role gate). Live objects were adopted by `tofu import` into the
+# xitter-shared state; these blocks make dev's state forget them WITHOUT
+# destroying on the next apply.
+removed {
+  from = keycloak_role.admin_gate
 
-  realm_id = data.terraform_remote_state.keycloak.outputs.primary_realm_id
-  name     = each.value
-
-  description = "xitter admin surface gate (${each.value}) - admin panel (system-admin) / CMS (app-admin). Owned by xitter dev tofu; see edge.tf."
+  lifecycle {
+    destroy = false
+  }
 }
 
 # `/media/<key>` → RustFS bucket root: rewrite /media/<key> to

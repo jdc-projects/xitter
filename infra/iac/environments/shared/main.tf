@@ -1,9 +1,10 @@
-# Shared xitter root (#197): owns the objects every environment depends on,
-# starting with the Sentry team + project. Previously dev's state owned them,
-# which coupled prod's release to dev's apply timing and let a dev destroy
-# orphan prod's DSN (ADR 0013). Environment roots read the DSN via this
-# state's outputs and own only their own `xitter-sentry` secret - kept to
-# exactly these objects, nothing environment-shaped lives here.
+# Shared xitter root (#197): owns the objects every environment depends on -
+# the Sentry team + project and the primary-realm admin gate roles (#198).
+# Previously dev's state owned them, which coupled prod's release to dev's
+# apply timing and let a dev destroy orphan prod's DSN (ADR 0013; the roles
+# had the same shape). Environment roots read the DSN via this state's
+# outputs and own only their own `xitter-sentry` secret - kept to exactly
+# these objects, nothing environment-shaped lives here.
 terraform {
   backend "kubernetes" {
     secret_suffix = "xitter-shared"
@@ -17,6 +18,10 @@ terraform {
     sentry = {
       source  = "jianyuan/sentry"
       version = "~> 0.15"
+    }
+    keycloak = {
+      source  = "keycloak/keycloak"
+      version = "~> 5.8"
     }
   }
 }
@@ -47,6 +52,55 @@ data "terraform_remote_state" "sentry" {
     secret_suffix = "sentry"
     config_path   = "../../../cluster.yml"
     namespace     = "tf-state"
+  }
+}
+
+# Keycloak admin credentials (homelab iac/keycloak-config outputs) - same
+# wiring as the env roots. The admin gate roles live in the shared "primary"
+# realm (jd-chapman.dev), so this root needs the provider to own them; the
+# in-cluster override var exists for the same CrowdSec reason as the sentry
+# one (ADR 0011).
+data "terraform_remote_state" "keycloak" {
+  backend = "kubernetes"
+
+  config = {
+    secret_suffix = "keycloak-config"
+    config_path   = "../../../cluster.yml"
+    namespace     = "tf-state"
+  }
+}
+
+provider "keycloak" {
+  client_id = "admin-cli"
+  username  = data.terraform_remote_state.keycloak.outputs.keycloak_admin_username
+  password  = data.terraform_remote_state.keycloak.outputs.keycloak_admin_password
+  url       = coalesce(var.provider_keycloak_url, data.terraform_remote_state.keycloak.outputs.keycloak_url)
+}
+
+variable "provider_keycloak_url" {
+  description = "Override the Keycloak provider URL (e.g. in-cluster http://keycloak-keycloakx-http.keycloak:80 when running on the LAN runner)."
+  type        = string
+  default     = ""
+}
+
+# Admin gate roles in the shared primary realm (#198): the SPA's role gate
+# matches these names literally, and BOTH envs' admin surfaces depend on
+# them - the same shared-object shape as the Sentry project, so they live
+# here, not in dev's state (which #198 initially used; a dev destroy would
+# have broken prod's role gate until dev re-applied). Adopted from dev via
+# `tofu import` (2026-08-31); dev forgets them through `removed` blocks.
+# Assigning them to operator accounts is a Keycloak-console action (see
+# #198 PR notes) - membership is identity management, not tofu.
+resource "keycloak_role" "admin_gate" {
+  for_each = toset(["system-admin", "app-admin"])
+
+  realm_id = data.terraform_remote_state.keycloak.outputs.primary_realm_id
+  name     = each.value
+
+  description = "xitter admin surface gate (${each.value}) - admin panel (system-admin) / CMS (app-admin). Owned by the shared root; see shared/main.tf."
+
+  lifecycle {
+    prevent_destroy = true
   }
 }
 
