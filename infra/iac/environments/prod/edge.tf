@@ -243,6 +243,23 @@ resource "keycloak_openid_client" "cms_app" {
   web_origins = ["https://${var.domain}"]
 }
 
+# The cms's content access maps a token onto a CMS user only when it carries
+# the app-admin realm role (keycloak-strategy); the reset/seed job's service
+# account (#214) starts role-less, so its writes 403'd. Attach the gate role
+# (owned by the shared root) to the client's service account - the homelab
+# pattern for machine principals (iac/keycloak-config/role-mapping.tf).
+data "keycloak_role" "app_admin" {
+  realm_id = data.terraform_remote_state.keycloak.outputs.primary_realm_id
+  name     = "app-admin"
+}
+
+resource "keycloak_openid_client_service_account_role" "cms_app" {
+  realm_id                = data.terraform_remote_state.keycloak.outputs.primary_realm_id
+  client_id               = keycloak_openid_client.cms_app.id
+  service_account_user_id = keycloak_openid_client.cms_app.service_account_user_id
+  role                    = data.keycloak_role.app_admin.name
+}
+
 # `/media/<key>` → RustFS bucket root: rewrite /media/<key> to
 # /xitter-media/<key> (S3 path-style: bucket + key), so the public bucket URL
 # is https://<domain>/media/<key> without exposing the bucket name.
