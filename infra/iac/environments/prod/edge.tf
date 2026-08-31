@@ -229,6 +229,11 @@ resource "keycloak_openid_client" "cms_app" {
   standard_flow_enabled        = true
   direct_access_grants_enabled = false
 
+  # The reset/seed job authenticates server-to-server with this client
+  # (client-credentials, #214) - that grant needs a service account enabled,
+  # else the token endpoint 401s (invalid_client, observed on dev).
+  service_accounts_enabled = true
+
   # Realm roles (app-admin) must reach the app's session token.
   full_scope_allowed = true
 
