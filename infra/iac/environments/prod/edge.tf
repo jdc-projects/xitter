@@ -130,7 +130,8 @@ module "ingress_admin" {
 # secret), so it signs in browser-side under the client_id baked into the
 # image at build time (release workflow build-args). Env-distinct id per ADR
 # 0012 (shared primary realm, one state per Keycloak object); the gate roles
-# it needs are declared by DEV's edge.tf only - do not redeclare them here.
+# it needs live in the SHARED root (infra/iac/environments/shared) - no env
+# declares them.
 resource "keycloak_openid_client" "admin_spa" {
   realm_id  = data.terraform_remote_state.keycloak.outputs.primary_realm_id
   client_id = "xitter-${var.environment}-admin-spa"
@@ -157,6 +158,34 @@ resource "keycloak_openid_client" "admin_spa" {
   valid_redirect_uris = [
     "https://${var.domain}/admin",
     "https://${var.domain}/admin/*",
+  ]
+  web_origins = ["https://${var.domain}"]
+}
+
+# The cms app's OWN confidential client (#208), separate from the edge
+# middleware's xitter-<env>-cms (which only gates the route): the app's
+# Payload-admin login does a server-side code flow against this client
+# (apps/cms/src/auth/oidc.ts, callback ${origin}/cms/auth/oidc/callback).
+# Full scope keeps the app-admin realm role in the token for the app's own
+# gate (keycloak-strategy). The generated secret feeds the cms workload's
+# CMS_CLIENT_SECRET via the cms-app kubernetes secret (workloads.tf).
+resource "keycloak_openid_client" "cms_app" {
+  realm_id  = data.terraform_remote_state.keycloak.outputs.primary_realm_id
+  client_id = "xitter-${var.environment}-cms-app"
+
+  name    = "xitter ${var.environment} cms app"
+  enabled = true
+
+  access_type = "CONFIDENTIAL"
+
+  standard_flow_enabled        = true
+  direct_access_grants_enabled = false
+
+  # Realm roles (app-admin) must reach the app's session token.
+  full_scope_allowed = true
+
+  valid_redirect_uris = [
+    "https://${var.domain}/cms/auth/oidc/callback",
   ]
   web_origins = ["https://${var.domain}"]
 }

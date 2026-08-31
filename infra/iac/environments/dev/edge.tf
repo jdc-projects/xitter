@@ -164,6 +164,34 @@ resource "keycloak_openid_client" "admin_spa" {
   web_origins = ["https://${var.domain}"]
 }
 
+# The cms app's OWN confidential client (#208), separate from the edge
+# middleware's xitter-<env>-cms (which only gates the route): the app's
+# Payload-admin login does a server-side code flow against this client
+# (apps/cms/src/auth/oidc.ts, callback ${origin}/cms/auth/oidc/callback).
+# Full scope keeps the app-admin realm role in the token for the app's own
+# gate (keycloak-strategy). The generated secret feeds the cms workload's
+# CMS_CLIENT_SECRET via the cms-app kubernetes secret (workloads.tf).
+resource "keycloak_openid_client" "cms_app" {
+  realm_id  = data.terraform_remote_state.keycloak.outputs.primary_realm_id
+  client_id = "xitter-${var.environment}-cms-app"
+
+  name    = "xitter ${var.environment} cms app"
+  enabled = true
+
+  access_type = "CONFIDENTIAL"
+
+  standard_flow_enabled        = true
+  direct_access_grants_enabled = false
+
+  # Realm roles (app-admin) must reach the app's session token.
+  full_scope_allowed = true
+
+  valid_redirect_uris = [
+    "https://${var.domain}/cms/auth/oidc/callback",
+  ]
+  web_origins = ["https://${var.domain}"]
+}
+
 # The roles the admin panel gates on (spec 07 / ADR 0006). Nothing else
 # provisions them in the primary realm - verified live (realm roles are
 # default-roles-* + ocis* only) and across homelab iac/keycloak-config - so
