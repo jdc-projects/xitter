@@ -1,3 +1,10 @@
+// fallow-ignore-file dynamic-segment-name-conflict -- fallow's matcher
+// treats a matched-name single + catch-all pair ([slug] + [...slug]) as a
+// name conflict; verified NOT one on Next 16.3.1: `next build` passes, the
+// standalone server serves every route class correctly (fixed 200s, single
+// unknown -> public 404 frame, deep unknown -> app-shell 404 - #223), and
+// the cms/not-found e2e specs drive both branches green. Remove this
+// suppression if fallow's matcher learns matched-name pairs.
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { connection } from 'next/server';

@@ -12,6 +12,16 @@ import { PageSections } from './page-sections';
  * About page, only one collection previews on this URL, so no
  * field-shape check is needed - just a usable doc.
  */
+/** The doc id the server rendered (draft docs may omit it in preview). */
+function docId(page: PageEntry, previewId: string): number {
+  return page.id ?? (Number.parseInt(previewId, 10) || 0);
+}
+
+/** Live edits arrive as postMessage payloads; anything else is ignored. */
+function usableLiveDoc(data: unknown, fallback: PageEntry): PageEntry {
+  return Array.isArray((data as PageEntry | null)?.sections) ? (data as PageEntry) : fallback;
+}
+
 export function PagePreview({
   page,
   previewId,
@@ -21,10 +31,7 @@ export function PagePreview({
   previewId: string;
   serverURL: string;
 }) {
-  const initialData = {
-    ...page,
-    id: page.id ?? (Number.parseInt(previewId, 10) || 0),
-  } as unknown as Record<string, unknown>;
+  const initialData = { ...page, id: docId(page, previewId) } as unknown as Record<string, unknown>;
 
   const { data } = useLivePreview({
     serverURL,
@@ -33,9 +40,5 @@ export function PagePreview({
     requestHandler: cmsPopulateRequest(serverURL),
   });
 
-  const live =
-    data !== null && Array.isArray((data as unknown as PageEntry).sections)
-      ? (data as unknown as PageEntry)
-      : page;
-  return <PageSections page={live} />;
+  return <PageSections page={usableLiveDoc(data, page)} />;
 }

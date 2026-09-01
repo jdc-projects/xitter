@@ -13,6 +13,12 @@ import { Pages } from './collections/pages';
  * admin Keycloak realm (see collections/users.ts) - demo realm users cannot
  * log in here.
  */
+/** Where a draft preview renders: pages at their own /<slug>, the About
+ * collections on the About page (#153/#215). */
+function previewPath(collectionSlug: string | undefined, doc: { slug?: string }): string {
+  return collectionSlug === Pages.slug ? `/${doc.slug ?? ''}` : '/about';
+}
+
 export default buildConfig({
   secret: env.PAYLOAD_SECRET,
   editor: lexicalEditor(),
@@ -37,11 +43,8 @@ export default buildConfig({
       // carries the doc's slug.
       url: ({ data, collectionConfig }) => {
         const doc = data as { id?: number | string; slug?: string };
-        const id = doc.id ?? '';
-        if (collectionConfig?.slug === Pages.slug) {
-          return `${env.WEB_URL}/${doc.slug ?? ''}?preview=${id}`;
-        }
-        return `${env.WEB_URL}/about?preview=${id}`;
+        const path = previewPath(collectionConfig?.slug, doc);
+        return `${env.WEB_URL}${path}?preview=${doc.id ?? ''}`;
       },
       collections: [AboutContent.slug, Faq.slug, Pages.slug],
     },

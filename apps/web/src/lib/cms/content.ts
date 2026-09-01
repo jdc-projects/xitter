@@ -136,46 +136,46 @@ function draftToken(fetchImpl?: typeof fetch) {
   return draftTokens.get();
 }
 
-async function fetchDocs(
-  collection: 'about-content' | 'faq',
+/**
+ * Shared CMS REST plumbing (#223): URL + optional draft bearer + the
+ * timeout/caching policy every loader uses - published reads ride the Next
+ * data cache (ISR-shaped, one tag per collection); draft previews are
+ * per-request and never cached.
+ */
+async function cmsRequest(
+  pathAndQuery: string,
   options: CmsFetchOptions,
-): Promise<PayloadDoc[]> {
+  cacheTag: string,
+): Promise<Response> {
   const doFetch = options.fetchImpl ?? fetch;
-  const url = new URL(`${cmsEnv().baseUrl}/cms/api/${collection}`);
-  url.searchParams.set('limit', '100');
-  url.searchParams.set('depth', '0');
-  url.searchParams.set('sort', 'order');
-
+  const url = new URL(`${cmsEnv().baseUrl}/cms/api/${pathAndQuery}`);
   const headers: Record<string, string> = {};
   if (options.draft) {
     url.searchParams.set('draft', 'true');
     headers.authorization = `Bearer ${await draftToken(options.fetchImpl)}`;
   }
-
-  const res = await doFetch(url.toString(), {
+  return doFetch(url.toString(), {
     headers,
     // Generous: a booted-but-cold CMS can take seconds on its first query,
     // while an unreachable one fails (ECONNREFUSED) immediately - so the
     // fallback stays fast and slow-cold-starts still render CMS copy.
     signal: AbortSignal.timeout(10_000),
-    // Published content rides the Next data cache (ISR-shaped); draft
-    // previews are per-request and never cached.
-    ...(options.draft ? {} : { next: { revalidate: 60, tags: [`cms-${collection}`] } }),
+    ...(options.draft ? {} : { next: { revalidate: 60, tags: [cacheTag] } }),
   });
+}
+
+async function fetchDocs(
+  collection: 'about-content' | 'faq',
+  options: CmsFetchOptions,
+): Promise<PayloadDoc[]> {
+  const res = await cmsRequest(
+    `${collection}?limit=100&depth=0&sort=order`,
+    options,
+    `cms-${collection}`,
+  );
   if (!res.ok) throw new Error(`CMS ${collection} responded ${res.status}`);
   const json = (await res.json()) as { docs?: PayloadDoc[] };
-  const docs = Array.isArray(json.docs) ? json.docs : [];
-  if (docs.length > 0 || options.draft) return docs;
-
-  // An EMPTY result means content is not applied yet (suite ordering, or a
-  // reset mid-flight). Caching that empty page for 60s would pin the
-  // fallback copy even after the content lands - the tag revalidate races
-  // whichever parallel render re-caches it. Bypass the data cache for the
-  // empty case so the next render sees the applied content immediately.
-  const fresh = await doFetch(url.toString(), { headers, cache: 'no-store' });
-  if (!fresh.ok) throw new Error(`CMS ${collection} responded ${fresh.status}`);
-  const freshJson = (await fresh.json()) as { docs?: PayloadDoc[] };
-  return Array.isArray(freshJson.docs) ? freshJson.docs : [];
+  return Array.isArray(json.docs) ? json.docs : [];
 }
 
 /** Stable CMS-defined ordering: `order` first, slug as tiebreaker. */
@@ -254,24 +254,15 @@ async function fetchPageDoc(
   where: { slug?: string; id?: string },
   options: CmsFetchOptions,
 ): Promise<PayloadDoc | undefined> {
-  const doFetch = options.fetchImpl ?? fetch;
-  const url = new URL(`${cmsEnv().baseUrl}/cms/api/pages`);
-  url.searchParams.set('limit', '1');
-  url.searchParams.set('depth', '0');
-  if (where.slug !== undefined) url.searchParams.set('where[slug][equals]', where.slug);
-  if (where.id !== undefined) url.searchParams.set('where[id][equals]', where.id);
-
-  const headers: Record<string, string> = {};
-  if (options.draft) {
-    url.searchParams.set('draft', 'true');
-    headers.authorization = `Bearer ${await draftToken(options.fetchImpl)}`;
-  }
-
-  const res = await doFetch(url.toString(), {
-    headers,
-    signal: AbortSignal.timeout(10_000),
-    ...(options.draft ? {} : { next: { revalidate: 60, tags: ['cms-pages'] } }),
-  });
+  const query = ['limit=1', 'depth=0'];
+  // Brackets encoded explicitly: the builder no longer runs through
+  // URL.searchParams, and the assertion (plus Payload's parser) expects
+  // the canonical %5B%5D form.
+  if (where.slug !== undefined)
+    query.push(`where%5Bslug%5D%5Bequals%5D=${encodeURIComponent(where.slug)}`);
+  if (where.id !== undefined)
+    query.push(`where%5Bid%5D%5Bequals%5D=${encodeURIComponent(where.id)}`);
+  const res = await cmsRequest(`pages?${query.join('&')}`, options, 'cms-pages');
   if (!res.ok) throw new Error(`CMS pages responded ${res.status}`);
   const json = (await res.json()) as { docs?: PayloadDoc[] };
   return json.docs?.[0];
