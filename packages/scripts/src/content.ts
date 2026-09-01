@@ -150,6 +150,23 @@ async function existingBySlug(
 /** Payload's documented way to publish via REST (draft saves go to versions only). */
 const PUBLISHED = { _status: 'published' } as const;
 
+/**
+ * Shape the seed entry for the REST API. Blocks need their blockType
+ * discriminator to be stored at all - the seed files stay clean (heading +
+ * body only; export strips Payload's block bookkeeping), so it is added here.
+ */
+function apiPayload(collection: ContentCollection, seed: Record<string, unknown>) {
+  if (collection !== 'pages' || !Array.isArray(seed.sections)) return { ...seed, ...PUBLISHED };
+  return {
+    ...seed,
+    sections: (seed.sections as Array<Record<string, unknown>>).map((section) => ({
+      ...section,
+      blockType: 'section',
+    })),
+    ...PUBLISHED,
+  };
+}
+
 async function upsertCollection(
   collection: ContentCollection,
   seeds: Array<Record<string, unknown>>,
@@ -163,7 +180,7 @@ async function upsertCollection(
   for (const seed of seeds) {
     const id = existing.get(seed.slug as string);
     // _status: published - seed content is live immediately, never a draft.
-    const data = { ...seed, ...PUBLISHED };
+    const data = apiPayload(collection, seed);
     if (id) {
       await api(
         `/cms/api/${collection}/${id}?draft=false`,

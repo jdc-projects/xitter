@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { TextField } from 'payload';
+import type { TextField, TextFieldSingleValidation } from 'payload';
 import { AboutContent } from './about-content';
 import { Faq } from './faq';
 import { Pages } from './pages';
@@ -78,7 +78,7 @@ describe('CMS collections', () => {
   it('page slugs are kebab-case and never a fixed web route (#215)', async () => {
     const slug = textField(Pages, 'slug');
     expect(slug).toBeDefined();
-    const validate = slug!.validate!;
+    const validate = slug!.validate as TextFieldSingleValidation;
 
     // Reserved: every fixed top-level segment is rejected with the reason.
     for (const reserved of [

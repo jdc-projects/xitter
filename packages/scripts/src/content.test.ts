@@ -120,6 +120,16 @@ describe('content promotion', () => {
         _status: 'published',
       });
     }
+
+    // Pages ride the same seam with blocks carrying their blockType
+    // discriminator - Payload drops block items without it (#215).
+    const pagePosts = posts.filter((c) => c.url.includes('/cms/api/pages'));
+    expect(pagePosts).toHaveLength(files.pages.length);
+    for (const post of pagePosts) {
+      const body = JSON.parse(post.body!) as { sections: Array<{ blockType?: string }> };
+      expect(body.sections.length).toBeGreaterThan(0);
+      expect(body.sections.every((section) => section.blockType === 'section')).toBe(true);
+    }
   });
 
   it('apply is idempotent: existing slugs are patched, not duplicated', async () => {
@@ -133,9 +143,7 @@ describe('content promotion', () => {
     const result = await applyCmsContent({ fetchImpl });
 
     expect(result.created).toBe(0);
-    expect(result.updated).toBe(
-      files.aboutContent.length + files.faq.length + files.pages.length,
-    );
+    expect(result.updated).toBe(files.aboutContent.length + files.faq.length + files.pages.length);
     expect(calls.filter((c) => c.method === 'POST' && c.url.includes('/cms/api/'))).toHaveLength(0);
     const patches = calls.filter((c) => c.method === 'PATCH');
     expect(patches).toHaveLength(result.updated);

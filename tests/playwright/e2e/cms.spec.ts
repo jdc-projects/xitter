@@ -62,7 +62,7 @@ async function mintCmsToken(): Promise<string> {
   );
   const { access_token: accessToken } = (await tokenRes.json()) as { access_token: string };
   return accessToken;
-});
+}
 
 test('about page renders CMS sections and FAQ', async ({ page }) => {
   await page.goto('/about');
@@ -112,7 +112,7 @@ test('a CMS page cannot take a fixed route slug (reserved-slug guard)', async ({
     data: {
       title: 'Hostile page',
       slug: 'about',
-      sections: [{ heading: 'Imposter', body: 'Trying to shadow the About page.' }],
+      sections: [{ blockType: 'section', heading: 'Imposter', body: 'Trying to shadow.' }],
       _status: 'published',
     },
   });
@@ -140,7 +140,7 @@ test('unpublished pages stay invisible - drafts never render publicly', async ({
     data: {
       title: 'Work in progress',
       slug: 'wip-page',
-      sections: [{ body: 'Secret draft copy - not live yet.' }],
+      sections: [{ blockType: 'section', body: 'Secret draft copy - not live yet.' }],
       _status: 'draft',
     },
   });

@@ -1,5 +1,5 @@
 import { isReservedWebSlug } from '@xitter/config';
-import type { CollectionConfig, TextField } from 'payload';
+import type { CollectionConfig, TextFieldSingleValidation } from 'payload';
 import { siteContentAccess } from './site-content-access';
 
 /** Kebab-case only: the slug is a URL segment, not free prose. */
@@ -11,7 +11,7 @@ const KEBAB_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
  * so a reserved slug would publish a page no URL can reach - reject it at
  * create/update time with the reason instead.
  */
-const validateSlug: TextField['validate'] = async (value) => {
+const validateSlug: TextFieldSingleValidation = async (value) => {
   if (typeof value !== 'string' || value.length === 0) return 'A slug is required.';
   if (!KEBAB_SLUG.test(value)) {
     return 'Slugs are kebab-case URL segments - lowercase letters, digits and single dashes.';

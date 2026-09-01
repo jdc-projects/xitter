@@ -101,10 +101,7 @@ describe('CMS page loading (#215)', () => {
     slug: 'changelog',
     title: 'Changelog',
     description: 'What changed',
-    sections: [
-      { heading: 'Pages', body: 'first paragraph' },
-      { body: 'second paragraph' },
-    ],
+    sections: [{ heading: 'Pages', body: 'first paragraph' }, { body: 'second paragraph' }],
   };
 
   it('fetches a published page by slug and maps its sections', async () => {
