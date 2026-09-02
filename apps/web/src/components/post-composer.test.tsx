@@ -60,6 +60,8 @@ describe('PostComposer onPosted (#148)', () => {
   };
   const author = { id: 'v1', username: 'viewer', displayName: 'Viewer' };
 
+  // 15s headroom: these two drive the full submit state machine and have
+  // timed out under CI load on five separate PRs (all passed on retry).
   it('fires onPosted once with the created post after a successful submit', async () => {
     composerAction.result = { ok: true, post: created, author };
     const onPosted = vi.fn();
@@ -82,7 +84,7 @@ describe('PostComposer onPosted (#148)', () => {
     expect(onPosted).toHaveBeenCalledWith({ post: created, author });
     // The draft cleared with the same success.
     expect((screen.getByTestId('composer-textarea') as HTMLTextAreaElement).value).toBe('');
-  });
+  }, 15000);
 
   it('never fires onPosted for a failed submission', async () => {
     composerAction.result = { error: 'Could not publish your post. Try again shortly.' };
@@ -106,7 +108,7 @@ describe('PostComposer onPosted (#148)', () => {
     expect((screen.getByTestId('composer-textarea') as HTMLTextAreaElement).value).toBe(
       'never lands',
     );
-  });
+  }, 15000);
 });
 
 describe('PostComposer alt text (#133)', () => {
