@@ -192,12 +192,26 @@ resource "kubernetes_cron_job_v1" "reset" {
                 value = "DemoPass123!"
               }
 
-              # CMS content reset is skipped in dev until the admin-realm CMS
-              # client wiring lands (T9 follow-up tracks the dev credential);
-              # the step reports an explicit visible skip, never a silent one.
+              # CMS content seeding credential (#214): the client #208/#209
+              # provisioned (xitter-<env>-cms-app in the primary realm) plus
+              # its secret; this un-skips the content steps that previously
+              # waited on "the admin-realm CMS client wiring".
               env {
-                name  = "XITTER_RESET_SKIP_CMS"
-                value = "1"
+                name  = "XITTER_ADMIN_REALM"
+                value = data.terraform_remote_state.keycloak.outputs.primary_realm_id
+              }
+              env {
+                name  = "XITTER_CMS_CLIENT_ID"
+                value = keycloak_openid_client.cms_app.client_id
+              }
+              env {
+                name = "XITTER_CMS_CLIENT_SECRET"
+                value_from {
+                  secret_key_ref {
+                    name = kubernetes_secret.cms.metadata[0].name
+                    key  = "CMS_CLIENT_SECRET"
+                  }
+                }
               }
 
               # svc-reset client credentials (same random_password the realm
@@ -564,12 +578,24 @@ resource "kubernetes_job" "deploy_seed" {
             value = "DemoPass123!"
           }
 
-          # CMS content reset is skipped in dev until the admin-realm CMS
-          # client wiring lands (T9 follow-up tracks the dev credential);
-          # the step reports an explicit visible skip, never a silent one.
+          # CMS content seeding credential (#214, nightly job - same wiring
+          # as deploy-seed above).
           env {
-            name  = "XITTER_RESET_SKIP_CMS"
-            value = "1"
+            name  = "XITTER_ADMIN_REALM"
+            value = data.terraform_remote_state.keycloak.outputs.primary_realm_id
+          }
+          env {
+            name  = "XITTER_CMS_CLIENT_ID"
+            value = keycloak_openid_client.cms_app.client_id
+          }
+          env {
+            name = "XITTER_CMS_CLIENT_SECRET"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret.cms.metadata[0].name
+                key  = "CMS_CLIENT_SECRET"
+              }
+            }
           }
 
           # svc-reset client credentials (same random_password the realm

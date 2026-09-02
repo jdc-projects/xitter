@@ -43,6 +43,13 @@ feedApi.registerComponent('securitySchemes', 'serviceToken', {
   description: 'Client-credentials service token (audience = svc-feed).',
 });
 
+feedApi.registerComponent('securitySchemes', 'adminToken', {
+  type: 'http',
+  scheme: 'bearer',
+  description:
+    'Admin principal: an admin-realm user token (admin-panel client, ADMIN_ROLES realm role) or a svc-admin service token carrying an admin role.',
+});
+
 feedApi.registerPath({
   method: 'get',
   path: '/feed',
@@ -167,7 +174,22 @@ feedApi.registerPath({
   tags: ['internal'],
   security: [{ serviceToken: [] }],
   description:
-    'Last reset/reseed run (written by the reset job to Valkey) for the admin health tile; null when no reset has run.',
+    'Last reset/reseed run (written by the reset job to Valkey); null when no reset has run. The machine-read path - the admin panel uses the admin-gated alias below.',
+  responses: {
+    200: jsonResponse('Reset status or null', resetStatusSchema.nullable()),
+  },
+});
+
+// Internal admin endpoints (T10 pattern): admin-role-gated. Two principals
+// satisfy the gate - an admin-realm user token (the panel's PKCE login) or a
+// demo-realm service token carrying an ADMIN_ROLES role (svc-admin).
+feedApi.registerPath({
+  method: 'get',
+  path: '/internal/admin/reset-status',
+  tags: ['admin'],
+  security: [{ adminToken: [] }, { serviceToken: [] }],
+  description:
+    'Last reset/reseed run for the admin health tile (same record as /internal/reset-status, admitted to the panel admin principal); null when no reset has run.',
   responses: {
     200: jsonResponse('Reset status or null', resetStatusSchema.nullable()),
   },

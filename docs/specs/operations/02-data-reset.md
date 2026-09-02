@@ -112,20 +112,20 @@ The implementation is `runResetFlow` in `packages/scripts/src/reset-flow.ts`; it
 
 ## Verification
 
-| Check              | Expected                                                                                                                  |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------- |
-| Job success metric | Reset job completion surfaced to Prometheus; alert fires on failure or missed schedule                                    |
-| Feed               | Empty after plain reset (the flow verifies); known post/user counts after reseed (fixed by seed 42)                       |
-| Login              | `demo1` / `DemoPass123!` authenticates through the edge after realm recreate                                              |
-| Search             | `posts` queries return nothing until reseeded content is re-indexed                                                       |
-| Media              | `xitter-media` bucket object count is zero after reset                                                                    |
-| Status record      | `GET /api/feed/internal/reset-status` returns the last run (success, reseed flag, step timings) for the admin health tile |
+| Check              | Expected                                                                                                                                                                                              |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Job success metric | Reset job completion surfaced to Prometheus; alert fires on failure or missed schedule                                                                                                                |
+| Feed               | Empty after plain reset (the flow verifies); known post/user counts after reseed (fixed by seed 42)                                                                                                   |
+| Login              | `demo1` / `DemoPass123!` authenticates through the edge after realm recreate                                                                                                                          |
+| Search             | `posts` queries return nothing until reseeded content is re-indexed                                                                                                                                   |
+| Media              | `xitter-media` bucket object count is zero after reset                                                                                                                                                |
+| Status record      | `GET /api/feed/internal/admin/reset-status` (admin principal) or `/internal/reset-status` (service token) returns the last run (success, reseed flag, step timings); the admin health tile renders it |
 
 ## Observability
 
 - **Alerts** ride kube-state-metrics job series (`job_name=~"xitter-reset.*"`): `XitterResetJobStale` (no successful run in 24h) and `XitterResetJobFailed` — the CronJob name `xitter-reset` is chosen to match those rules.
 - **Metrics** `xitter_reset_*` (pushed to the Pushgateway when `XITTER_RESET_PUSHGATEWAY_URL` set; always logged): `xitter_reset_success`, `xitter_reset_duration_seconds`, `xitter_reset_reseeded`, `xitter_reset_step_duration_seconds{step,outcome}`, `xitter_reset_seed_fingerprint_info{fingerprint}`.
-- **Status record**: after every run (success or failure) the flow writes a JSON record to Valkey (`xitter:reset:status`); the feed service serves it at `GET /api/feed/internal/reset-status`.
+- **Status record**: after every run (success or failure) the flow writes a JSON record to Valkey (`xitter:reset:status`); the feed service serves it at `GET /api/feed/internal/reset-status` (service token) and `GET /api/feed/internal/admin/reset-status` (admin principal — the health tile's route).
 
 ## Failure handling
 
