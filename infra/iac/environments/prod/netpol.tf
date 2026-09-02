@@ -424,7 +424,11 @@ resource "kubernetes_network_policy" "allow_same_namespace_egress" {
           match_expressions {
             key      = "app.kubernetes.io/name"
             operator = "In"
-            values   = ["social", "posts", "media", "feed", "search"]
+            # cms is a destination too: web's SSR copy fetches
+            # (XITTER_CMS_URL) and the reset job's content step - matching
+            # dev's list (prod's omission netpol-blocked the seed's cms
+            # step: 'fetch failed' at reset-cms-content).
+            values = ["social", "posts", "media", "feed", "search", "cms"]
           }
           match_labels = {
             "app.kubernetes.io/instance" = var.environment
