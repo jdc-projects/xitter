@@ -389,6 +389,9 @@ module "cms" {
 
   env = concat(local.common_env, [
     { name = "PORT", value = "3000" },
+    # CMS copy fetches (SSR): see the dev comment - deployed envs rendered
+    # fallback copy since the first deploy; the netpol already allows it.
+    { name = "XITTER_CMS_URL", value = "http://cms.${local.ns}.svc:3000" },
     { name = "WEB_URL", value = "https://${var.domain}" },
     # The app's OIDC login (#208): the issuer must be the PUBLIC keycloak URL
     # (it matches the issuer baked into tokens; the in-cluster service URL
