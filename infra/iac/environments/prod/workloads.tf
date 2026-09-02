@@ -277,6 +277,11 @@ module "web" {
   replicas = 2
 
   env = concat(local.common_env, [
+    # CMS copy fetches (SSR): without this web falls back to localhost and
+    # renders hardcoded fallback copy (dev's web block has the same line;
+    # #225 first landed it on prod's cms block by anchor mistake - this is
+    # the corrected placement).
+    { name = "XITTER_CMS_URL", value = "http://cms.${local.ns}.svc:3000" },
     { name = "PORT", value = "3000" },
     # SSR calls sibling services directly in-cluster (never through the edge).
     { name = "XITTER_SOCIAL_URL", value = local.svc_base.social },
@@ -389,9 +394,6 @@ module "cms" {
 
   env = concat(local.common_env, [
     { name = "PORT", value = "3000" },
-    # CMS copy fetches (SSR): see the dev comment - deployed envs rendered
-    # fallback copy since the first deploy; the netpol already allows it.
-    { name = "XITTER_CMS_URL", value = "http://cms.${local.ns}.svc:3000" },
     { name = "WEB_URL", value = "https://${var.domain}" },
     # The app's OIDC login (#208): the issuer must be the PUBLIC keycloak URL
     # (it matches the issuer baked into tokens; the in-cluster service URL
