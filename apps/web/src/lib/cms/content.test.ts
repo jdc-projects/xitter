@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { FALLBACK_ABOUT, FALLBACK_FAQ, loadAboutContent, loadFaq } from './content';
+import { FALLBACK_ABOUT, FALLBACK_FAQ, loadAboutContent, loadFaq, loadPage } from './content';
 
 interface RecordedRequest {
   url: string;
@@ -92,5 +92,79 @@ describe('CMS content loading', () => {
       throw new Error('unreachable');
     });
     await expect(loadAboutContent({ draft: true, fetchImpl })).resolves.toEqual(FALLBACK_ABOUT);
+  });
+});
+
+describe('CMS page loading (#215)', () => {
+  const pageDoc = {
+    id: 4,
+    slug: 'changelog',
+    title: 'Changelog',
+    description: 'What changed',
+    sections: [{ heading: 'Pages', body: 'first paragraph' }, { body: 'second paragraph' }],
+  };
+
+  it('fetches a published page by slug and maps its sections', async () => {
+    const { fetchImpl, requests } = fakeCms([pageDoc]);
+    const page = await loadPage('changelog', { fetchImpl });
+
+    expect(page).toMatchObject({
+      id: 4,
+      slug: 'changelog',
+      title: 'Changelog',
+      description: 'What changed',
+      sections: [
+        { heading: 'Pages', body: 'first paragraph' },
+        { heading: undefined, body: 'second paragraph' },
+      ],
+    });
+    const call = requests.find((r) => r.url.includes('/cms/api/pages'));
+    expect(call!.url).toContain('where%5Bslug%5D%5Bequals%5D=changelog');
+    expect(call!.url).toContain('limit=1');
+    expect(call!.url).not.toContain('draft=true');
+    // Published lookups ride the data cache under the pages tag.
+    expect((call!.init as { next?: { tags?: string[] } }).next?.tags).toEqual(['cms-pages']);
+  });
+
+  it('reserved slugs never reach the CMS - fixed routes always win', async () => {
+    const { fetchImpl, requests } = fakeCms([pageDoc]);
+    // about/feed/api/... must resolve to nothing even though the fake CMS
+    // would happily return the doc above for any query.
+    await expect(loadPage('about', { fetchImpl })).resolves.toBeUndefined();
+    await expect(loadPage('feed', { fetchImpl })).resolves.toBeUndefined();
+    await expect(loadPage('api', { fetchImpl })).resolves.toBeUndefined();
+    expect(requests.filter((r) => r.url.includes('/cms/api/pages'))).toHaveLength(0);
+  });
+
+  it('a published doc with a reserved slug is still refused (defence in depth)', async () => {
+    const { fetchImpl } = fakeCms([{ ...pageDoc, slug: 'about' }]);
+    await expect(loadPage('nomatch', { fetchImpl })).resolves.toBeUndefined();
+  });
+
+  it('preview resolves by doc id with a draft, authenticated, uncached fetch', async () => {
+    const { fetchImpl, requests } = fakeCms([pageDoc]);
+    const page = await loadPage('changelog', { fetchImpl, previewId: '4' });
+
+    expect(page?.slug).toBe('changelog');
+    const tokenCall = requests.find((r) => r.url.includes('/protocol/openid-connect/token'));
+    const contentCall = requests.find((r) => r.url.includes('/cms/api/pages'));
+    expect(tokenCall).toBeDefined();
+    expect(contentCall!.url).toContain('where%5Bid%5D%5Bequals%5D=4');
+    expect(contentCall!.url).toContain('draft=true');
+    expect((contentCall!.init.headers as Record<string, string>).authorization).toBe('Bearer tok');
+    expect((contentCall!.init as { next?: unknown }).next).toBeUndefined();
+  });
+
+  it('unknown slugs and CMS failures resolve to undefined (the route 404s)', async () => {
+    const missing = fakeCms([]);
+    await expect(loadPage('no-such-page', missing)).resolves.toBeUndefined();
+
+    const erroring = vi.fn(async () => new Response('boom', { status: 503 }));
+    await expect(loadPage('changelog', { fetchImpl: erroring })).resolves.toBeUndefined();
+
+    const unreachable = vi.fn(async () => {
+      throw new Error('ECONNREFUSED');
+    });
+    await expect(loadPage('changelog', { fetchImpl: unreachable })).resolves.toBeUndefined();
   });
 });

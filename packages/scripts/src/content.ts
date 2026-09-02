@@ -39,9 +39,22 @@ export interface FaqSeed {
   order: number;
 }
 
+export interface PageSectionSeed {
+  heading?: string;
+  body: string;
+}
+
+export interface PageSeed {
+  slug: string;
+  title: string;
+  description?: string;
+  sections: PageSectionSeed[];
+}
+
 export interface CmsContentFiles {
   aboutContent: AboutContentSeed[];
   faq: FaqSeed[];
+  pages: PageSeed[];
 }
 
 export interface ContentApplyResult {
@@ -58,7 +71,17 @@ interface ExportDoc {
   question?: string;
   answer?: string;
   order?: number;
+  description?: string;
+  sections?: Array<{ heading?: string; body?: string }>;
   _status?: string;
+}
+
+/** The content collections the promotion loop manages. */
+type ContentCollection = 'about-content' | 'faq' | 'pages';
+
+/** List ordering: about/faq order first; pages have no order field. */
+function contentSort(collection: ContentCollection): string {
+  return collection === 'pages' ? 'slug' : 'order';
 }
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -90,7 +113,7 @@ async function api(
 }
 
 async function listExisting(
-  collection: 'about-content' | 'faq',
+  collection: ContentCollection,
   token: string,
   fetchImpl: typeof fetch,
   purpose: 'export' | 'apply',
@@ -102,7 +125,7 @@ async function listExisting(
   // their state rather than duplicating them.
   const where = purpose === 'export' ? '&where[_status][equals]=published' : '';
   const json = (await api(
-    `/cms/api/${collection}?limit=100&depth=0&sort=order${where}`,
+    `/cms/api/${collection}?limit=100&depth=0&sort=${contentSort(collection)}${where}`,
     {},
     token,
     fetchImpl,
@@ -112,7 +135,7 @@ async function listExisting(
 
 /** Slug -> id for the docs that carry a slug (slug is the promotion key). */
 async function existingBySlug(
-  collection: 'about-content' | 'faq',
+  collection: ContentCollection,
   token: string,
   fetchImpl: typeof fetch,
   purpose: 'export' | 'apply',
@@ -127,8 +150,25 @@ async function existingBySlug(
 /** Payload's documented way to publish via REST (draft saves go to versions only). */
 const PUBLISHED = { _status: 'published' } as const;
 
+/**
+ * Shape the seed entry for the REST API. Blocks need their blockType
+ * discriminator to be stored at all - the seed files stay clean (heading +
+ * body only; export strips Payload's block bookkeeping), so it is added here.
+ */
+function apiPayload(collection: ContentCollection, seed: Record<string, unknown>) {
+  if (collection !== 'pages' || !Array.isArray(seed.sections)) return { ...seed, ...PUBLISHED };
+  return {
+    ...seed,
+    sections: (seed.sections as Array<Record<string, unknown>>).map((section) => ({
+      ...section,
+      blockType: 'section',
+    })),
+    ...PUBLISHED,
+  };
+}
+
 async function upsertCollection(
-  collection: 'about-content' | 'faq',
+  collection: ContentCollection,
   seeds: Array<Record<string, unknown>>,
   token: string,
   fetchImpl: typeof fetch,
@@ -140,7 +180,7 @@ async function upsertCollection(
   for (const seed of seeds) {
     const id = existing.get(seed.slug as string);
     // _status: published - seed content is live immediately, never a draft.
-    const data = { ...seed, ...PUBLISHED };
+    const data = apiPayload(collection, seed);
     if (id) {
       await api(
         `/cms/api/${collection}/${id}?draft=false`,
@@ -172,7 +212,7 @@ async function upsertCollection(
  * post-create reconciliation.
  */
 async function createDoc(
-  collection: 'about-content' | 'faq',
+  collection: ContentCollection,
   data: Record<string, unknown>,
   token: string,
   fetchImpl: typeof fetch,
@@ -220,9 +260,10 @@ export async function applyCmsContent(
     doFetch,
   );
   const faq = await upsertCollection('faq', files.faq as never, token, doFetch);
+  const pages = await upsertCollection('pages', files.pages as never, token, doFetch);
   return {
-    created: about.created + faq.created,
-    updated: about.updated + faq.updated,
+    created: about.created + faq.created + pages.created,
+    updated: about.updated + faq.updated + pages.updated,
   };
 }
 
@@ -240,7 +281,7 @@ export async function resetCmsContent(
   const token = await cmsToken(doFetch).get();
 
   let deleted = 0;
-  for (const collection of ['about-content', 'faq'] as const) {
+  for (const collection of ['about-content', 'faq', 'pages'] as const) {
     const docs = await listExisting(collection, token, doFetch, 'apply');
     for (const doc of docs) {
       await api(`/cms/api/${collection}/${doc.id}`, { method: 'DELETE' }, token, doFetch);
@@ -253,13 +294,15 @@ export async function resetCmsContent(
 
 /** Read the committed seed files (also the export target). */
 export async function readContentFiles(): Promise<CmsContentFiles> {
-  const [aboutContent, faq] = await Promise.all([
+  const [aboutContent, faq, pages] = await Promise.all([
     readFile(resolve(CONTENT_DIR, 'about-content.json'), 'utf8'),
     readFile(resolve(CONTENT_DIR, 'faq.json'), 'utf8'),
+    readFile(resolve(CONTENT_DIR, 'pages.json'), 'utf8'),
   ]);
   return {
     aboutContent: JSON.parse(aboutContent) as AboutContentSeed[],
     faq: JSON.parse(faq) as FaqSeed[],
+    pages: JSON.parse(pages) as PageSeed[],
   };
 }
 
@@ -278,13 +321,16 @@ export async function exportCmsContent(
 
   const about = (await listExisting('about-content', token, doFetch, 'export')).slice();
   const faq = (await listExisting('faq', token, doFetch, 'export')).slice();
+  const pages = (await listExisting('pages', token, doFetch, 'export')).slice();
 
   const aboutJson = about.map((doc) => doc as unknown as ExportDoc);
   const faqJson = faq.map((doc) => doc as unknown as ExportDoc);
+  const pagesJson = pages.map((doc) => doc as unknown as ExportDoc);
   const byOrder = (a: ExportDoc, b: ExportDoc): number =>
     (a.order ?? 0) - (b.order ?? 0) || a.slug.localeCompare(b.slug);
   aboutJson.sort(byOrder);
   faqJson.sort(byOrder);
+  pagesJson.sort((a, b) => a.slug.localeCompare(b.slug));
 
   await mkdir(targetDir, { recursive: true });
   await writeFile(
@@ -313,7 +359,27 @@ export async function exportCmsContent(
       2,
     )}\n`,
   );
-  console.log(`exported ${aboutJson.length} about entries, ${faqJson.length} faq entries`);
+  // Pages have no order field - export keeps the sections a doc carries,
+  // dropping Payload's block bookkeeping so the file stays the seed shape.
+  await writeFile(
+    resolve(targetDir, 'pages.json'),
+    `${JSON.stringify(
+      pagesJson.map(({ slug, title, description, sections }) => ({
+        slug,
+        title,
+        ...(description ? { description } : {}),
+        sections: (sections ?? []).map(({ heading, body }) => ({
+          ...(heading ? { heading } : {}),
+          body,
+        })),
+      })),
+      null,
+      2,
+    )}\n`,
+  );
+  console.log(
+    `exported ${aboutJson.length} about entries, ${faqJson.length} faq entries, ${pagesJson.length} pages`,
+  );
 }
 
 const command = process.argv[2] ?? 'apply';

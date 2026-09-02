@@ -1,0 +1,17 @@
+[
+  {
+    "slug": "changelog",
+    "title": "Changelog",
+    "description": "What changed on xitter lately - new features and fixes, newest first.",
+    "sections": [
+      {
+        "heading": "Pages defined in the CMS",
+        "body": "This page is the newest feature: pages created in the CMS now render at their own address, the same as the home and About pages. Editors draft and publish them with live preview - no code change, no deploy."
+      },
+      {
+        "heading": "Why this page exists",
+        "body": "It is committed as seed content, so it survives the nightly reset like everything else worth keeping. Expect entries here to grow as the demo does."
+      }
+    ]
+  }
+]

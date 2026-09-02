@@ -35,6 +35,16 @@ test.beforeAll(async () => {
 
   // Mint the machine token the revalidate route requires (same principal the
   // CMS authenticates) and refresh the web app's CMS cache tags.
+  const accessToken = await mintCmsToken();
+  const revalidated = await fetch(
+    `${envString('XITTER_WEB_BASE_URL', localUrl('edge'))}/api/cms/revalidate`,
+    { method: 'POST', headers: { authorization: `Bearer ${accessToken}` } },
+  );
+  expect(revalidated.ok).toBeTruthy();
+});
+
+/** Client-credentials token for the cms client (admin realm, app-admin). */
+async function mintCmsToken(): Promise<string> {
   const tokenRes = await fetch(
     `${envString('XITTER_KEYCLOAK_URL', localUrl('keycloak'))}/realms/${envString(
       'XITTER_ADMIN_REALM',
@@ -51,12 +61,8 @@ test.beforeAll(async () => {
     },
   );
   const { access_token: accessToken } = (await tokenRes.json()) as { access_token: string };
-  const revalidated = await fetch(
-    `${envString('XITTER_WEB_BASE_URL', localUrl('edge'))}/api/cms/revalidate`,
-    { method: 'POST', headers: { authorization: `Bearer ${accessToken}` } },
-  );
-  expect(revalidated.ok).toBeTruthy();
-});
+  return accessToken;
+}
 
 test('about page renders CMS sections and FAQ', async ({ page }) => {
   await page.goto('/about');
@@ -78,6 +84,85 @@ test('about page renders the CMS-managed FAQ', async ({ page }) => {
   await expect(page.getByText('Twitter/X-style demo of a microservices homelab')).toBeVisible();
   await expect(page.getByText(/Who runs this, and where's the code\?/i)).toBeVisible();
   await expect(page.getByText(/Something looks broken - is that you\?/i)).toBeVisible();
+});
+
+test('a seeded CMS page renders at its slug like a fixed page (#215)', async ({ page }) => {
+  await page.goto('/changelog');
+
+  await expect(page.getByRole('heading', { level: 1, name: 'Changelog' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Pages defined in the CMS' })).toBeVisible();
+  await expect(page.getByText(/render at their own address/i)).toBeVisible();
+  // Public surface: the shared public header, like the About page.
+  await expect(page.getByTestId('public-header')).toBeVisible();
+});
+
+test('an unknown slug 404s - the dynamic page route is not a catch-all', async ({ page }) => {
+  const response = await page.goto('/not-a-cms-page');
+  expect(response?.status()).toBe(404);
+  await expect(page.getByTestId('not-found')).toBeVisible();
+});
+
+test('a CMS page cannot take a fixed route slug (reserved-slug guard)', async ({
+  request,
+  page,
+}) => {
+  const token = await mintCmsToken();
+  const create = await request.post('/cms/api/pages?draft=false', {
+    headers: { authorization: `Bearer ${token}` },
+    data: {
+      title: 'Hostile page',
+      slug: 'about',
+      sections: [{ blockType: 'section', heading: 'Imposter', body: 'Trying to shadow.' }],
+      _status: 'published',
+    },
+  });
+  // Field validation rejects the reserved slug before anything is stored.
+  expect(create.ok()).toBe(false);
+  expect([400, 422]).toContain(create.status());
+  const body = (await create.json()) as { message?: string };
+  expect(JSON.stringify(body)).toMatch(/fixed route/i);
+
+  // And the fixed route itself still renders the About page, not a page.
+  const response = await page.goto('/about');
+  expect(response?.status()).toBe(200);
+  await expect(page.getByRole('heading', { level: 1, name: 'About' })).toBeVisible();
+  await expect(page.getByText('Imposter')).toHaveCount(0);
+});
+
+test('unpublished pages stay invisible - drafts never render publicly', async ({
+  request,
+  page,
+}) => {
+  const token = await mintCmsToken();
+  // Create as draft-only (never published).
+  const create = await request.post('/cms/api/pages', {
+    headers: { authorization: `Bearer ${token}` },
+    data: {
+      title: 'Work in progress',
+      slug: 'wip-page',
+      sections: [{ blockType: 'section', body: 'Secret draft copy - not live yet.' }],
+      _status: 'draft',
+    },
+  });
+  expect(create.ok()).toBe(true);
+  const { doc } = (await create.json()) as { doc: { id: number } };
+
+  try {
+    // Anonymous reads only ever see published docs...
+    const list = await request.get('/cms/api/pages?limit=100');
+    expect(list.ok()).toBe(true);
+    const published = (await list.json()) as { docs: Array<{ slug: string }> };
+    expect(published.docs.some((entry) => entry.slug === 'wip-page')).toBe(false);
+
+    // ...so the public route 404s for the draft-only page.
+    const response = await page.goto('/wip-page');
+    expect(response?.status()).toBe(404);
+    await expect(page.getByTestId('not-found')).toBeVisible();
+  } finally {
+    await request.delete(`/cms/api/pages/${doc.id}`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+  }
 });
 
 test('published CMS content is public; drafts require an admin token', async ({ request }) => {
@@ -164,6 +249,7 @@ test('app-admin can log in to the CMS admin panel end-to-end', async ({ page }) 
   // sidebar links stable #nav-<slug> ids; the dashboard cards share hrefs).
   await expect(page.locator('#nav-about-content')).toBeVisible();
   await expect(page.locator('#nav-faq')).toBeVisible();
+  await expect(page.locator('#nav-pages')).toBeVisible();
   await expect(page.locator('#nav-users')).toBeVisible();
   await expect(page.getByRole('link', { name: 'Log out' })).toBeVisible();
 

@@ -36,12 +36,16 @@ for (const path of pages) {
   });
 }
 
-test('/no-such-page (404 in the app shell, authenticated) has no serious axe violations', async ({
+test('/no/such/page (404 in the app shell, authenticated) has no serious axe violations', async ({
   page,
 }) => {
   await loginViaKeycloak(page, 'demo1', 'DemoPass123!');
   await page.waitForURL(/\/feed$/);
-  await page.goto('/no-such-page');
+  // Deep unknown paths keep landing on the app-shell 404 (#135). A
+  // single-segment unknown now falls to the public not-found frame instead:
+  // root-level dynamic segments belong to CMS pages (#215), so /no-such-page
+  // is a page lookup miss, not an app route.
+  await page.goto('/no/such/page');
 
   // Scan the shell-wrapped render (#135), not the bare signed-out one.
   await expect(page.getByTestId('not-found')).toBeVisible();
