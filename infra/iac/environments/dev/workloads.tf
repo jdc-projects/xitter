@@ -283,6 +283,12 @@ module "web" {
 
   env = concat(local.common_env, [
     { name = "PORT", value = "3000" },
+    # CMS copy fetches (SSR): without this web falls back to the local-stack
+    # default (localhost) and every CMS-backed surface renders its hardcoded
+    # fallback copy - deployed envs rendered fallback for /about since the
+    # first deploy (the netpol already allows web->cms; only the URL was
+    # missing). In-cluster base; the app appends the /cms basePath.
+    { name = "XITTER_CMS_URL", value = "http://cms.${local.ns}.svc:3000" },
     # Public origin for OIDC redirect_uris, captcha redirects and session
     # cookies. Without it web falls back to the local-stack default
     # (http://localhost:8080): the browser's auth code comes back to the
