@@ -20,7 +20,7 @@ End-state data layer: every store has exactly one owning service, accessed only 
 ## Postgres topology
 
 - **One CNPG cluster per environment** (namespace `xitter-dev` / `xitter-prod`); **one database + one role per service** with least-privilege grants — a service's credentials cannot read another service's database.
-- **Migrations:** Prisma per service; `prisma migrate deploy` runs as a deploy step (never `migrate dev` against shared envs). Schema lives with the owning service; there is no shared Prisma schema.
+- **Migrations:** Prisma per service; `prisma migrate deploy` runs as a deploy step (never `migrate dev` against shared envs). Schema lives with the owning service; there is no shared Prisma schema. Exception — cms: Payload owns its schema (generated via `payload migrate:create`, committed in `apps/cms/src/migrations`); the deploy step runs the image's self-contained migration bundle (`apps/cms/.next/migrate/migrate.mjs`) because the Next standalone image cannot run the Payload CLI. Local dev may dev-push (`db:push`); deployed environments never do.
 - **Client generation:** `prisma-client` generator emitting to the service's `src/generated/prisma` (generated output, never edited), connected through `@prisma/adapter-pg`.
 - **Local dev:** the same CNPG-compatible Postgres in Docker plus **shadow databases per service** for `migrate dev` diffing.
 - **Connection management:** pg adapter pools sized per service; p95 DB time exported via OTel (see [06-observability.md](06-observability.md)).

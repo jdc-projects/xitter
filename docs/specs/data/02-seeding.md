@@ -75,6 +75,6 @@ flowchart LR
     E --> F[Content survives nightly wipes]
 ```
 
-- Only CMS-managed content (About sections, FAQ entries) participates; user posts are never promoted.
+- Only CMS-managed content (About sections, FAQ entries, standalone pages) participates; user posts are never promoted.
 - Seed content files in the repo are the durable source (`packages/scripts/data/content/`, keyed by the collections' unique `slug`); the CMS is the editing surface.
 - A promotion is a PR like any other: reviewed, merged, then picked up by the next seed run.

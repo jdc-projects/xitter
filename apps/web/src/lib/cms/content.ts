@@ -1,5 +1,5 @@
 import { createJwtCache, realmUrls } from '@xitter/auth';
-import { envString, localUrl } from '@xitter/config';
+import { envString, isReservedWebSlug, localUrl } from '@xitter/config';
 
 export interface AboutEntry {
   id?: number;
@@ -13,6 +13,19 @@ export interface FaqEntry {
   slug: string;
   question: string;
   answer: string;
+}
+
+export interface PageSection {
+  heading?: string;
+  body: string;
+}
+
+export interface PageEntry {
+  id?: number;
+  slug: string;
+  title: string;
+  description?: string;
+  sections: PageSection[];
 }
 
 /**
@@ -75,7 +88,7 @@ export function cmsEnv() {
 }
 
 /** Data-cache tags for published CMS content (see /api/cms/revalidate). */
-export const CMS_CACHE_TAGS = ['cms-about-content', 'cms-faq'] as const;
+export const CMS_CACHE_TAGS = ['cms-about-content', 'cms-faq', 'cms-pages'] as const;
 
 export function adminRealmIssuer(): string {
   return `${cmsEnv().keycloakBaseUrl.replace(/\/$/, '')}/realms/${cmsEnv().adminRealm}`;
@@ -95,6 +108,8 @@ interface PayloadDoc {
   question?: string;
   answer?: string;
   order?: number;
+  description?: string;
+  sections?: Array<{ heading?: string; body?: string }>;
 }
 
 let draftTokens: ReturnType<typeof createJwtCache> | undefined;
@@ -121,46 +136,46 @@ function draftToken(fetchImpl?: typeof fetch) {
   return draftTokens.get();
 }
 
-async function fetchDocs(
-  collection: 'about-content' | 'faq',
+/**
+ * Shared CMS REST plumbing (#223): URL + optional draft bearer + the
+ * timeout/caching policy every loader uses - published reads ride the Next
+ * data cache (ISR-shaped, one tag per collection); draft previews are
+ * per-request and never cached.
+ */
+async function cmsRequest(
+  pathAndQuery: string,
   options: CmsFetchOptions,
-): Promise<PayloadDoc[]> {
+  cacheTag: string,
+): Promise<Response> {
   const doFetch = options.fetchImpl ?? fetch;
-  const url = new URL(`${cmsEnv().baseUrl}/cms/api/${collection}`);
-  url.searchParams.set('limit', '100');
-  url.searchParams.set('depth', '0');
-  url.searchParams.set('sort', 'order');
-
+  const url = new URL(`${cmsEnv().baseUrl}/cms/api/${pathAndQuery}`);
   const headers: Record<string, string> = {};
   if (options.draft) {
     url.searchParams.set('draft', 'true');
     headers.authorization = `Bearer ${await draftToken(options.fetchImpl)}`;
   }
-
-  const res = await doFetch(url.toString(), {
+  return doFetch(url.toString(), {
     headers,
     // Generous: a booted-but-cold CMS can take seconds on its first query,
     // while an unreachable one fails (ECONNREFUSED) immediately - so the
     // fallback stays fast and slow-cold-starts still render CMS copy.
     signal: AbortSignal.timeout(10_000),
-    // Published content rides the Next data cache (ISR-shaped); draft
-    // previews are per-request and never cached.
-    ...(options.draft ? {} : { next: { revalidate: 60, tags: [`cms-${collection}`] } }),
+    ...(options.draft ? {} : { next: { revalidate: 60, tags: [cacheTag] } }),
   });
+}
+
+async function fetchDocs(
+  collection: 'about-content' | 'faq',
+  options: CmsFetchOptions,
+): Promise<PayloadDoc[]> {
+  const res = await cmsRequest(
+    `${collection}?limit=100&depth=0&sort=order`,
+    options,
+    `cms-${collection}`,
+  );
   if (!res.ok) throw new Error(`CMS ${collection} responded ${res.status}`);
   const json = (await res.json()) as { docs?: PayloadDoc[] };
-  const docs = Array.isArray(json.docs) ? json.docs : [];
-  if (docs.length > 0 || options.draft) return docs;
-
-  // An EMPTY result means content is not applied yet (suite ordering, or a
-  // reset mid-flight). Caching that empty page for 60s would pin the
-  // fallback copy even after the content lands - the tag revalidate races
-  // whichever parallel render re-caches it. Bypass the data cache for the
-  // empty case so the next render sees the applied content immediately.
-  const fresh = await doFetch(url.toString(), { headers, cache: 'no-store' });
-  if (!fresh.ok) throw new Error(`CMS ${collection} responded ${fresh.status}`);
-  const freshJson = (await fresh.json()) as { docs?: PayloadDoc[] };
-  return Array.isArray(freshJson.docs) ? freshJson.docs : [];
+  return Array.isArray(json.docs) ? json.docs : [];
 }
 
 /** Stable CMS-defined ordering: `order` first, slug as tiebreaker. */
@@ -213,6 +228,69 @@ export async function loadFaq(options: CmsFetchOptions = {}): Promise<FaqEntry[]
     return mapped.length > 0 ? mapped : FALLBACK_FAQ;
   } catch {
     return FALLBACK_FAQ;
+  }
+}
+
+function mapPage(doc: PayloadDoc): PageEntry {
+  return {
+    id: doc.id,
+    slug: doc.slug ?? '',
+    title: doc.title ?? '',
+    description: doc.description,
+    sections: (doc.sections ?? []).map((section, i) => ({
+      heading: section.heading,
+      body: section.body ?? `Section ${i + 1}`,
+    })),
+  };
+}
+
+/**
+ * Fetch one doc from the `pages` collection by slug (published) or id
+ * (draft preview). Single-page lookups have no fallback copy - an absent
+ * doc is a plain miss, so the empty-result retry that protects the About
+ * fallback does not apply here.
+ */
+async function fetchPageDoc(
+  where: { slug?: string; id?: string },
+  options: CmsFetchOptions,
+): Promise<PayloadDoc | undefined> {
+  const query = ['limit=1', 'depth=0'];
+  // Brackets encoded explicitly: the builder no longer runs through
+  // URL.searchParams, and the assertion (plus Payload's parser) expects
+  // the canonical %5B%5D form.
+  if (where.slug !== undefined)
+    query.push(`where%5Bslug%5D%5Bequals%5D=${encodeURIComponent(where.slug)}`);
+  if (where.id !== undefined)
+    query.push(`where%5Bid%5D%5Bequals%5D=${encodeURIComponent(where.id)}`);
+  const res = await cmsRequest(`pages?${query.join('&')}`, options, 'cms-pages');
+  if (!res.ok) throw new Error(`CMS pages responded ${res.status}`);
+  const json = (await res.json()) as { docs?: PayloadDoc[] };
+  return json.docs?.[0];
+}
+
+/**
+ * A CMS-defined page (#215) for one top-level slug, or undefined when no
+ * published page takes it: the caller 404s, so unknown slugs keep landing
+ * on the not-found boundary. Reserved slugs never resolve - fixed routes
+ * always win even if a doc with that slug somehow exists (the CMS also
+ * rejects them at save time; this is the defence in depth).
+ */
+export async function loadPage(
+  slug: string,
+  options: CmsFetchOptions & { previewId?: string } = {},
+): Promise<PageEntry | undefined> {
+  if (isReservedWebSlug(slug)) return undefined;
+  const preview = options.previewId !== undefined;
+  try {
+    const doc = await fetchPageDoc(
+      preview ? { id: options.previewId } : { slug },
+      preview ? { ...options, draft: true } : options,
+    );
+    if (doc === undefined) return undefined;
+    const page = mapPage(doc);
+    return isReservedWebSlug(page.slug) ? undefined : page;
+  } catch {
+    return undefined;
   }
 }
 

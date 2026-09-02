@@ -20,6 +20,14 @@ export function serviceEnvSchema(service: 'social' | 'posts' | 'media' | 'feed' 
     // Admin realm (ADR 0006: primary homelab realm, xitter-local-admin
     // locally): issuer for the admin-role-gated internal admin routes.
     ADMIN_REALM: z.string().min(1).default('xitter-local-admin'),
+    // Same public-issuer rule as KEYCLOAK_ISSUER, for the ADMIN realm: the
+    // primary realm stamps `iss` with its canonical https frontend URL while
+    // transport (JWKS fetch) rides the in-cluster base URL.
+    ADMIN_ISSUER: z.string().url().optional(),
+    // azp allowlist for the human admin path (auth.guard verifyAdminToken);
+    // comma-separated. Locally the admin-panel client; deployed envs add the
+    // admin SPA client for that environment.
+    ADMIN_CLIENTS: z.string().min(1).default('admin-panel'),
     DATABASE_URL: z.string().min(1).default(serviceDbUrl(service)),
     KAFKA_BROKERS: z.string().min(1).default(kafkaBrokers()),
     VALKEY_URL: z.string().url().default(valkeyUrl()),

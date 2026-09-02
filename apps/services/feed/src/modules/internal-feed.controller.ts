@@ -113,8 +113,11 @@ export class InternalFeedController {
   }
 
   /**
-   * Last reset/reseed run (T13): the reset job's record, for the admin
-   * health tile. Null = no reset recorded (e.g. a fresh local env).
+   * Last reset/reseed run (T13): the reset job's record. Null = no reset
+   * recorded (e.g. a fresh local env). The admin panel reads the same
+   * record through its own admin-gated alias in admin-feed.controller.ts -
+   * it cannot hold a service token, so it presents its admin-realm login
+   * instead (#210 route pattern).
    */
   @Get('reset-status')
   @Internal()

@@ -164,6 +164,54 @@ resource "keycloak_openid_client" "admin_spa" {
   web_origins = ["https://${var.domain}"]
 }
 
+# Self-audience mapper for the SPA: the internal-admin edge routes below
+# check `aud` against the SPA's own client id (the audience must name a real
+# client in the route's realm - svc-* only exist in the demo realm, the
+# module's validation rejects them). `aud` is just a claim - no secret leaves
+# the public client. Service-side, the human admin path checks azp + role,
+# not aud, so one self-audience is the whole requirement (#210).
+resource "keycloak_openid_audience_protocol_mapper" "admin_spa" {
+  realm_id  = data.terraform_remote_state.keycloak.outputs.primary_realm_id
+  client_id = keycloak_openid_client.admin_spa.id
+
+  name = "audience-self"
+
+  included_client_audience = "xitter-${var.environment}-admin-spa"
+  add_to_access_token      = true
+  add_to_id_token          = false
+}
+
+# The services' internal admin routes get their own edge routes on the
+# PRIMARY realm (#210): the panel's SPA token (primary realm, self-audience,
+# system-admin role) is the admin principal spec 03 defines. Higher priority
+# than the demo-realm api/{service} routes (100) so these paths match first;
+# pass_access_token forwards the verified token for the service-side
+# verifyAdminToken re-check (issuer via ADMIN_ISSUER, azp via ADMIN_CLIENTS -
+# workloads.tf). Tokens minted before the mapper applies lack the audience:
+# existing sessions re-login once.
+module "ingress_admin_internal" {
+  for_each = toset(["social", "posts", "media", "feed", "search"])
+  source   = "github.com/jdc-projects/homelab//iac/modules/ingress"
+
+  name      = "xitter-${var.environment}-${each.key}-admin-internal"
+  namespace = local.ns
+  domain    = var.domain
+  path      = "api/${each.key}/internal/admin"
+  priority  = 200
+
+  target_port = 8080
+  selector    = { "app.kubernetes.io/name" = each.key }
+
+  auth_mode                       = "oidc-api"
+  keycloak_auth_realm             = "primary"
+  auth_oidc_api_audience          = "xitter-${var.environment}-admin-spa"
+  auth_oidc_api_pass_access_token = true
+
+  do_enable_geoblock = false
+
+  kubeconfig_path = local.kubeconfig
+}
+
 # The cms app's OWN confidential client (#208), separate from the edge
 # middleware's xitter-<env>-cms (which only gates the route): the app's
 # Payload-admin login does a server-side code flow against this client
@@ -183,6 +231,11 @@ resource "keycloak_openid_client" "cms_app" {
   standard_flow_enabled        = true
   direct_access_grants_enabled = false
 
+  # The reset/seed job authenticates server-to-server with this client
+  # (client-credentials, #214) - that grant needs a service account enabled,
+  # else the token endpoint 401s (invalid_client, observed on dev).
+  service_accounts_enabled = true
+
   # Realm roles (app-admin) must reach the app's session token.
   full_scope_allowed = true
 
@@ -190,6 +243,27 @@ resource "keycloak_openid_client" "cms_app" {
     "https://${var.domain}/cms/auth/oidc/callback",
   ]
   web_origins = ["https://${var.domain}"]
+}
+
+# The cms's content access maps a token onto a CMS user only when it carries
+# the app-admin realm role (keycloak-strategy); the reset/seed job's service
+# account (#214) starts role-less, so its writes 403'd. Attach the gate role
+# (owned by the shared root) to the client's service account - the homelab
+# pattern for machine principals (iac/keycloak-config/role-mapping.tf).
+data "keycloak_role" "app_admin" {
+  realm_id = data.terraform_remote_state.keycloak.outputs.primary_realm_id
+  name     = "app-admin"
+}
+
+# The service account IS a user - realm roles land via user role mappings
+# (the _client_service_account_role resource is client-roles-only: its
+# required client_id scopes the lookup to client-level roles, 404 otherwise).
+resource "keycloak_user_roles" "cms_app" {
+  realm_id = data.terraform_remote_state.keycloak.outputs.primary_realm_id
+  user_id  = keycloak_openid_client.cms_app.service_account_user_id
+
+  role_ids   = [data.keycloak_role.app_admin.id]
+  exhaustive = false
 }
 
 # The roles the admin panel gates on (spec 07 / ADR 0006). Nothing else

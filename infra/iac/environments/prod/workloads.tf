@@ -133,6 +133,21 @@ module "api_service" {
     # the scheme exactly or every token fails iss validation.
     { name = "KEYCLOAK_ISSUER", value = "${replace(local.keycloak_url, "https://", "http://")}/realms/${local.demo_realm}" },
     { name = "DEMO_REALM", value = local.demo_realm },
+    # Admin path (#210): the primary realm's canonical issuer is https (unlike
+    # the demo realm above); JWKS still rides the in-cluster base URL. The SPA
+    # client for this environment is the admitted human azp.
+    {
+      name  = "ADMIN_REALM",
+      value = data.terraform_remote_state.keycloak.outputs.primary_realm_id
+    },
+    {
+      name  = "ADMIN_ISSUER",
+      value = "${local.keycloak_url}/realms/${data.terraform_remote_state.keycloak.outputs.primary_realm_id}"
+    },
+    {
+      name  = "ADMIN_CLIENTS",
+      value = "xitter-${var.environment}-admin-spa"
+    },
     { name = "KAFKA_BROKERS", value = local.kafka_bootstrap },
     { name = "KEYCLOAK_CLIENT_ID", value = "svc-${each.key}" },
     # Rate limiting (posts/social/media) + feed's ws pub/sub fan-out (T6):
@@ -357,8 +372,26 @@ module "cms" {
   liveness_probe_path  = "/cms/healthz"
   readiness_probe_path = "/cms/readyz"
 
+  # Payload (not prisma) owns the cms schema: migrations are generated from
+  # the Payload config (`payload migrate:create`, committed under
+  # apps/cms/src/migrations) and applied by the image's self-contained
+  # runner. `npx prisma migrate deploy` is wrong here, and `npx payload
+  # migrate` cannot run in the Next standalone image (production builds
+  # bundle payload into the server chunks - no CLI, no tsx, no resolvable
+  # node_modules); apps/cms/scripts/bundle-migrations.mjs compiles the
+  # config + migrations into one artifact precisely for this container.
+  # Until this landed NOTHING ever created the deployed cms schema: dev-mode
+  # schema push is local-only (payload.config.ts disables it in deployed
+  # envs), so the first login 500/502'd on the missing users table and the
+  # browser replay of the consumed auth code surfaced a misleading
+  # invalid_grant (#208 follow-on).
+  migrate_command = ["node", "apps/cms/.next/migrate/migrate.mjs"]
+
   env = concat(local.common_env, [
     { name = "PORT", value = "3000" },
+    # CMS copy fetches (SSR): see the dev comment - deployed envs rendered
+    # fallback copy since the first deploy; the netpol already allows it.
+    { name = "XITTER_CMS_URL", value = "http://cms.${local.ns}.svc:3000" },
     { name = "WEB_URL", value = "https://${var.domain}" },
     # The app's OIDC login (#208): the issuer must be the PUBLIC keycloak URL
     # (it matches the issuer baked into tokens; the in-cluster service URL

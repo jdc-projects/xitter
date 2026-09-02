@@ -111,11 +111,15 @@ Acceptance-style catalogue of every user-facing feature area. "Must" = required 
 
 ## 10. CMS content
 
-| #    | Acceptance criteria                                                                                                                        |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| 10.1 | About intro sections and FAQ entries are editable in the CMS (Payload) with **live preview**.                                              |
-| 10.2 | Published CMS changes appear on the public pages without a deploy.                                                                         |
-| 10.3 | Curated content can be promoted back to the repo as seed files so it survives resets (see [../data/02-seeding.md](../data/02-seeding.md)). |
+| #    | Acceptance criteria                                                                                                                                                                                                                                                                             |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 10.1 | About intro sections and FAQ entries are editable in the CMS (Payload) with **live preview**.                                                                                                                                                                                                   |
+| 10.2 | Published CMS changes appear on the public pages without a deploy.                                                                                                                                                                                                                              |
+| 10.3 | Curated content can be promoted back to the repo as seed files so it survives resets (see [../data/02-seeding.md](../data/02-seeding.md)).                                                                                                                                                      |
+| 10.4 | Arbitrary standalone pages can be created in the CMS (`pages` collection: kebab-case slug, title, description, ordered body sections) with drafts/versioning and live preview; each published page renders at `/<slug>` exactly like the home and About pages — no code change per page (#215). |
+| 10.5 | A page slug never collides with a fixed route: the CMS rejects reserved top-level segments at save time, and the web's dynamic route treats reserved slugs as never-CMS (defence in depth). Static routes always win resolution over the dynamic `/<slug>` route.                               |
+| 10.6 | Only published pages render publicly. Drafts are preview-only (`/<slug>?preview=<docId>`, same accepted exposure as the About preview); unknown or unpublished slugs 404.                                                                                                                       |
+| 10.7 | A single-segment URL no fixed route claims resolves through the CMS page lookup before 404ing; deeper unmatched URLs keep hitting the catch-all (and its in-shell 404, 13.6).                                                                                                                   |
 
 ## 11. Admin
 
@@ -146,8 +150,12 @@ their internal admin endpoints — the panel gate is UX, not the boundary).
   (profile, counts, followers/following). The panel mutates no user content.
 - **Health**: one dashboard over each service's Terminus detail (each
   service stays the authority on its own dependencies), worker metrics
-  links (workers expose scrapes, not APIs), and a last-reset tile —
-  reported as "pending" until the reset status feed lands (feature 12).
+  pointers (workers expose scrapes, not APIs — links to the Grafana
+  dashboards when the panel is served deployed, the cluster-local ports as
+  copy in local dev), and a last-reset tile over the feed service's
+  reset-status record — outcome, finish time, duration, reseed fingerprint,
+  or a clean "no reset recorded yet" state before the environment's first
+  reset run (feature 12).
 - **Audit log**: merged view of the posts/media audit stores, newest first.
 
 ## 12. Data lifecycle
@@ -159,16 +167,26 @@ their internal admin endpoints — the panel gate is UX, not the boundary).
 | 12.3 | Reset and reseed status is visible (admin health + user-facing notice).                                                                 |
 | 12.4 | Curated (promoted) content survives resets.                                                                                             |
 
+As built: the reset job writes its run record (outcome, timing, reseed
+fingerprint, per-step durations) to Valkey after every attempt — success or
+failure. The feed service serves it to the admin panel at
+`GET /api/feed/internal/admin/reset-status` (admin-principal-gated; the
+machine-readable path stays at `/api/feed/internal/reset-status`), and the
+panel's health dashboard renders it as the data lifecycle tile: outcome
+badge, finish time (relative + UTC), duration, reseed state and seed
+fingerprint — or "no reset recorded yet" on an environment that has not run
+a reset (a fresh local stack seeds directly, without a reset run).
+
 ## 13. App shell (authenticated navigation)
 
-| #    | Acceptance criteria                                                                                                                                                                                                                           |
-| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 13.1 | The authenticated shell's navigation is visually distinct from body content: icon'd links, brand set apart from destinations.                                                                                                                 |
-| 13.2 | The current page is marked in the navigation (`aria-current` + styling) on every destination that has a nav entry.                                                                                                                            |
-| 13.3 | On small screens a burger opens a drawer with the same navigation; search stays reachable (drawer link + header icon) even where the search box hides.                                                                                        |
-| 13.4 | Every cursor-paginated list (feed, search, bookmarks, profile posts and follow lists, reply threads) uses one shared Load more that appends pages in place - no full-page cursor navigation, one `load-more` affordance everywhere.           |
-| 13.5 | One labelled search input per page: the header box hides itself on /search, where the page's own box is the single input.                                                                                                                     |
-| 13.6 | Every 404 inside the app - unmatched routes, deleted or malformed posts/profiles - renders within the authenticated shell, so nav, search and logout stay available; signed-out visitors get the same branded 404 body, not a login redirect. |
+| #    | Acceptance criteria                                                                                                                                                                                                                                                                                                                                                                                  |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 13.1 | The authenticated shell's navigation is visually distinct from body content: icon'd links, brand set apart from destinations.                                                                                                                                                                                                                                                                        |
+| 13.2 | The current page is marked in the navigation (`aria-current` + styling) on every destination that has a nav entry.                                                                                                                                                                                                                                                                                   |
+| 13.3 | On small screens a burger opens a drawer with the same navigation; search stays reachable (drawer link + header icon) even where the search box hides.                                                                                                                                                                                                                                               |
+| 13.4 | Every cursor-paginated list (feed, search, bookmarks, profile posts and follow lists, reply threads) uses one shared Load more that appends pages in place - no full-page cursor navigation, one `load-more` affordance everywhere.                                                                                                                                                                  |
+| 13.5 | One labelled search input per page: the header box hides itself on /search, where the page's own box is the single input.                                                                                                                                                                                                                                                                            |
+| 13.6 | Every 404 inside the app - unmatched multi-segment routes, deleted or malformed posts/profiles - renders within the authenticated shell, so nav, search and logout stay available; signed-out visitors get the same branded 404 body, not a login redirect. Unknown single-segment URLs resolve through the CMS page lookup first (#215) and 404 on the public frame - page URLs are public content. |
 
 ## 14. Branding
 

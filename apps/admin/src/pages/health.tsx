@@ -1,19 +1,21 @@
-import { Alert, Badge, Button, Card, Space, Table, Tag, Typography } from 'antd';
+import { Badge, Button, Card, Space, Table, Tag, Typography } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useState } from 'react';
 import type { AdminHealth } from '@xitter/api-contracts';
-import { fetchAllServiceHealth, workerScrapeTargets } from '../data/health.js';
+import { fetchAllServiceHealth } from '../data/health.js';
+import { ResetStatusTile } from '../components/reset-status-tile.js';
+import { WorkersMetricsCard } from '../components/workers-metrics.js';
 
 /**
  * System health dashboard: live per-service Terminus detail (each service is
- * its own authority), worker metrics pointers (workers expose scrapes, not
- * APIs - and their ports are cluster-local, so they are named, not linked),
- * and the last-reset tile - which stays "pending" until the reset status
- * feed lands with #13.
+ * its own authority), worker metrics pointers (environment-aware - Grafana
+ * links when deployed, local scrape ports in dev), and the data lifecycle
+ * tile over feed's admin-gated reset-status endpoint.
  */
 export function HealthPage() {
   const [services, setServices] = useState<AdminHealth[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -36,7 +38,16 @@ export function HealthPage() {
         <Typography.Title level={3} style={{ margin: 0 }}>
           System health
         </Typography.Title>
-        <Button icon={<ReloadOutlined aria-hidden />} onClick={() => void load()} loading={loading}>
+        <Button
+          icon={<ReloadOutlined aria-hidden />}
+          onClick={() => {
+            void load();
+            // The reset tile rides the same refresh (same token, same
+            // transport) - the key bump re-runs its fetch effect.
+            setRefreshKey((key) => key + 1);
+          }}
+          loading={loading}
+        >
           Refresh
         </Button>
       </Space>
@@ -102,39 +113,13 @@ export function HealthPage() {
         ]}
       />
 
-      <Card size="small" title="Workers (metrics)" data-testid="health-workers">
-        <Space direction="vertical" size="small" style={{ width: '100%' }}>
-          {/* Copy, not links: the scrape ports are cluster-local (PodMonitors,
-              no edge route - spec 06/07), so a link would 404 from any browser
-              that is not the operator's own machine (#132). */}
-          <Typography.Text type="secondary">
-            Workers expose Prometheus metrics on cluster-local scrape ports — deliberately not
-            routable through the edge. When deployed, read them in Grafana (Kafka consumer lag /
-            Feed freshness dashboards); in local dev, scrape the ports below on the machine running
-            the workers.
-          </Typography.Text>
-          <Space wrap>
-            {workerScrapeTargets().map((worker) => (
-              <Typography.Text key={worker.name} code>
-                {worker.name}: {worker.localUrl}
-              </Typography.Text>
-            ))}
-          </Space>
-        </Space>
-      </Card>
+      <WorkersMetricsCard />
 
       <Card size="small" title="Data lifecycle" data-testid="health-reset-status">
-        {/* The reset/reseed status feed lands with #13 (data lifecycle). */}
-        <Alert
-          type="info"
-          showIcon={false}
-          message="Last reset / reseed"
-          description={
-            <span data-testid="reset-status-pending">
-              pending — reset status reporting lands with the data-lifecycle ticket (#13)
-            </span>
-          }
-        />
+        {/* The reset/reseed record as the reset job wrote it (T13): outcome,
+            timing, fingerprint - or a clean empty state before the first
+            reset run on the environment. */}
+        <ResetStatusTile refreshKey={refreshKey} />
       </Card>
     </Space>
   );

@@ -140,6 +140,21 @@ module "api_service" {
     # the scheme exactly or every token fails iss validation.
     { name = "KEYCLOAK_ISSUER", value = "${replace(local.keycloak_url, "https://", "http://")}/realms/${local.demo_realm}" },
     { name = "DEMO_REALM", value = local.demo_realm },
+    # Admin path (#210): the primary realm's canonical issuer is https (unlike
+    # the demo realm above); JWKS still rides the in-cluster base URL. The SPA
+    # client for this environment is the admitted human azp.
+    {
+      name  = "ADMIN_REALM",
+      value = data.terraform_remote_state.keycloak.outputs.primary_realm_id
+    },
+    {
+      name  = "ADMIN_ISSUER",
+      value = "${local.keycloak_url}/realms/${data.terraform_remote_state.keycloak.outputs.primary_realm_id}"
+    },
+    {
+      name  = "ADMIN_CLIENTS",
+      value = "xitter-${var.environment}-admin-spa"
+    },
     { name = "KAFKA_BROKERS", value = local.kafka_bootstrap },
     { name = "KEYCLOAK_CLIENT_ID", value = "svc-${each.key}" },
     # Rate limiting (posts/social/media) + feed's ws pub/sub fan-out (T6):
@@ -268,6 +283,12 @@ module "web" {
 
   env = concat(local.common_env, [
     { name = "PORT", value = "3000" },
+    # CMS copy fetches (SSR): without this web falls back to the local-stack
+    # default (localhost) and every CMS-backed surface renders its hardcoded
+    # fallback copy - deployed envs rendered fallback for /about since the
+    # first deploy (the netpol already allows web->cms; only the URL was
+    # missing). In-cluster base; the app appends the /cms basePath.
+    { name = "XITTER_CMS_URL", value = "http://cms.${local.ns}.svc:3000" },
     # Public origin for OIDC redirect_uris, captcha redirects and session
     # cookies. Without it web falls back to the local-stack default
     # (http://localhost:8080): the browser's auth code comes back to the
@@ -360,6 +381,21 @@ module "cms" {
   # Next.js basePath: health routes live under /cms/healthz + /cms/readyz.
   liveness_probe_path  = "/cms/healthz"
   readiness_probe_path = "/cms/readyz"
+
+  # Payload (not prisma) owns the cms schema: migrations are generated from
+  # the Payload config (`payload migrate:create`, committed under
+  # apps/cms/src/migrations) and applied by the image's self-contained
+  # runner. `npx prisma migrate deploy` is wrong here, and `npx payload
+  # migrate` cannot run in the Next standalone image (production builds
+  # bundle payload into the server chunks - no CLI, no tsx, no resolvable
+  # node_modules); apps/cms/scripts/bundle-migrations.mjs compiles the
+  # config + migrations into one artifact precisely for this container.
+  # Until this landed NOTHING ever created the deployed cms schema: dev-mode
+  # schema push is local-only (payload.config.ts disables it in deployed
+  # envs), so the first login 500/502'd on the missing users table and the
+  # browser replay of the consumed auth code surfaced a misleading
+  # invalid_grant (#208 follow-on).
+  migrate_command = ["node", "apps/cms/.next/migrate/migrate.mjs"]
 
   env = concat(local.common_env, [
     { name = "PORT", value = "3000" },
