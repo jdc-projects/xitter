@@ -15,6 +15,7 @@
  */
 
 import http from 'node:http';
+import https from 'node:https';
 import type { Page } from '@playwright/test';
 
 const keycloak =
@@ -112,7 +113,9 @@ function passwordGrant(username: string): Promise<string> {
   }).toString();
 
   return new Promise((resolve, reject) => {
-    const req = http.request(
+    // The nightly runs against https://idp... (scheduled.yml) while local
+    // stacks are plain http - pick the transport by scheme.
+    const req = (keycloak.startsWith('https:') ? https : http).request(
       `${keycloak}/realms/${realm}/protocol/openid-connect/token`,
       { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' } },
       (res) => {
