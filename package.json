@@ -96,6 +96,9 @@
   },
   "overrides": {
     "axios": "^1.19",
+    "@faker-js/faker": "^10.6.0",
+    "fast-uri": "^4.1.4",
+    "mysql2": "^3.24.4",
     "deepmerge-ts": "^8.0.2",
     "dompurify": "^3.4.13",
     "form-data": "^4",
