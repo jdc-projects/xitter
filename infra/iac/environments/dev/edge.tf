@@ -164,22 +164,6 @@ resource "keycloak_openid_client" "admin_spa" {
   web_origins = ["https://${var.domain}"]
 }
 
-# Self-audience mapper for the SPA: the internal-admin edge routes below
-# check `aud` against the SPA's own client id (the audience must name a real
-# client in the route's realm - svc-* only exist in the demo realm, the
-# module's validation rejects them). `aud` is just a claim - no secret leaves
-# the public client. Service-side, the human admin path checks azp + role,
-# not aud, so one self-audience is the whole requirement (#210).
-resource "keycloak_openid_audience_protocol_mapper" "admin_spa" {
-  realm_id  = data.terraform_remote_state.keycloak.outputs.primary_realm_id
-  client_id = keycloak_openid_client.admin_spa.id
-
-  name = "audience-self"
-
-  included_client_audience = "xitter-${var.environment}-admin-spa"
-  add_to_access_token      = true
-  add_to_id_token          = false
-}
 
 # The services' internal admin routes get their own edge routes on the
 # PRIMARY realm (#210): the panel's SPA token (primary realm, self-audience,
@@ -202,11 +186,13 @@ module "ingress_admin_internal" {
   target_port = 8080
   selector    = { "app.kubernetes.io/name" = each.key }
 
-  auth_mode                       = "oidc-api"
-  keycloak_auth_realm             = "primary"
-  auth_oidc_api_audience          = "xitter-${var.environment}-admin-spa"
-  auth_oidc_api_pass_access_token = true
-
+  # Deliberately NO edge auth here (#211 regression, caught by the nightly
+  # suites): internal/admin paths serve TWO principals from TWO realms - the
+  # panel's primary-realm SPA token and the demo-realm svc-* machine tokens
+  # (bruno/scripts) - and one middleware can only validate one realm. The
+  # services fully re-validate either principal (verifyAdminToken: issuer,
+  # azp allowlist, admin role - spec 03/07), which is the authorization the
+  # spec assigns to internal routes anyway; the edge just routes.
   do_enable_geoblock = false
 
   kubeconfig_path = local.kubeconfig
