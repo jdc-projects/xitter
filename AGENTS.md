@@ -79,6 +79,11 @@ turbo lint/typecheck/**Vitest test**/build) matches the CI `gates` job; `npm run
   records are immutable once on `dev`/`main` — supersede, don't edit (within an
   open PR, edit freely). Specs self-contained.
 - **PRs**: vertical slices, all to `dev` (gitflow). Run `npm run check` first.
+- **Verify e2e-covered changes locally**: `npm run check` does NOT run the
+  Playwright suites. Anything touching web UI or cross-app flows runs the
+  affected specs locally before pushing (`npx playwright test -c
+  tests/playwright/e2e <spec>` - the stack wrapper boots and seeds itself;
+  boot it detached to iterate). CI confirms, it does not discover.
 - **Libraries**: prefer well-supported libraries over custom code; check what's
   already in the repo before adding anything; check current versions rather
   than assuming.
