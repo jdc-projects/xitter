@@ -58,14 +58,14 @@ Dashboards are `GrafanaDashboard` CRs in the environment root module (the grafan
 
 ## Alerts (required)
 
-| Alert                 | Condition (defaults; tune via Prometheus rules in Tofu)                               |
-| --------------------- | ------------------------------------------------------------------------------------- |
-| API 5xx rate          | >1% of requests over 5m on any service                                                |
-| API p95 latency SLO   | >500ms over 10m (API endpoints)                                                       |
-| Page p95 SLO          | >2s over 10m (web page loads, measured at the edge)                                   |
-| Consumer lag          | Group lag above threshold for 10m (per-group tunable; fanout is the SLO-critical one) |
-| Reset job failure     | Nightly CronJob not `Succeeded` by 02:00 UTC                                          |
-| Cert / ingress errors | Edge 5xx on ingress routes, cert expiry <14d, TLS validation failures                 |
+| Alert                 | Condition (defaults; tune via Prometheus rules in Tofu)                                                                                                                |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API 5xx rate          | >1% of requests over 5m on any service                                                                                                                                 |
+| API p95 latency SLO   | >500ms over 10m (API endpoints)                                                                                                                                        |
+| Page p95 SLO          | >2s over 10m (web page loads, measured at the edge)                                                                                                                    |
+| Consumer lag          | Group lag above threshold for 10m (per-group tunable; fanout is the SLO-critical one)                                                                                  |
+| Reset job failure     | Nightly CronJob not `Succeeded` by 02:00 UTC                                                                                                                           |
+| Cert / ingress errors | Edge 5xx on ingress routes, TLS validation failures; cert expiry <14d is covered by the homelab's edge-wide rule (`EdgeTLSCertExpiringSoon`), not an xitter-owned rule |
 
 Rules live as one `PrometheusRule` per environment root module. Routing rides the homelab convention: alerts carry a `severity` label (`warning`/`critical`) and the homelab Alertmanager config routes them to its email receiver (`severity = none` goes to null), so no xitter-specific notification resources exist.
 
