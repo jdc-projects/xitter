@@ -284,7 +284,10 @@ resource "kubernetes_manifest" "prometheus_rule" {
           # (Traefik ServiceMonitor is enabled in iac/traefik): 5xx rate on
           # xitter routes, and minimum remaining validity across certs the
           # edge serves (the wildcard covers every xitter host; the homelab
-          # defines no cert-expiry alert of its own).
+          # defines no cert-expiry alert of its own). The cert expr dedupes
+          # serials per cn/sans keeping the newest expiry: Traefik never
+          # removes the old serial's series after an in-place secret renewal
+          # (traefik#8606), so a plain min() alerts on the pre-renewal cert.
           name = "xitter-edge"
           rules = [
             {
@@ -299,7 +302,7 @@ resource "kubernetes_manifest" "prometheus_rule" {
             },
             {
               alert  = "XitterCertExpiringSoon"
-              expr   = "min(traefik_tls_certs_not_after) - time() < 14 * 24 * 3600"
+              expr   = "min(max by (cn, sans) (traefik_tls_certs_not_after)) - time() < 14 * 24 * 3600"
               for    = "1h"
               labels = { severity = "warning" }
               annotations = {
