@@ -280,14 +280,12 @@ resource "kubernetes_manifest" "prometheus_rule" {
           ]
         },
         {
-          # Edge/cert signals. Both come from the homelab edge's own metrics
-          # (Traefik ServiceMonitor is enabled in iac/traefik): 5xx rate on
-          # xitter routes, and minimum remaining validity across certs the
-          # edge serves (the wildcard covers every xitter host; the homelab
-          # defines no cert-expiry alert of its own). The cert expr dedupes
-          # serials per cn/sans keeping the newest expiry: Traefik never
-          # removes the old serial's series after an in-place secret renewal
-          # (traefik#8606), so a plain min() alerts on the pre-renewal cert.
+          # Edge signals, from the homelab edge's own metrics (Traefik
+          # ServiceMonitor is enabled in iac/traefik): 5xx rate on xitter
+          # routes. Cert expiry used to be alerted here as well; it moved to
+          # the homelab's own traefik-tls-cert-expiry rule
+          # (EdgeTLSCertExpiringSoon) - the edge serves every homelab host,
+          # not just xitter's, so the alert belongs there.
           name = "xitter-edge"
           rules = [
             {
@@ -298,16 +296,6 @@ resource "kubernetes_manifest" "prometheus_rule" {
               annotations = {
                 summary     = "Edge returning 5xx on xitter routes"
                 description = "The edge is serving more than 0.1 5xx responses/s across xitter-dev ingress routes for 10m."
-              }
-            },
-            {
-              alert  = "XitterCertExpiringSoon"
-              expr   = "min(max by (cn, sans) (traefik_tls_certs_not_after)) - time() < 14 * 24 * 3600"
-              for    = "1h"
-              labels = { severity = "warning" }
-              annotations = {
-                summary     = "TLS certificate served by the edge expires within 14 days"
-                description = "A certificate the edge serves (incl. the wildcard covering xitter hosts) expires in under 14 days."
               }
             },
           ]
